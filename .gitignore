@@ -1,0 +1,20 @@
+# Hannes
+.DS_Store
+.idea/
+.vscode/
+*.log
+.env
+hm_*
+datasets/*
+
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
