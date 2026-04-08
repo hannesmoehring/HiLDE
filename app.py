@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sklearn.preprocessing import StandardScaler
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,13 +8,16 @@ from typing import TypedDict, cast
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.analysis.dim_reducer import fit_dimensionality_reducer
+from src.analysis.predicate_generator import generate_predicate
 
 DATASET_PATH = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 EXPORT_DIR = Path("outputs/selections")
 MIN_COMPONENTS_FOR_2D = 2
+PCA_VARIANCE_LABEL_THRESHOLD = 4.0
 
 
 class ReductionConfig(TypedDict):
@@ -172,6 +176,44 @@ def init_state() -> None:
             st.session_state[key] = value
 
 
+def render_pca_variance_summary(explained_ratio: np.ndarray) -> None:
+    pc_labels = [f"PC{i + 1}" for i in range(len(explained_ratio))]
+    explained_pct = explained_ratio * 100.0
+    cumulative_pct = np.cumsum(explained_pct)
+
+    preview_count = min(6, len(pc_labels))
+    preview = ", ".join(f"{pc_labels[i]}: {explained_pct[i]:.1f}%" for i in range(preview_count))
+    suffix = " ..." if len(pc_labels) > preview_count else ""
+    st.caption(f"Explained variance by component: {preview}{suffix}")
+
+    fig = go.Figure()
+    for label, pct, cumulative in zip(pc_labels, explained_pct, cumulative_pct, strict=True):
+        fig.add_trace(
+            go.Bar(
+                y=["Variance"],
+                x=[pct],
+                orientation="h",
+                name=label,
+                text=[f"{pct:.1f}%"] if pct >= PCA_VARIANCE_LABEL_THRESHOLD else None,
+                textposition="inside",
+                customdata=[[cumulative]],
+                hovertemplate=(f"{label}<br>Variance: %{{x:.2f}}%<br>Cumulative: %{{customdata[0]:.2f}}%<extra></extra>"),
+            ),
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        height=150,
+        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+        xaxis_title="Share of total variance (%)",
+        yaxis_title=None,
+        yaxis={"showticklabels": False},
+        legend={"orientation": "h", "y": 1.5, "x": 0},
+    )
+    fig.update_xaxes(range=[0, 100], ticksuffix="%")
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="SHD - Dimensionality Reduction Explorer", layout="wide")
     init_state()
@@ -180,7 +222,7 @@ def main() -> None:
     st.caption("Dataset is hardcoded to winequality-red.csv")
 
     df = load_dataset()
-    feature_columns = [c for c in df.columns if c not in ["quality", "row_id"]]
+    feature_columns = [c for c in df.columns if c not in ["row_id"]]  # "quality",
     X = df[feature_columns].to_numpy()
 
     with st.sidebar:
@@ -270,7 +312,10 @@ def main() -> None:
             return
 
         embedding_2d = st.session_state.embedding_full[:, [st.session_state.pca_x_component, st.session_state.pca_y_component]]
-        st.bar_chart(pd.DataFrame({"explained_variance_ratio": explained_ratio}))
+        render_pca_variance_summary(explained_ratio)
+        st.info(
+            f"Total variance explained by selected components: {explained_ratio[st.session_state.pca_x_component] + explained_ratio[st.session_state.pca_y_component]:.2%}"
+        )
     else:
         embedding_2d = st.session_state.embedding_full
 
@@ -306,7 +351,59 @@ def main() -> None:
     else:
         st.session_state.selected_df = pd.DataFrame()
 
-    st.subheader("Selection State")
+    st.subheader("Analysis of selected Datapoints")
+    if st.session_state.selected_df.empty:
+        st.info("Use lasso or box selection in the plot to capture points.")
+    else:
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
+        selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
+
+        range_data = generate_predicate("hm", selected_scaled_df, X_scaled)
+        range_df = pd.DataFrame(range_data)
+        # st.dataframe(range_df, use_container_width=True)
+
+        if not range_df.empty:
+            feature_range_fig = go.Figure()
+            feature_range_fig.add_trace(
+                go.Bar(
+                    name="Global range",
+                    y=range_df["feature"],
+                    x=range_df["global_max"] - range_df["global_min"],
+                    base=range_df["global_min"],
+                    customdata=range_df[["global_max"]],
+                    orientation="h",
+                    marker={"color": "rgba(120, 120, 120, 0.35)"},
+                    hovertemplate=("<b>%{y}</b><br>Global min: %{base:.2f}<br>Global max: %{customdata[0]:.2f}<extra></extra>"),
+                ),
+            )
+            feature_range_fig.add_trace(
+                go.Bar(
+                    name="Selected range",
+                    y=range_df["feature"],
+                    x=range_df["sel_range"],
+                    base=range_df["sel_min"],
+                    customdata=range_df[["sel_max"]],
+                    orientation="h",
+                    marker={"color": "rgba(40, 130, 255, 0.85)"},
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Selected min: %{base:.2f}<br>Selected max: %{customdata[0]:.2f}<br>Selected range: %{x:.2f}<extra></extra>"
+                    ),
+                ),
+            )
+            feature_range_fig.update_layout(
+                title="Selected subset range inside global feature range, range standardized",
+                xaxis_title="Standardized feature value",
+                yaxis_title="Feature",
+                barmode="overlay",
+                bargap=0.45,
+                height=max(320, 28 * len(range_df) + 120),
+                legend={"orientation": "h", "y": 1.04, "x": 0},
+            )
+            st.plotly_chart(feature_range_fig, use_container_width=True)
+
+    st.subheader("Selected Datapoints")
     st.write(f"Selected points: {len(st.session_state.selected_indices)}")
 
     if st.session_state.selected_df.empty:
