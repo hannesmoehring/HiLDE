@@ -169,6 +169,8 @@ def init_state() -> None:
         "embedding_full": np.empty((0, 0), dtype=float),
         "explained_variance_ratio": np.array([], dtype=float),
         "computed_method": None,
+        "interactive_ranges_mode": False,
+        "interactive_features": [],
     }
 
     for key, value in defaults.items():
@@ -214,6 +216,24 @@ def render_pca_variance_summary(explained_ratio: np.ndarray) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def compute_interactive_mask(X_scaled_df: pd.DataFrame, feature_columns: list[str]) -> np.ndarray:
+    selected_features = [feature for feature in cast("list[str]", st.session_state.get("interactive_features", [])) if feature in feature_columns]
+    if not selected_features:
+        return np.ones(len(X_scaled_df), dtype=bool)
+
+    mask = np.ones(len(X_scaled_df), dtype=bool)
+    for feature in selected_features:
+        full_min = float(X_scaled_df[feature].min())
+        full_max = float(X_scaled_df[feature].max())
+        slider_key = f"interactive_range_{feature}"
+        lower, upper = cast("tuple[float, float]", st.session_state.get(slider_key, (full_min, full_max)))
+        lower = max(full_min, float(lower))
+        upper = min(full_max, float(upper))
+        mask &= (X_scaled_df[feature] >= lower) & (X_scaled_df[feature] <= upper)
+
+    return mask
+
+
 def main() -> None:
     st.set_page_config(page_title="SHD - Dimensionality Reduction Explorer", layout="wide")
     init_state()
@@ -228,22 +248,27 @@ def main() -> None:
     with st.sidebar:
         st.header("Controls")
 
-        st.selectbox("Method", options=["PCA", "t-SNE", "UMAP"], key="method")
         st.checkbox("Normalize (StandardScaler)", key="normalize")
+        st.selectbox("Method", options=["PCA", "t-SNE", "UMAP"], key="method")
 
         max_components = int(min(X.shape[0], X.shape[1]))
-        st.slider("PCA fitted components", min_value=2, max_value=max_components, key="pca_components")
+        match st.session_state.method:
+            case "PCA":
+                st.slider("PCA fitted components", min_value=2, max_value=max_components, key="pca_components")
+            case "t-SNE":
+                # st.subheader("t-SNE")
+                max_perplexity = float(max(5.0, min(50.0, X.shape[0] - 1.0)))
+                st.slider("Perplexity", min_value=5.0, max_value=max_perplexity, key="tsne_perplexity")
+                st.number_input("Learning rate", min_value=10.0, max_value=2000.0, key="tsne_learning_rate")
+                st.number_input("Random state (t-SNE)", min_value=0, max_value=9999, key="tsne_random_state")
+            case "UMAP":
+                # st.subheader("UMAP")
+                st.slider("n_neighbors", min_value=2, max_value=200, key="umap_n_neighbors")
+                st.slider("min_dist", min_value=0.0, max_value=0.99, key="umap_min_dist")
+                st.number_input("Random state (UMAP)", min_value=0, max_value=9999, key="umap_random_state")
 
-        st.subheader("t-SNE")
-        max_perplexity = float(max(5.0, min(50.0, X.shape[0] - 1.0)))
-        st.slider("Perplexity", min_value=5.0, max_value=max_perplexity, key="tsne_perplexity")
-        st.number_input("Learning rate", min_value=10.0, max_value=2000.0, key="tsne_learning_rate")
-        st.number_input("Random state (t-SNE)", min_value=0, max_value=9999, key="tsne_random_state")
-
-        st.subheader("UMAP")
-        st.slider("n_neighbors", min_value=2, max_value=200, key="umap_n_neighbors")
-        st.slider("min_dist", min_value=0.0, max_value=0.99, key="umap_min_dist")
-        st.number_input("Random state (UMAP)", min_value=0, max_value=9999, key="umap_random_state")
+        st.divider()
+        st.checkbox("Interactive ranges mode", key="interactive_ranges_mode")
 
         run_clicked = st.button("Run reduction", type="primary")
 
@@ -313,25 +338,47 @@ def main() -> None:
 
         embedding_2d = st.session_state.embedding_full[:, [st.session_state.pca_x_component, st.session_state.pca_y_component]]
         render_pca_variance_summary(explained_ratio)
-        st.info(
-            f"Total variance explained by selected components: {explained_ratio[st.session_state.pca_x_component] + explained_ratio[st.session_state.pca_y_component]:.2%}"
-        )
+        selected_total_variance = explained_ratio[st.session_state.pca_x_component] + explained_ratio[st.session_state.pca_y_component]
+        st.info(f"Total variance explained by selected components: {selected_total_variance:.2%}")
     else:
         embedding_2d = st.session_state.embedding_full
 
     plot_df = df.copy()
     plot_df["x"] = embedding_2d[:, 0]
     plot_df["y"] = embedding_2d[:, 1]
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    X_scaled_df = pd.DataFrame(X_scaled, columns=feature_columns)
+
+    interactive_mode = bool(st.session_state["interactive_ranges_mode"])
+    if interactive_mode:
+        interactive_mask = compute_interactive_mask(X_scaled_df, feature_columns)
+        plot_df["interactive_group"] = np.where(interactive_mask, "Matches filters", "Other")
+
     st.session_state.plot_df = plot_df
 
-    fig = px.scatter(
-        st.session_state.plot_df,
-        x="x",
-        y="y",
-        hover_data=["row_id", "quality"],
-        title=f"{st.session_state.method} projection",
-        height=700,
-    )
+    if interactive_mode:
+        fig = px.scatter(
+            st.session_state.plot_df,
+            x="x",
+            y="y",
+            color="interactive_group",
+            color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
+            hover_data=["row_id", "quality"],
+            title=f"{st.session_state.method} projection - interactive feature range filtering",
+            height=700,
+        )
+    else:
+        fig = px.scatter(
+            st.session_state.plot_df,
+            x="x",
+            y="y",
+            hover_data=["row_id", "quality"],
+            title=f"{st.session_state.method} projection",
+            height=700,
+        )
+
     fig.update_traces(marker={"size": 8, "opacity": 0.85})
     fig.update_layout(dragmode="lasso")
 
@@ -339,69 +386,108 @@ def main() -> None:
         fig,
         key="reduction_plot",
         use_container_width=True,
-        on_select="rerun",
+        on_select="ignore" if interactive_mode else "rerun",
         selection_mode=("lasso", "box"),
     )
 
-    selected_indices = get_selected_indices(event)
-    st.session_state.selected_indices = selected_indices
-
-    if selected_indices:
-        st.session_state.selected_df = st.session_state.plot_df.iloc[selected_indices].copy()
+    if interactive_mode:
+        selected_indices = np.flatnonzero(st.session_state.plot_df["interactive_group"] == "Matches filters").tolist()
+        st.session_state.selected_indices = selected_indices
+        if selected_indices:
+            st.session_state.selected_df = st.session_state.plot_df.iloc[selected_indices].copy()
+        else:
+            st.session_state.selected_df = pd.DataFrame()
     else:
-        st.session_state.selected_df = pd.DataFrame()
+        selected_indices = get_selected_indices(event)
+        st.session_state.selected_indices = selected_indices
+
+        if selected_indices:
+            st.session_state.selected_df = st.session_state.plot_df.iloc[selected_indices].copy()
+        else:
+            st.session_state.selected_df = pd.DataFrame()
 
     st.subheader("Analysis of selected Datapoints")
-    if st.session_state.selected_df.empty:
-        st.info("Use lasso or box selection in the plot to capture points.")
+    if interactive_mode:
+        st.caption("Configure feature-wise standardized ranges. Matching points are highlighted in blue in the projection.")
+        selected_feature_defaults = [feature for feature in st.session_state["interactive_features"] if feature in feature_columns]
+        st.multiselect(
+            "Features to filter",
+            options=feature_columns,
+            default=selected_feature_defaults,
+            key="interactive_features",
+        )
+
+        for feature in st.session_state["interactive_features"]:
+            full_min = float(X_scaled_df[feature].min())
+            full_max = float(X_scaled_df[feature].max())
+            slider_key = f"interactive_range_{feature}"
+            current_range = cast("tuple[float, float]", st.session_state.get(slider_key, (full_min, full_max)))
+            current_min = max(full_min, float(current_range[0]))
+            current_max = min(full_max, float(current_range[1]))
+            if current_min > current_max:
+                current_min, current_max = full_min, full_max
+
+            st.slider(
+                f"{feature} (standardized)",
+                min_value=full_min,
+                max_value=full_max,
+                value=(current_min, current_max),
+                key=slider_key,
+            )
+
+        if st.session_state.selected_df.empty:
+            st.info("No points match the active feature ranges. Adjust the sliders to widen the filter.")
     else:
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
-        selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
+        if st.session_state.selected_df.empty:
+            st.info("Use lasso or box selection in the plot to capture points.")
+        else:
+            selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
+            selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
 
-        range_data = generate_predicate("hm", selected_scaled_df, X_scaled)
-        range_df = pd.DataFrame(range_data)
-        # st.dataframe(range_df, use_container_width=True)
+            range_data = generate_predicate("hm", selected_scaled_df, X_scaled)
+            range_df = pd.DataFrame(range_data)
 
-        if not range_df.empty:
-            feature_range_fig = go.Figure()
-            feature_range_fig.add_trace(
-                go.Bar(
-                    name="Global range",
-                    y=range_df["feature"],
-                    x=range_df["global_max"] - range_df["global_min"],
-                    base=range_df["global_min"],
-                    customdata=range_df[["global_max"]],
-                    orientation="h",
-                    marker={"color": "rgba(120, 120, 120, 0.35)"},
-                    hovertemplate=("<b>%{y}</b><br>Global min: %{base:.2f}<br>Global max: %{customdata[0]:.2f}<extra></extra>"),
-                ),
-            )
-            feature_range_fig.add_trace(
-                go.Bar(
-                    name="Selected range",
-                    y=range_df["feature"],
-                    x=range_df["sel_range"],
-                    base=range_df["sel_min"],
-                    customdata=range_df[["sel_max"]],
-                    orientation="h",
-                    marker={"color": "rgba(40, 130, 255, 0.85)"},
-                    hovertemplate=(
-                        "<b>%{y}</b><br>Selected min: %{base:.2f}<br>Selected max: %{customdata[0]:.2f}<br>Selected range: %{x:.2f}<extra></extra>"
+            if not range_df.empty:
+                feature_range_fig = go.Figure()
+                feature_range_fig.add_trace(
+                    go.Bar(
+                        name="Global range",
+                        y=range_df["feature"],
+                        x=range_df["global_max"] - range_df["global_min"],
+                        base=range_df["global_min"],
+                        customdata=range_df[["global_max"]],
+                        orientation="h",
+                        marker={"color": "rgba(120, 120, 120, 0.35)"},
+                        hovertemplate=("<b>%{y}</b><br>Global min: %{base:.2f}<br>Global max: %{customdata[0]:.2f}<extra></extra>"),
                     ),
-                ),
-            )
-            feature_range_fig.update_layout(
-                title="Selected subset range inside global feature range, range standardized",
-                xaxis_title="Standardized feature value",
-                yaxis_title="Feature",
-                barmode="overlay",
-                bargap=0.45,
-                height=max(320, 28 * len(range_df) + 120),
-                legend={"orientation": "h", "y": 1.04, "x": 0},
-            )
-            st.plotly_chart(feature_range_fig, use_container_width=True)
+                )
+                feature_range_fig.add_trace(
+                    go.Bar(
+                        name="Selected range",
+                        y=range_df["feature"],
+                        x=range_df["sel_range"],
+                        base=range_df["sel_min"],
+                        customdata=range_df[["sel_max"]],
+                        orientation="h",
+                        marker={"color": "rgba(40, 130, 255, 0.85)"},
+                        hovertemplate=(
+                            "<b>%{y}</b><br>"
+                            "Selected min: %{base:.2f}<br>"
+                            "Selected max: %{customdata[0]:.2f}<br>"
+                            "Selected range: %{x:.2f}<extra></extra>"
+                        ),
+                    ),
+                )
+                feature_range_fig.update_layout(
+                    title="Selected subset range inside global feature range, range standardized",
+                    xaxis_title="Standardized feature value",
+                    yaxis_title="Feature",
+                    barmode="overlay",
+                    bargap=0.45,
+                    height=max(320, 28 * len(range_df) + 120),
+                    legend={"orientation": "h", "y": 1.04, "x": 0},
+                )
+                st.plotly_chart(feature_range_fig, use_container_width=True)
 
     st.subheader("Selected Datapoints")
     st.write(f"Selected points: {len(st.session_state.selected_indices)}")
