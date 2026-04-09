@@ -11,6 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import fit_dimensionality_reducer
 from src.analysis.predicate_generator import generate_predicate
 
@@ -171,6 +172,10 @@ def init_state() -> None:
         "computed_method": None,
         "interactive_ranges_mode": False,
         "interactive_features": [],
+        "clusters_in_original_space": False,
+        "cluster_method": "KMeans",
+        "cluster_n_clusters": 5,
+        "cluster_labels": np.array([], dtype=int),
     }
 
     for key, value in defaults.items():
@@ -269,8 +274,15 @@ def main() -> None:
 
         st.divider()
         st.checkbox("Interactive ranges mode", key="interactive_ranges_mode")
+        st.divider()
+        st.checkbox("Clusters in original space", key="clusters_in_original_space")
 
-        run_clicked = st.button("Run reduction", type="primary")
+        if st.session_state["clusters_in_original_space"]:
+            st.selectbox("Cluster method", options=["KMeans", "GMM"], key="cluster_method")
+            st.slider("Number of clusters", min_value=2, max_value=10, key="cluster_n_clusters")
+
+        st.divider()
+        run_clicked = st.button("Run analysis", type="primary")
 
     if run_clicked:
         config = current_config()
@@ -351,14 +363,58 @@ def main() -> None:
     X_scaled = scaler.fit_transform(X)
     X_scaled_df = pd.DataFrame(X_scaled, columns=feature_columns)
 
+    cluster_mode = bool(st.session_state["clusters_in_original_space"])
+    cluster_labels = np.array([], dtype=int)
+    if cluster_mode:
+        try:
+            with st.spinner("Computing clusters in original space..."):
+                cluster_labels = compute_clusters(
+                    X_scaled=X_scaled,
+                    method=cast("str", st.session_state["cluster_method"]),
+                    n_clusters=int(st.session_state["cluster_n_clusters"]),
+                )
+        except ValueError as exc:
+            st.error(f"Clustering failed: {exc}")
+            cluster_mode = False
+            st.session_state.cluster_labels = np.array([], dtype=int)
+        else:
+            st.session_state.cluster_labels = cluster_labels
+    else:
+        st.session_state.cluster_labels = np.array([], dtype=int)
+
     interactive_mode = bool(st.session_state["interactive_ranges_mode"])
     if interactive_mode:
         interactive_mask = compute_interactive_mask(X_scaled_df, feature_columns)
         plot_df["interactive_group"] = np.where(interactive_mask, "Matches filters", "Other")
 
+    if cluster_mode and cluster_labels.shape[0] == len(plot_df):
+        plot_df["cluster_label"] = pd.Series(cluster_labels, index=plot_df.index).astype(str)
+
     st.session_state.plot_df = plot_df
 
-    if interactive_mode:
+    if cluster_mode and interactive_mode and "cluster_label" in st.session_state.plot_df.columns:
+        fig = px.scatter(
+            st.session_state.plot_df,
+            x="x",
+            y="y",
+            color="interactive_group",
+            color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
+            symbol="cluster_label",
+            hover_data=["row_id", "quality"],
+            title=f"{st.session_state.method} projection - interactive filters + clusters in original space",
+            height=700,
+        )
+    elif cluster_mode and "cluster_label" in st.session_state.plot_df.columns:
+        fig = px.scatter(
+            st.session_state.plot_df,
+            x="x",
+            y="y",
+            color="cluster_label",
+            hover_data=["row_id", "quality"],
+            title=f"{st.session_state.method} projection - clusters in original space",
+            height=700,
+        )
+    elif interactive_mode:
         fig = px.scatter(
             st.session_state.plot_df,
             x="x",
@@ -407,6 +463,9 @@ def main() -> None:
             st.session_state.selected_df = pd.DataFrame()
 
     st.subheader("Analysis of selected Datapoints")
+    st.text(
+        "RCM = Retained Center Mass. RCM=1.0 means the full range of selected points, RCM=0.9 trims the tails to exclude outliers and show the core range."
+    )
     if interactive_mode:
         st.caption("Configure feature-wise standardized ranges. Matching points are highlighted in blue in the projection.")
         selected_feature_defaults = [feature for feature in st.session_state["interactive_features"] if feature in feature_columns]
@@ -437,57 +496,69 @@ def main() -> None:
 
         if st.session_state.selected_df.empty:
             st.info("No points match the active feature ranges. Adjust the sliders to widen the filter.")
+    elif st.session_state.selected_df.empty:
+        st.info("Use lasso or box selection in the plot to capture points.")
     else:
-        if st.session_state.selected_df.empty:
-            st.info("Use lasso or box selection in the plot to capture points.")
-        else:
-            selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
-            selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
+        selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
+        selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
 
-            range_data = generate_predicate("hm", selected_scaled_df, X_scaled)
-            range_df = pd.DataFrame(range_data)
+        range_data_full = generate_predicate("hm", selected_scaled_df, X_scaled, threshold=1.0)
+        range_data_trimmed = generate_predicate("hm", selected_scaled_df, X_scaled, threshold=0.9)
+        range_df_full = pd.DataFrame(range_data_full)
+        range_df_trimmed = pd.DataFrame(range_data_trimmed)
 
-            if not range_df.empty:
-                feature_range_fig = go.Figure()
-                feature_range_fig.add_trace(
-                    go.Bar(
-                        name="Global range",
-                        y=range_df["feature"],
-                        x=range_df["global_max"] - range_df["global_min"],
-                        base=range_df["global_min"],
-                        customdata=range_df[["global_max"]],
-                        orientation="h",
-                        marker={"color": "rgba(120, 120, 120, 0.35)"},
-                        hovertemplate=("<b>%{y}</b><br>Global min: %{base:.2f}<br>Global max: %{customdata[0]:.2f}<extra></extra>"),
+        if not range_df_full.empty:
+            feature_range_fig = go.Figure()
+            feature_range_fig.add_trace(
+                go.Bar(
+                    name="Global range",
+                    y=range_df_full["feature"],
+                    x=range_df_full["global_max"] - range_df_full["global_min"],
+                    base=range_df_full["global_min"],
+                    customdata=range_df_full[["global_max"]],
+                    orientation="h",
+                    marker={"color": "rgba(120, 120, 120, 0.35)"},
+                    hovertemplate=("<b>%{y}</b><br>Global min: %{base:.2f}<br>Global max: %{customdata[0]:.2f}<extra></extra>"),
+                ),
+            )
+            feature_range_fig.add_trace(
+                go.Bar(
+                    name="Selected range (threshold=1.0)",
+                    y=range_df_full["feature"],
+                    x=range_df_full["sel_range"],
+                    base=range_df_full["sel_min"],
+                    customdata=range_df_full[["sel_max"]],
+                    orientation="h",
+                    marker={"color": "rgba(40, 130, 255, 0.75)"},
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Selected min: %{base:.2f}<br>Selected max: %{customdata[0]:.2f}<br>Selected range: %{x:.2f}<extra></extra>"
                     ),
-                )
-                feature_range_fig.add_trace(
-                    go.Bar(
-                        name="Selected range",
-                        y=range_df["feature"],
-                        x=range_df["sel_range"],
-                        base=range_df["sel_min"],
-                        customdata=range_df[["sel_max"]],
-                        orientation="h",
-                        marker={"color": "rgba(40, 130, 255, 0.85)"},
-                        hovertemplate=(
-                            "<b>%{y}</b><br>"
-                            "Selected min: %{base:.2f}<br>"
-                            "Selected max: %{customdata[0]:.2f}<br>"
-                            "Selected range: %{x:.2f}<extra></extra>"
-                        ),
+                ),
+            )
+            feature_range_fig.add_trace(
+                go.Bar(
+                    name="Selected range (threshold=0.9)",
+                    y=range_df_trimmed["feature"],
+                    x=range_df_trimmed["sel_range"],
+                    base=range_df_trimmed["sel_min"],
+                    customdata=range_df_trimmed[["sel_max"]],
+                    orientation="h",
+                    marker={"color": "rgba(255, 140, 60, 0.8)"},
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Trimmed min: %{base:.2f}<br>Trimmed max: %{customdata[0]:.2f}<br>Trimmed range: %{x:.2f}<extra></extra>"
                     ),
-                )
-                feature_range_fig.update_layout(
-                    title="Selected subset range inside global feature range, range standardized",
-                    xaxis_title="Standardized feature value",
-                    yaxis_title="Feature",
-                    barmode="overlay",
-                    bargap=0.45,
-                    height=max(320, 28 * len(range_df) + 120),
-                    legend={"orientation": "h", "y": 1.04, "x": 0},
-                )
-                st.plotly_chart(feature_range_fig, use_container_width=True)
+                ),
+            )
+            feature_range_fig.update_layout(
+                title="Selected subset standardizedranges (RCM=1.0 and 0.9) inside global feature range",
+                xaxis_title="Standardized feature value",
+                yaxis_title="Feature",
+                barmode="overlay",
+                bargap=0.45,
+                height=max(320, 28 * len(range_df_full) + 120),
+                legend={"orientation": "h", "y": 1.1, "x": 0},
+            )
+            st.plotly_chart(feature_range_fig, use_container_width=True)
 
     st.subheader("Selected Datapoints")
     st.write(f"Selected points: {len(st.session_state.selected_indices)}")
