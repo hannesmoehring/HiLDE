@@ -1,8 +1,11 @@
 from __future__ import annotations
-from sklearn.preprocessing import StandardScaler
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TypedDict, cast
 
 import numpy as np
@@ -10,6 +13,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sklearn.preprocessing import StandardScaler
 
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import fit_dimensionality_reducer
@@ -218,7 +222,7 @@ def render_pca_variance_summary(explained_ratio: np.ndarray) -> None:
         legend={"orientation": "h", "y": 1.5, "x": 0},
     )
     fig.update_xaxes(range=[0, 100], ticksuffix="%")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def compute_interactive_mask(X_scaled_df: pd.DataFrame, feature_columns: list[str]) -> np.ndarray:
@@ -441,7 +445,7 @@ def main() -> None:
     event = st.plotly_chart(
         fig,
         key="reduction_plot",
-        use_container_width=True,
+        width="stretch",
         on_select="ignore" if interactive_mode else "rerun",
         selection_mode=("lasso", "box"),
     )
@@ -558,7 +562,7 @@ def main() -> None:
                 height=max(320, 28 * len(range_df_full) + 120),
                 legend={"orientation": "h", "y": 1.1, "x": 0},
             )
-            st.plotly_chart(feature_range_fig, use_container_width=True)
+            st.plotly_chart(feature_range_fig, width="stretch")
 
     st.subheader("Selected Datapoints")
     st.write(f"Selected points: {len(st.session_state.selected_indices)}")
@@ -567,7 +571,7 @@ def main() -> None:
         st.info("Use lasso or box selection in the plot to capture points.")
         return
 
-    st.dataframe(st.session_state.selected_df.head(50), use_container_width=True)
+    st.dataframe(st.session_state.selected_df.head(50), width="stretch")
 
     if st.button("Export selected points to CSV"):
         file_path = export_selection(st.session_state.selected_df, st.session_state.latest_selection_config or current_config())

@@ -1,3 +1,5 @@
+PYTHONPATH=. streamlit run src/ui/app.py
+
 # SHD Interactive Dimensionality Reduction
 
 This project now includes a local browser UI for interactive 2D dimensionality reduction using the hardcoded red wine quality dataset.
