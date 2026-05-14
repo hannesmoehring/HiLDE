@@ -37,6 +37,8 @@ class ReductionConfig(TypedDict):
     umap_n_neighbors: int
     umap_min_dist: float
     umap_random_state: int
+    hierarchical_mode: bool
+    hierarchical_layers: int
 
 
 @st.cache_data
@@ -139,6 +141,8 @@ def current_config() -> ReductionConfig:
         "umap_n_neighbors": st.session_state["umap_n_neighbors"],
         "umap_min_dist": st.session_state["umap_min_dist"],
         "umap_random_state": st.session_state["umap_random_state"],
+        "hierarchical_mode": st.session_state["hierarchical_mode"],
+        "hierarchical_layers": st.session_state["hierarchical_layers"],
     }
 
 

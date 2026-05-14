@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN, KMeans
 from sklearn.mixture import GaussianMixture
 
 # TODO(Hannes): thinking about computing cluster in original space and projected space and then compare
@@ -15,5 +15,9 @@ def compute_clusters(X_scaled: np.ndarray, method: str, n_clusters: int = 5):
         case "GMM":
             model = GaussianMixture(n_components=n_clusters, random_state=42)
             return model.fit_predict(X_scaled)
+        case "DBSCAN":
+            model = DBSCAN(eps=0.5, min_samples=5)
+            return model.fit_predict(X_scaled)
+
         case _:
             raise ValueError(f"Unknown clustering method: {method}")
