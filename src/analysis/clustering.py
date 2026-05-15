@@ -1,5 +1,8 @@
 import numpy as np
-from sklearn.cluster import DBSCAN, KMeans
+import pandas as pd
+import umap
+from sklearn.cluster import DBSCAN, HDBSCAN, KMeans
+from sklearn.manifold import MDS
 from sklearn.mixture import GaussianMixture
 
 # TODO(Hannes): thinking about computing cluster in original space and projected space and then compare
@@ -21,3 +24,33 @@ def compute_clusters(X_scaled: np.ndarray, method: str, n_clusters: int = 5):
 
         case _:
             raise ValueError(f"Unknown clustering method: {method}")
+
+
+def hierarchical_clustering(df: pd.DataFrame, X_scaled: np.ndarray) -> pd.DataFrame:
+    reducer = umap.UMAP(n_components=10, n_neighbors=30, min_dist=0.0)
+    X_umap = reducer.fit_transform(X_scaled)
+    model = HDBSCAN(min_cluster_size=15, min_samples=5)
+    labels = model.fit_predict(X_umap)
+    df["cluster"] = labels
+
+    # exclude HDBSCAN noise points
+    mask = df["cluster"] != -1
+    feature_cols = df.columns.drop(["quality", "row_id", "cluster"])
+
+    X_scaled_df = pd.DataFrame(X_scaled, columns=feature_cols, index=df.index)
+    centroids = X_scaled_df[mask].groupby(df.loc[mask, "cluster"]).mean()
+
+    # 2D layout that preserves pairwise centroid distances
+    mds = MDS(n_components=2, dissimilarity="euclidean", random_state=42, n_init=8, normalized_stress="auto")
+    centroids_2d = mds.fit_transform(centroids.values)
+
+    sizes = df.loc[mask, "cluster"].value_counts().sort_index()
+
+    return pd.DataFrame(
+        {
+            "x": centroids_2d[:, 0],
+            "y": centroids_2d[:, 1],
+            "cluster": centroids.index,
+            "size": sizes.to_numpy(),
+        },
+    )
