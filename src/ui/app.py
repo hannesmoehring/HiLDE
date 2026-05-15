@@ -495,13 +495,18 @@ def main() -> None:
         )
 
         topo_fig = cluster_gauss_kde(df_with_clusters, X_scaled_hc, h_layout_df)
-        topo_event = st.plotly_chart(
-            topo_fig,
-            key="hierarchical_topo_plot",
-            width="stretch",
-            on_select="rerun",
-            selection_mode="points",
-        )
+        topo_fig.update_layout(height=650)
+
+        topo_col, char_col = st.columns([1, 1])
+
+        with topo_col:
+            topo_event = st.plotly_chart(
+                topo_fig,
+                key="hierarchical_topo_plot",
+                width="stretch",
+                on_select="rerun",
+                selection_mode="points",
+            )
 
         clicked = get_selected_indices(topo_event)
         if clicked:
@@ -509,18 +514,22 @@ def main() -> None:
             st.session_state["selected_cluster_id"] = cluster_id
 
         selected_cluster = st.session_state.get("selected_cluster_id")
-        if selected_cluster is not None:
-            st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
-            pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
-            char_fig, rules = cluster_characteristics(
-                selected_cluster,
-                df_with_clusters,
-                X_scaled_hc[pure_feature_cols],
-                pure_feature_cols,
-            )
-            st.plotly_chart(char_fig, width="stretch")
-            with st.expander("Decision tree rules"):
-                st.code(rules)
+        with char_col:
+            if selected_cluster is not None:
+                st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
+                pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
+                char_fig, rules = cluster_characteristics(
+                    selected_cluster,
+                    df_with_clusters,
+                    X_scaled_hc[pure_feature_cols],
+                    pure_feature_cols,
+                )
+                char_fig.update_layout(height=620)
+                st.plotly_chart(char_fig, width="stretch")
+                with st.expander("Decision tree rules"):
+                    st.code(rules)
+            else:
+                st.info("Click a cluster on the topography map to explore its characteristics.")
     else:
         st.info("Click 'Run analysis' to compute hierarchical clusters.")
 
