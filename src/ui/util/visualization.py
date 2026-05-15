@@ -7,11 +7,14 @@ from sklearn.decomposition import PCA
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 
-def cluster_gauss_kde(df: pd.DataFrame, X_scaled_df: pd.DataFrame, centroids_2d: np.ndarray) -> go.Figure:
+def cluster_gauss_kde(df_points: pd.DataFrame, X_scaled_df: pd.DataFrame, layout_df: pd.DataFrame) -> go.Figure:
+    centroids_2d = layout_df[["x", "y"]].to_numpy()
+    size_map = layout_df.set_index("cluster")["size"]
+
     fig = go.Figure()
 
-    for i, c in enumerate(df["cluster"].unique()):
-        pts = X_scaled_df.loc[df["cluster"] == c].values
+    for i, c in enumerate(layout_df["cluster"]):
+        pts = X_scaled_df.loc[df_points["cluster"] == c].to_numpy()
         if len(pts) < 5:
             continue
 
@@ -32,7 +35,7 @@ def cluster_gauss_kde(df: pd.DataFrame, X_scaled_df: pd.DataFrame, centroids_2d:
         # scale the local footprint and place at the cluster's MDS position
         cx, cy = centroids_2d[i]
         local_extent = max(lx_max - lx_min, ly_max - ly_min)
-        target_size = 0.8 * np.sqrt(df["size"].loc[c] / df["size"].max()) + 0.3  # tunable
+        target_size = 0.8 * np.sqrt(size_map[c] / size_map.max()) + 0.3  # tunable
         scale = target_size / local_extent
 
         plot_x = (lx - (lx_min + lx_max) / 2) * scale + cx
@@ -45,19 +48,24 @@ def cluster_gauss_kde(df: pd.DataFrame, X_scaled_df: pd.DataFrame, centroids_2d:
                 z=Z,
                 colorscale="Viridis",
                 showscale=False,
-                contours=dict(coloring="heatmap", showlines=True, start=Z.max() * 0.05, size=Z.max() * 0.15),
+                contours={"coloring": "heatmap", "showlines": True, "start": Z.max() * 0.05, "size": Z.max() * 0.15},
                 line_smoothing=0.85,
                 hoverinfo="skip",
             )
         )
 
+    # clickable centroid markers — Plotly selection events fire on Scatter traces only
     fig.add_trace(
         go.Scatter(
-            x=centroids_2d[:, 0],
-            y=centroids_2d[:, 1],
-            mode="text",
-            text=[f"C{c}" for c in df["cluster"].unique()],
+            x=layout_df["x"],
+            y=layout_df["y"],
+            mode="markers+text",
+            marker={"size": 18, "color": "white", "opacity": 0.7, "line": {"width": 2, "color": "black"}},
+            text=[f"C{c}" for c in layout_df["cluster"]],
             textposition="top center",
+            customdata=layout_df["cluster"].to_numpy().reshape(-1, 1),
+            hovertemplate="<b>Cluster %{customdata[0]}</b><br>Click to explore<extra></extra>",
+            name="clusters",
             showlegend=False,
         )
     )

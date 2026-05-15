@@ -15,9 +15,10 @@ import plotly.graph_objects as go
 import streamlit as st
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.clustering import compute_clusters
+from src.analysis.clustering import compute_clusters, hierarchical_clustering
 from src.analysis.dim_reducer import fit_dimensionality_reducer
 from src.analysis.predicate_generator import generate_predicate
+from src.ui.util.visualization import cluster_characteristics, cluster_gauss_kde
 
 DATASET_PATH = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 EXPORT_DIR = Path("outputs/selections")
@@ -88,6 +89,15 @@ def compute_embedding(
         min_dist=config["umap_min_dist"],
         random_state=config["umap_random_state"],
     )
+
+
+@st.cache_data
+def run_hierarchical_clustering(
+    df: pd.DataFrame,
+    X_scaled: np.ndarray,
+    feature_cols: list[str],
+) -> tuple[pd.DataFrame, np.ndarray]:
+    return hierarchical_clustering(df, X_scaled, feature_cols)
 
 
 def get_selected_indices(event: object) -> list[int]:
@@ -184,6 +194,11 @@ def init_state() -> None:
         "cluster_method": "KMeans",
         "cluster_n_clusters": 5,
         "cluster_labels": np.array([], dtype=int),
+        "hierarchical_layout_df": None,
+        "hierarchical_labels": None,
+        "hierarchical_mode": True,
+        "hierarchical_layers": 1,
+        "selected_cluster_id": None,
     }
 
     for key, value in defaults.items():
@@ -313,6 +328,14 @@ def main() -> None:
             ordered_components = np.argsort(st.session_state.explained_variance_ratio)[::-1]
             st.session_state.pca_x_component = int(ordered_components[0])
             st.session_state.pca_y_component = int(ordered_components[1])
+
+        hclust_feature_cols = [c for c in feature_columns if c != "quality"]
+        hclust_X_scaled = StandardScaler().fit_transform(df[hclust_feature_cols].to_numpy())
+        with st.spinner("Computing hierarchical clusters..."):
+            layout_df, h_labels = run_hierarchical_clustering(df, hclust_X_scaled, hclust_feature_cols)
+        st.session_state["hierarchical_layout_df"] = layout_df
+        st.session_state["hierarchical_labels"] = h_labels
+        st.session_state["selected_cluster_id"] = None
 
         st.session_state.selected_indices = []
         st.session_state.selected_df = pd.DataFrame()
@@ -454,6 +477,52 @@ def main() -> None:
         render_pca_variance_summary(explained_ratio)
         selected_total_variance = explained_ratio[st.session_state.pca_x_component] + explained_ratio[st.session_state.pca_y_component]
         st.info(f"Total variance explained by selected components: {selected_total_variance:.2%}")
+
+    st.divider()
+    # ── Hierarchical cluster topography ────────────────────────────────────────
+    st.subheader("Hierarchical Cluster Topography (HDBSCAN)")
+
+    h_layout_df = st.session_state.get("hierarchical_layout_df")
+    h_labels = st.session_state.get("hierarchical_labels")
+
+    if h_layout_df is not None and h_labels is not None:
+        hclust_feature_cols = [c for c in feature_columns if c != "quality"]
+        df_with_clusters = df.copy()
+        df_with_clusters["cluster"] = h_labels
+        X_scaled_hc = pd.DataFrame(
+            StandardScaler().fit_transform(df[hclust_feature_cols].to_numpy()),
+            columns=hclust_feature_cols,
+        )
+
+        topo_fig = cluster_gauss_kde(df_with_clusters, X_scaled_hc, h_layout_df)
+        topo_event = st.plotly_chart(
+            topo_fig,
+            key="hierarchical_topo_plot",
+            width="stretch",
+            on_select="rerun",
+            selection_mode="points",
+        )
+
+        clicked = get_selected_indices(topo_event)
+        if clicked:
+            cluster_id = int(h_layout_df["cluster"].iloc[clicked[0]])
+            st.session_state["selected_cluster_id"] = cluster_id
+
+        selected_cluster = st.session_state.get("selected_cluster_id")
+        if selected_cluster is not None:
+            st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
+            pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
+            char_fig, rules = cluster_characteristics(
+                selected_cluster,
+                df_with_clusters,
+                X_scaled_hc[pure_feature_cols],
+                pure_feature_cols,
+            )
+            st.plotly_chart(char_fig, width="stretch")
+            with st.expander("Decision tree rules"):
+                st.code(rules)
+    else:
+        st.info("Click 'Run analysis' to compute hierarchical clusters.")
 
     st.divider()
     # ── Two-column results layout ───────────────────────────────────────────────
