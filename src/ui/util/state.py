@@ -46,9 +46,8 @@ def init_state() -> None:
         # hierarchical config panel
         "hclust_normalize": True,
         "hclust_umap_n_components": 2,
-        "hclust_kde_method": "t-SNE",
         "hclust_saved_config": None,
-        "hclust_precompute": False,
+        "hclust_precompute": True,
         "hclust_topo_fig": None,
         "hclust_characteristics": {},
         # cluster-level exploration embedding

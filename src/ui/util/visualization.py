@@ -85,8 +85,8 @@ def cluster_gauss_kde(
             marker={"size": 18, "color": "white", "opacity": 0.7, "line": {"width": 2, "color": "black"}},
             text=[f"C{c}" for c in layout_df["cluster"]],
             textposition="top center",
-            customdata=layout_df["cluster"].to_numpy().reshape(-1, 1),
-            hovertemplate="<b>Cluster %{customdata[0]}</b><br>Click to explore<extra></extra>",
+            customdata=layout_df[["cluster", "size"]].to_numpy(),
+            hovertemplate="<b>Cluster %{customdata[0]}</b><br>Size: %{customdata[1]}<extra></extra>",
             name="clusters",
             showlegend=False,
         )

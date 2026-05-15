@@ -37,8 +37,8 @@ MIN_COMPONENTS_FOR_2D = 2
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def render_hierarchical_config(max_dims: int) -> bool:
-    c1, c2, c3 = st.columns([1, 2, 1])
+def render_hierarchical_config(max_dims: int) -> None:
+    c1, c2 = st.columns([1, 2])
     with c1:
         st.checkbox("Normalize (StandardScaler)", key="hclust_normalize")
         st.checkbox("Precompute characteristics", key="hclust_precompute")
@@ -56,20 +56,13 @@ def render_hierarchical_config(max_dims: int) -> bool:
             max_value=max_dims,
             key="hclust_umap_n_components",
         )
-        st.selectbox(
-            "KDE map local DR method",
-            options=["PCA", "UMAP", "t-SNE"],
-            key="hclust_kde_method",
-        )
-    with c3:
-        return st.button("Save & Recompute", key="hclust_save_btn", type="primary")
 
 
 def _hclust_snapshot() -> dict:
     return {
         "normalize": bool(st.session_state["hclust_normalize"]),
         "umap_n_components": int(st.session_state["hclust_umap_n_components"]),
-        "kde_method": str(st.session_state["hclust_kde_method"]),
+        "explore_method": str(st.session_state["method"]),
         "layers": int(st.session_state["hierarchical_layers"]),
         "precompute": bool(st.session_state["hclust_precompute"]),
     }
@@ -118,7 +111,7 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
             df_with_clusters,
             X_scaled_hc,
             layout_df,
-            kde_dr_method=snapshot["kde_method"],
+            kde_dr_method=snapshot["explore_method"],
         )
     st.session_state["hclust_topo_fig"] = topo_fig
 
@@ -128,7 +121,10 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
         with st.spinner(f"Precomputing characteristics for {len(valid_ids)} clusters…"):
             for cid in valid_ids:
                 chars[cid] = cluster_characteristics(
-                    cid, df_with_clusters, X_scaled_hc[pure_feature_cols], pure_feature_cols,
+                    cid,
+                    df_with_clusters,
+                    X_scaled_hc[pure_feature_cols],
+                    pure_feature_cols,
                 )
         st.session_state["hclust_characteristics"] = chars
 
@@ -140,8 +136,8 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def render_exploration_config(max_components: int, n_rows: int) -> bool:
-    c1, c2, c3 = st.columns([1, 2, 1])
+def render_exploration_config(max_components: int, n_rows: int) -> None:
+    c1, c2 = st.columns([1, 2])
     with c1:
         st.checkbox("Normalize (StandardScaler)", key="normalize")
         st.selectbox("Method", options=["PCA", "t-SNE", "UMAP"], key="method")
@@ -163,8 +159,6 @@ def render_exploration_config(max_components: int, n_rows: int) -> bool:
                 st.slider("n_neighbors", min_value=2, max_value=200, key="umap_n_neighbors")
                 st.slider("min_dist", min_value=0.0, max_value=0.99, key="umap_min_dist")
                 st.number_input("Random state (UMAP)", min_value=0, max_value=9999, key="umap_random_state")
-    with c3:
-        save_clicked = st.button("Save & Compute Embedding", key="explore_save_btn", type="primary")
 
     c4, c5 = st.columns([1, 2])
     with c4:
@@ -174,8 +168,6 @@ def render_exploration_config(max_components: int, n_rows: int) -> bool:
         if st.session_state["clusters_in_original_space"]:
             st.selectbox("Cluster method", options=["KMeans", "GMM"], key="cluster_method")
             st.slider("Number of clusters", min_value=2, max_value=10, key="cluster_n_clusters")
-
-    return save_clicked
 
 
 def _explore_snapshot() -> dict:
@@ -334,7 +326,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
                 df_with_clusters,
                 X_scaled_hc,
                 h_layout_df,
-                kde_dr_method=str(st.session_state.get("hclust_kde_method", "PCA")),
+                kde_dr_method=str(st.session_state.get("method", "PCA")),
             )
         st.session_state["hclust_topo_fig"] = topo_fig
     topo_fig.update_layout(height=650)

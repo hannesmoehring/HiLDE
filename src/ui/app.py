@@ -32,16 +32,20 @@ def main() -> None:
 
     # ── CONFIG 1: Hierarchical clustering ────────────────────────────────────
     st.subheader("Hierarchical Clustering Configuration")
-    hclust_save = render_hierarchical_config(max_dims)
-    if hclust_save:
-        handle_hierarchical_save(df, X, feature_columns)
+    render_hierarchical_config(max_dims)
 
     st.divider()
 
     # ── CONFIG 2: Exploration ─────────────────────────────────────────────────
     st.subheader("Exploration Configuration")
-    explore_save = render_exploration_config(max_dims, X.shape[0])
-    if explore_save:
+    render_exploration_config(max_dims, X.shape[0])
+
+    # ── SINGLE SAVE BUTTON ────────────────────────────────────────────────────
+    _, center_col, _ = st.columns([2, 1, 2])
+    with center_col:
+        save_clicked = st.button("Save & Apply", key="save_all_btn", type="primary", use_container_width=True)
+    if save_clicked:
+        handle_hierarchical_save(df, X, feature_columns)
         handle_exploration_save(df, X, feature_columns)
 
     st.divider()
