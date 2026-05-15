@@ -48,6 +48,9 @@ def init_state() -> None:
         "hclust_umap_n_components": 2,
         "hclust_kde_method": "t-SNE",
         "hclust_saved_config": None,
+        "hclust_precompute": False,
+        "hclust_topo_fig": None,
+        "hclust_characteristics": {},
         # cluster-level exploration embedding
         "cluster_embedding_full": np.empty((0, 0), dtype=float),
         "cluster_explained_variance": np.array([], dtype=float),

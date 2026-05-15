@@ -41,6 +41,7 @@ def render_hierarchical_config(max_dims: int) -> bool:
     c1, c2, c3 = st.columns([1, 2, 1])
     with c1:
         st.checkbox("Normalize (StandardScaler)", key="hclust_normalize")
+        st.checkbox("Precompute characteristics", key="hclust_precompute")
         st.number_input(
             "Hierarchical levels deep",
             min_value=1,
@@ -70,6 +71,7 @@ def _hclust_snapshot() -> dict:
         "umap_n_components": int(st.session_state["hclust_umap_n_components"]),
         "kde_method": str(st.session_state["hclust_kde_method"]),
         "layers": int(st.session_state["hierarchical_layers"]),
+        "precompute": bool(st.session_state["hclust_precompute"]),
     }
 
 
@@ -97,6 +99,39 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
     st.session_state["selected_cluster_id"] = None
     st.session_state["cluster_selected_id_for_embed"] = None
     st.session_state["cluster_embedding_full"] = np.empty((0, 0), dtype=float)
+
+    # Invalidate stale cached visuals
+    st.session_state["hclust_topo_fig"] = None
+    st.session_state["hclust_characteristics"] = {}
+
+    # Build shared inputs for KDE + characteristics (always StandardScaler for vis)
+    df_with_clusters = df.copy()
+    df_with_clusters["cluster"] = h_labels
+    X_scaled_hc = pd.DataFrame(
+        StandardScaler().fit_transform(df[hclust_feature_cols].to_numpy()),
+        columns=hclust_feature_cols,
+    )
+    pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
+
+    with st.spinner("Rendering cluster topography…"):
+        topo_fig = cluster_gauss_kde(
+            df_with_clusters,
+            X_scaled_hc,
+            layout_df,
+            kde_dr_method=snapshot["kde_method"],
+        )
+    st.session_state["hclust_topo_fig"] = topo_fig
+
+    if snapshot["precompute"]:
+        valid_ids = [int(cid) for cid in layout_df["cluster"].unique() if int(cid) != -1]
+        chars: dict[int, tuple] = {}
+        with st.spinner(f"Precomputing characteristics for {len(valid_ids)} clusters…"):
+            for cid in valid_ids:
+                chars[cid] = cluster_characteristics(
+                    cid, df_with_clusters, X_scaled_hc[pure_feature_cols], pure_feature_cols,
+                )
+        st.session_state["hclust_characteristics"] = chars
+
     st.session_state["hclust_saved_config"] = snapshot
 
 
@@ -292,12 +327,16 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         columns=hclust_feature_cols,
     )
 
-    topo_fig = cluster_gauss_kde(
-        df_with_clusters,
-        X_scaled_hc,
-        h_layout_df,
-        kde_dr_method=str(st.session_state.get("hclust_kde_method", "PCA")),
-    )
+    topo_fig = st.session_state.get("hclust_topo_fig")
+    if topo_fig is None:
+        with st.spinner("Rendering cluster topography…"):
+            topo_fig = cluster_gauss_kde(
+                df_with_clusters,
+                X_scaled_hc,
+                h_layout_df,
+                kde_dr_method=str(st.session_state.get("hclust_kde_method", "PCA")),
+            )
+        st.session_state["hclust_topo_fig"] = topo_fig
     topo_fig.update_layout(height=650)
 
     topo_col, char_col = st.columns([1, 1])
@@ -321,12 +360,16 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
             return
         st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
         pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
-        char_fig, rules = cluster_characteristics(
-            selected_cluster,
-            df_with_clusters,
-            X_scaled_hc[pure_feature_cols],
-            pure_feature_cols,
-        )
+        precomputed = st.session_state.get("hclust_characteristics", {})
+        if selected_cluster in precomputed:
+            char_fig, rules = precomputed[selected_cluster]
+        else:
+            char_fig, rules = cluster_characteristics(
+                selected_cluster,
+                df_with_clusters,
+                X_scaled_hc[pure_feature_cols],
+                pure_feature_cols,
+            )
         char_fig.update_layout(height=620)
         st.plotly_chart(char_fig, width="stretch")
         with st.expander("Decision tree rules"):
