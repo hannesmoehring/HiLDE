@@ -27,9 +27,13 @@ def compute_clusters(X_scaled: np.ndarray, method: str, n_clusters: int = 5):
 
 
 def hierarchical_clustering(
-    df: pd.DataFrame, X_scaled: np.ndarray, feature_cols: list[str],
+    df: pd.DataFrame,
+    X_scaled: np.ndarray,
+    feature_cols: list[str],
+    *,
+    n_components: int = 10,
 ) -> tuple[pd.DataFrame, np.ndarray]:
-    reducer = umap.UMAP(n_components=10, n_neighbors=30, min_dist=0.0)
+    reducer = umap.UMAP(n_components=n_components, n_neighbors=30, min_dist=0.0)
     X_umap = reducer.fit_transform(X_scaled)
     model = HDBSCAN(min_cluster_size=15, min_samples=5)
     labels = model.fit_predict(X_umap)

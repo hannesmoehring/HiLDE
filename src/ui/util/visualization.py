@@ -1,12 +1,37 @@
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
+import umap as _umap
 from scipy.stats import gaussian_kde
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from sklearn.tree import DecisionTreeClassifier, export_text
 
+PCA_VARIANCE_LABEL_THRESHOLD = 4.0
+KDE_MIN_PTS = 5  # minimum points to render a KDE blob
+KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
 
-def cluster_gauss_kde(df_points: pd.DataFrame, X_scaled_df: pd.DataFrame, layout_df: pd.DataFrame) -> go.Figure:
+TSNE_PERPLEXITY_DEFAULT = 30
+
+
+def _local_2d(pts: np.ndarray, method: str) -> np.ndarray:
+    """Project a small cluster to 2D for KDE. Falls back to PCA for tiny clusters."""
+    if method == "UMAP" and len(pts) >= KDE_NONLINEAR_MIN_PTS:
+        return _umap.UMAP(n_components=2, random_state=42).fit_transform(pts)
+    if method == "t-SNE" and len(pts) >= KDE_NONLINEAR_MIN_PTS:
+        perplexity = (len(pts) - 1) // 3 if len(pts) <= TSNE_PERPLEXITY_DEFAULT else TSNE_PERPLEXITY_DEFAULT  # TODO: double check fallback value
+        return TSNE(n_components=2, random_state=42, perplexity=perplexity).fit_transform(pts)
+    return PCA(n_components=2).fit_transform(pts)
+
+
+def cluster_gauss_kde(
+    df_points: pd.DataFrame,
+    X_scaled_df: pd.DataFrame,
+    layout_df: pd.DataFrame,
+    *,
+    kde_dr_method: str = "PCA",
+) -> go.Figure:
     centroids_2d = layout_df[["x", "y"]].to_numpy()
     size_map = layout_df.set_index("cluster")["size"]
 
@@ -14,12 +39,10 @@ def cluster_gauss_kde(df_points: pd.DataFrame, X_scaled_df: pd.DataFrame, layout
 
     for i, c in enumerate(layout_df["cluster"]):
         pts = X_scaled_df.loc[df_points["cluster"] == c].to_numpy()
-        if len(pts) < 5:
+        if len(pts) < KDE_MIN_PTS:
             continue
 
-        # local 2D embedding of just this cluster
-        pca = PCA(n_components=2)
-        pts_2d = pca.fit_transform(pts)
+        pts_2d = _local_2d(pts, kde_dr_method)
 
         # KDE on the local 2D points
         kde = gaussian_kde(pts_2d.T, bw_method="scott")
@@ -113,3 +136,161 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_dept
     rules = export_text(tree, feature_names=list(feature_cols))
 
     return fig, rules
+
+
+def make_scatter_fig(
+    plot_df: pd.DataFrame,
+    method: str,
+    *,
+    cluster_mode: bool,
+    interactive_mode: bool,
+) -> go.Figure:
+    has_clusters = cluster_mode and "cluster_label" in plot_df.columns
+    has_interactive = interactive_mode and "interactive_group" in plot_df.columns
+
+    if has_clusters and has_interactive:
+        fig = px.scatter(
+            plot_df,
+            x="x",
+            y="y",
+            color="interactive_group",
+            color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
+            symbol="cluster_label",
+            hover_data=["row_id", "quality"],
+            title=f"{method} projection - interactive filters + clusters in original space",
+            height=700,
+        )
+    elif has_clusters:
+        fig = px.scatter(
+            plot_df,
+            x="x",
+            y="y",
+            color="cluster_label",
+            hover_data=["row_id", "quality"],
+            title=f"{method} projection - clusters in original space",
+            height=700,
+        )
+    elif has_interactive:
+        fig = px.scatter(
+            plot_df,
+            x="x",
+            y="y",
+            color="interactive_group",
+            color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
+            hover_data=["row_id", "quality"],
+            title=f"{method} projection - interactive feature range filtering",
+            height=700,
+        )
+    else:
+        fig = px.scatter(
+            plot_df,
+            x="x",
+            y="y",
+            hover_data=["row_id", "quality"],
+            title=f"{method} projection",
+            height=700,
+        )
+
+    fig.update_traces(marker={"size": 8, "opacity": 0.85})
+    fig.update_layout(dragmode="lasso")
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    return fig
+
+
+def make_pca_variance_fig(explained_ratio: np.ndarray) -> go.Figure:
+    pc_labels = [f"PC{i + 1}" for i in range(len(explained_ratio))]
+    explained_pct = explained_ratio * 100.0
+    cumulative_pct = np.cumsum(explained_pct)
+
+    fig = go.Figure()
+    for label, pct, cumulative in zip(pc_labels, explained_pct, cumulative_pct, strict=True):
+        fig.add_trace(
+            go.Bar(
+                y=["Variance"],
+                x=[pct],
+                orientation="h",
+                name=label,
+                text=[f"{pct:.1f}%"] if pct >= PCA_VARIANCE_LABEL_THRESHOLD else None,
+                textposition="inside",
+                customdata=[[cumulative]],
+                hovertemplate=(f"{label}<br>Variance: %{{x:.2f}}%<br>Cumulative: %{{customdata[0]:.2f}}%<extra></extra>"),
+            ),
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        height=150,
+        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+        xaxis_title="Share of total variance (%)",
+        yaxis_title=None,
+        yaxis={"showticklabels": False},
+        legend={"orientation": "h", "y": 1.5, "x": 0},
+    )
+    fig.update_xaxes(range=[0, 100], ticksuffix="%")
+    return fig
+
+
+def make_feature_range_fig(range_df_full: pd.DataFrame, range_df_trimmed: pd.DataFrame) -> go.Figure:
+    g_span = range_df_full["global_max"] - range_df_full["global_min"]
+
+    def norm(series: pd.Series) -> pd.Series:
+        return 2.0 * (series - range_df_full["global_min"]) / g_span - 1.0
+
+    full_norm_min = norm(range_df_full["sel_min"])
+    full_norm_max = norm(range_df_full["sel_max"])
+
+    g_span_t = range_df_trimmed["global_max"] - range_df_trimmed["global_min"]
+    trim_norm_min = 2.0 * (range_df_trimmed["sel_min"] - range_df_trimmed["global_min"]) / g_span_t - 1.0
+    trim_norm_max = 2.0 * (range_df_trimmed["sel_max"] - range_df_trimmed["global_min"]) / g_span_t - 1.0
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            name="Global range",
+            y=range_df_full["feature"],
+            x=[2.0] * len(range_df_full),
+            base=[-1.0] * len(range_df_full),
+            orientation="h",
+            marker={"color": "rgba(120, 120, 120, 0.35)"},
+            hoverinfo="skip",
+        ),
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Selected range (threshold=1.0)",
+            y=range_df_full["feature"],
+            x=full_norm_max - full_norm_min,
+            base=full_norm_min,
+            customdata=range_df_full[["sel_min", "sel_max"]],
+            orientation="h",
+            marker={"color": "rgba(40, 130, 255, 0.75)"},
+            hovertemplate=(
+                "<b>%{y}</b><br>Selected min: %{customdata[0]:.2f}<br>Selected max: %{customdata[1]:.2f}<br>Selected range: %{x:.2f}<extra></extra>"
+            ),
+        ),
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Selected range (threshold=0.9)",
+            y=range_df_trimmed["feature"],
+            x=trim_norm_max - trim_norm_min,
+            base=trim_norm_min,
+            customdata=range_df_trimmed[["sel_min", "sel_max"]],
+            orientation="h",
+            marker={"color": "rgba(255, 140, 60, 0.8)"},
+            hovertemplate=(
+                "<b>%{y}</b><br>Trimmed min: %{customdata[0]:.2f}<br>Trimmed max: %{customdata[1]:.2f}<br>Trimmed range: %{x:.2f}<extra></extra>"
+            ),
+        ),
+    )
+    fig.update_layout(
+        title="Selected subset standardized ranges (RCM=1.0 and 0.9) inside global feature range",
+        xaxis_title="Standardized feature value",
+        yaxis_title="Feature",
+        barmode="overlay",
+        bargap=0.45,
+        height=max(320, 28 * len(range_df_full) + 120),
+        legend={"orientation": "h", "y": 1.1, "x": 0},
+    )
+    fig.update_xaxes(range=[-1, 1])
+    return fig
