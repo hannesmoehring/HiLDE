@@ -74,8 +74,7 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
         st.info("No changes — hierarchical config unchanged.")
         return
 
-    hclust_feature_cols = [c for c in feature_columns if c != "quality"]
-    X_hc = df[hclust_feature_cols].to_numpy()
+    X_hc = df[feature_columns].to_numpy()
     if snapshot["normalize"]:
         X_hc = StandardScaler().fit_transform(X_hc)
 
@@ -83,7 +82,7 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
         layout_df, h_labels = run_hierarchical_clustering(
             df,
             X_hc,
-            hclust_feature_cols,
+            feature_columns,
             n_components=snapshot["umap_n_components"],
         )
 
@@ -101,10 +100,10 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
     df_with_clusters = df.copy()
     df_with_clusters["cluster"] = h_labels
     X_scaled_hc = pd.DataFrame(
-        StandardScaler().fit_transform(df[hclust_feature_cols].to_numpy()),
-        columns=hclust_feature_cols,
+        StandardScaler().fit_transform(df[feature_columns].to_numpy()),
+        columns=feature_columns,
     )
-    pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
+    pure_feature_cols = [c for c in df.columns if c not in ["row_id"]]  # quality was here
 
     with st.spinner("Rendering cluster topography…"):
         topo_fig = cluster_gauss_kde(
@@ -311,12 +310,11 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         st.info("Save the hierarchical config above to compute clusters.")
         return
 
-    hclust_feature_cols = [c for c in feature_columns if c != "quality"]
     df_with_clusters = df.copy()
     df_with_clusters["cluster"] = h_labels
     X_scaled_hc = pd.DataFrame(
-        StandardScaler().fit_transform(df[hclust_feature_cols].to_numpy()),
-        columns=hclust_feature_cols,
+        StandardScaler().fit_transform(df[feature_columns].to_numpy()),
+        columns=feature_columns,
     )
 
     topo_fig = st.session_state.get("hclust_topo_fig")
@@ -326,7 +324,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
                 df_with_clusters,
                 X_scaled_hc,
                 h_layout_df,
-                kde_dr_method=str(st.session_state.get("method", "PCA")),
+                kde_dr_method=str(st.session_state["method"]),
             )
         st.session_state["hclust_topo_fig"] = topo_fig
     topo_fig.update_layout(height=650)
@@ -351,7 +349,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
             st.info("Click a cluster on the topography map to explore its characteristics.")
             return
         st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
-        pure_feature_cols = [c for c in df.columns if c not in ["quality", "row_id"]]
+        pure_feature_cols = [c for c in df.columns if c not in ["row_id"]]  # quality was here
         precomputed = st.session_state.get("hclust_characteristics", {})
         if selected_cluster in precomputed:
             char_fig, rules = precomputed[selected_cluster]
@@ -387,7 +385,7 @@ def compute_data_layer(
     cluster_labels = np.array([], dtype=int)
     if cluster_mode:
         try:
-            with st.spinner("Computing clusters in original space…"):
+            with st.spinner("Computing clusters in original space…"):  # TODO here, original space or space after init UMAP?
                 cluster_labels = compute_clusters(
                     X_scaled=X_scaled,
                     method=str(st.session_state["cluster_method"]),

@@ -8,21 +8,10 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.tree import DecisionTreeClassifier, export_text
 
+from src.analysis.dim_reducer import local_2d
+
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
 KDE_MIN_PTS = 5  # minimum points to render a KDE blob
-KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
-
-TSNE_PERPLEXITY_DEFAULT = 30
-
-
-def _local_2d(pts: np.ndarray, method: str) -> np.ndarray:
-    """Project a small cluster to 2D for KDE. Falls back to PCA for tiny clusters."""
-    if method == "UMAP" and len(pts) >= KDE_NONLINEAR_MIN_PTS:
-        return _umap.UMAP(n_components=2, random_state=42).fit_transform(pts)
-    if method == "t-SNE" and len(pts) >= KDE_NONLINEAR_MIN_PTS:
-        perplexity = (len(pts) - 1) // 3 if len(pts) <= TSNE_PERPLEXITY_DEFAULT else TSNE_PERPLEXITY_DEFAULT  # TODO: double check fallback value
-        return TSNE(n_components=2, random_state=42, perplexity=perplexity).fit_transform(pts)
-    return PCA(n_components=2).fit_transform(pts)
 
 
 def cluster_gauss_kde(
@@ -42,7 +31,7 @@ def cluster_gauss_kde(
         if len(pts) < KDE_MIN_PTS:
             continue
 
-        pts_2d = _local_2d(pts, kde_dr_method)
+        pts_2d = local_2d(pts, kde_dr_method)
 
         # KDE on the local 2D points
         kde = gaussian_kde(pts_2d.T, bw_method="scott")
@@ -156,7 +145,7 @@ def make_scatter_fig(
             color="interactive_group",
             color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
             symbol="cluster_label",
-            hover_data=["row_id", "quality"],
+            hover_data=["row_id"],  # quality was here make it configurable?
             title=f"{method} projection - interactive filters + clusters in original space",
             height=700,
         )
@@ -166,7 +155,7 @@ def make_scatter_fig(
             x="x",
             y="y",
             color="cluster_label",
-            hover_data=["row_id", "quality"],
+            hover_data=["row_id"],
             title=f"{method} projection - clusters in original space",
             height=700,
         )
@@ -177,7 +166,7 @@ def make_scatter_fig(
             y="y",
             color="interactive_group",
             color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
-            hover_data=["row_id", "quality"],
+            hover_data=["row_id"],
             title=f"{method} projection - interactive feature range filtering",
             height=700,
         )
@@ -186,7 +175,7 @@ def make_scatter_fig(
             plot_df,
             x="x",
             y="y",
-            hover_data=["row_id", "quality"],
+            hover_data=["row_id"],
             title=f"{method} projection",
             height=700,
         )
