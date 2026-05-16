@@ -13,13 +13,19 @@ from src.analysis.clustering import hierarchical_clustering
 from src.analysis.dim_reducer import fit_dimensionality_reducer
 from src.ui.util.state import ReductionConfig
 
-DATASET_PATH = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
+DATASET_PATH_RED = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
+DATASET_PATH_WHITE = Path("datasets/wine_quality/wine+quality/winequality-white.csv")
 EXPORT_DIR = Path("outputs/selections")
 
 
 @st.cache_data
 def load_dataset() -> pd.DataFrame:
-    df = pd.read_csv(DATASET_PATH, sep=";")
+    df_red = pd.read_csv(DATASET_PATH_RED, sep=";")
+    df_white = pd.read_csv(DATASET_PATH_WHITE, sep=";")
+    df_red["is_red"] = True
+    df_white["is_red"] = False
+    df = pd.concat([df_red, df_white], ignore_index=True)
+
     df = df.reset_index(drop=True)
     df["row_id"] = df.index
     return df
@@ -33,40 +39,16 @@ def compute_embedding(
     config: ReductionConfig,
 ):
     normalize = config["normalize"]
-    match method:
-        case "PCA":
-            return fit_dimensionality_reducer(
-                method=method,
-                X=X,
-                n_components=config["pca_components"],
-                normalize=normalize,
-                random_state=config["tsne_random_state"],
-            )
-
-        case "t-SNE":
-            return fit_dimensionality_reducer(
-                method=method,
-                X=X,
-                n_components=2,
-                normalize=normalize,
-                perplexity=config["tsne_perplexity"],
-                learning_rate=config["tsne_learning_rate"],
-                random_state=config["tsne_random_state"],
-                init="pca",
-            )
-
-        case "UMAP":
-            return fit_dimensionality_reducer(
-                method=method,
-                X=X,
-                n_components=2,
-                normalize=normalize,
-                n_neighbors=config["umap_n_neighbors"],
-                min_dist=config["umap_min_dist"],
-                random_state=config["umap_random_state"],
-            )
-        case _:
-            raise ValueError(f"Unknown dimensionality reduction method: {method}")
+    return fit_dimensionality_reducer(
+        method=method,
+        X=X,
+        n_components=config["pca_components"] if method == "PCA" else 2,
+        normalize=normalize,
+        perplexity=config["tsne_perplexity"] if method == "t-SNE" else None,
+        learning_rate=config["tsne_learning_rate"] if method == "t-SNE" else None,
+        n_neighbors=config["umap_n_neighbors"] if method == "UMAP" else None,
+        min_dist=config["umap_min_dist"] if method == "UMAP" else None,
+    )
 
 
 @st.cache_data

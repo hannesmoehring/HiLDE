@@ -90,8 +90,10 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_dept
 
     z_mean = pts.mean()
     z_std = pts.std()
-    order = z_mean.abs().sort_values(ascending=False).index.tolist()
+    raw_mean = df.loc[in_cluster, feature_cols].mean()
+    order = sorted(feature_cols)
     z_mean, z_std = z_mean[order], z_std[order]
+    raw_mean = raw_mean[order]
 
     fig = go.Figure()
 
@@ -100,9 +102,10 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_dept
         go.Bar(
             x=order,
             y=z_mean.to_numpy(),
+            customdata=raw_mean.to_numpy(),
             error_y={"type": "data", "array": z_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
             marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean],
-            hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<extra></extra>",
+            hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>",
             showlegend=False,
         )
     )
