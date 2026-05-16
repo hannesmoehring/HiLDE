@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 
 import numpy as np
-import streamlit as st
 import umap
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+from sklearn.manifold import MDS, TSNE
 from sklearn.preprocessing import StandardScaler
 
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
@@ -17,12 +16,20 @@ class ReductionResult:
     explained_variance_ratio: np.ndarray | None = None
 
 
-def reduce_dimensionality(method: str, X: np.ndarray, n_components: int = 2, *, normalize: bool = True) -> np.ndarray:
+def reduce_dimensionality(
+    method: str,
+    X: np.ndarray,
+    n_components: int = 2,
+    *,
+    normalize: bool = True,
+    **kwargs,
+) -> np.ndarray:
     result = fit_dimensionality_reducer(
         method=method,
         X=X,
         n_components=n_components,
         normalize=normalize,
+        **kwargs,
     )
     return result.embedding
 
@@ -41,11 +48,19 @@ def fit_dimensionality_reducer(
 
     match method:
         case "PCA":
-            return _pca(X, n_components, **kwargs)
+            return _pca(X, n_components=n_components)
         case "t-SNE":
-            return _tsne(X, n_components, **kwargs)
+            return _tsne(X, n_components=n_components, perplexity=kwargs["perplexity"], learning_rate=kwargs["learning_rate"])
         case "UMAP":
-            return _umap(X, n_components, **kwargs)
+            return _umap(X, n_components=n_components, n_neighbors=kwargs["n_neighbors"], min_dist=kwargs["min_dist"])
+        case "MDS":
+            return _mds(
+                X,
+                n_components=n_components,
+                n_init=kwargs["n_init"],
+                normalized_stress=kwargs["normalized_stress"],
+                dissimilarity=kwargs["dissimilarity"],
+            )
         case _:
             raise ValueError(f"Unknown dimensionality reduction method: {method}")
 
@@ -72,30 +87,7 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
     return ReductionResult(embedding=embedding, reducer=umap_reducer)
 
 
-def local_2d(pts: np.ndarray, method: str) -> np.ndarray:
-    """Project a small cluster to 2D for KDE. Falls back to PCA for tiny clusters."""
-    match method:
-        case "UMAP":
-            if len(pts) >= KDE_NONLINEAR_MIN_PTS:
-                print(f"UMAP settings: n_neighbors={st.session_state['umap_n_neighbors']}, min_dist={st.session_state['umap_min_dist']}")
-                return umap.UMAP(
-                    n_components=2,
-                    random_state=st.session_state["umap_random_state"],
-                    n_neighbors=st.session_state["umap_n_neighbors"],
-                    min_dist=st.session_state["umap_min_dist"],
-                ).fit_transform(pts)
-        case "t-SNE":
-            if len(pts) >= KDE_NONLINEAR_MIN_PTS:
-                perplexity = (
-                    (len(pts) - 1) // 3 if len(pts) <= st.session_state["tsne_perplexity"] else st.session_state["tsne_perplexity"]
-                )  # TODO: double check fallback value
-                return TSNE(
-                    n_components=2,
-                    random_state=st.session_state["tsne_random_state"],
-                    perplexity=perplexity,
-                    learning_rate=st.session_state["tsne_learning_rate"],
-                ).fit_transform(pts)
-        case "PCA":
-            return PCA(n_components=2).fit_transform(pts)
-
-    raise ValueError(f"Unsupported KDE DR method: {method}")
+def _mds(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
+    mds = MDS(n_components=n_components, **kwargs)
+    embedding = mds.fit_transform(X)
+    return ReductionResult(embedding=embedding, reducer=mds)

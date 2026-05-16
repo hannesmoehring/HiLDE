@@ -2,13 +2,10 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import umap as _umap
 from scipy.stats import gaussian_kde
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from sklearn.tree import DecisionTreeClassifier, export_text
 
-from src.analysis.dim_reducer import local_2d
+from src.analysis.dim_reducer import reduce_dimensionality
 
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
 KDE_MIN_PTS = 5  # minimum points to render a KDE blob
@@ -18,8 +15,8 @@ def cluster_gauss_kde(
     df_points: pd.DataFrame,
     X_scaled_df: pd.DataFrame,
     layout_df: pd.DataFrame,
-    *,
-    kde_dr_method: str = "PCA",
+    kde_dr_method: str,
+    **kwargs,
 ) -> go.Figure:
     centroids_2d = layout_df[["x", "y"]].to_numpy()
     size_map = layout_df.set_index("cluster")["size"]
@@ -31,7 +28,7 @@ def cluster_gauss_kde(
         if len(pts) < KDE_MIN_PTS:
             continue
 
-        pts_2d = local_2d(pts, kde_dr_method)
+        pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **kwargs)
 
         # KDE on the local 2D points
         kde = gaussian_kde(pts_2d.T, bw_method="scott")

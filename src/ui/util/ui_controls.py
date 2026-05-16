@@ -111,6 +111,10 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
             X_scaled_hc,
             layout_df,
             kde_dr_method=snapshot["explore_method"],
+            perplexity=st.session_state["tsne_perplexity"] if snapshot["explore_method"] == "t-SNE" else None,
+            learning_rate=st.session_state["tsne_learning_rate"] if snapshot["explore_method"] == "t-SNE" else None,
+            n_neighbors=st.session_state["umap_n_neighbors"] if snapshot["explore_method"] == "UMAP" else None,
+            min_dist=st.session_state["umap_min_dist"] if snapshot["explore_method"] == "UMAP" else None,
         )
     st.session_state["hclust_topo_fig"] = topo_fig
 
@@ -310,6 +314,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         st.info("Save the hierarchical config above to compute clusters.")
         return
 
+    st.dataframe(h_labels)
     df_with_clusters = df.copy()
     df_with_clusters["cluster"] = h_labels
     X_scaled_hc = pd.DataFrame(
