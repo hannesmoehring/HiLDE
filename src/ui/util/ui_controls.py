@@ -56,12 +56,31 @@ def render_hierarchical_config(max_dims: int) -> None:
             max_value=max_dims,
             key="hclust_umap_n_components",
         )
+        c2a, c2b = st.columns(2)
+        with c2a:
+            st.number_input(
+                "HDBSCAN min_samples",
+                min_value=1,
+                max_value=100,
+                step=1,
+                key="hclust_min_samples",
+            )
+        with c2b:
+            st.number_input(
+                "HDBSCAN min_cluster_size",
+                min_value=2,
+                max_value=500,
+                step=1,
+                key="hclust_min_cluster_size",
+            )
 
 
 def _hclust_snapshot() -> dict:
     return {
         "normalize": bool(st.session_state["hclust_normalize"]),
         "umap_n_components": int(st.session_state["hclust_umap_n_components"]),
+        "min_samples": int(st.session_state["hclust_min_samples"]),
+        "min_cluster_size": int(st.session_state["hclust_min_cluster_size"]),
         "explore_method": str(st.session_state["method"]),
         "layers": int(st.session_state["hierarchical_layers"]),
         "precompute": bool(st.session_state["hclust_precompute"]),
@@ -70,24 +89,29 @@ def _hclust_snapshot() -> dict:
 
 def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: list[str]) -> None:
     snapshot = _hclust_snapshot()
-    if snapshot == st.session_state.get("hclust_saved_config"):
-        st.info("No changes — hierarchical config unchanged.")
-        return
+    # if snapshot == st.session_state.get("hclust_saved_config"):
+    #     st.info("No changes — hierarchical config unchanged.")
+    #     return
 
     X_hc = df[feature_columns].to_numpy()
     if snapshot["normalize"]:
         X_hc = StandardScaler().fit_transform(X_hc)
 
     with st.spinner("Computing hierarchical clusters…"):
-        layout_df, h_labels = run_hierarchical_clustering(
+        layout_df, h_labels, n_outliers = run_hierarchical_clustering(
             df,
             X_hc,
             feature_columns,
             n_components=snapshot["umap_n_components"],
+            # n_neighbors=st.session_state["umap_n_neighbors"] if snapshot["explore_method"] == "UMAP" else 15,
+            # min_dist=st.session_state["umap_min_dist"] if snapshot["explore_method"] == "UMAP" else 0.0,
+            min_samples=snapshot["min_samples"],
+            min_cluster_size=snapshot["min_cluster_size"],
         )
 
     st.session_state["hierarchical_layout_df"] = layout_df
     st.session_state["hierarchical_labels"] = h_labels
+    st.session_state["hierarchical_n_outliers"] = n_outliers
     st.session_state["selected_cluster_id"] = None
     st.session_state["cluster_selected_id_for_embed"] = None
     st.session_state["cluster_embedding_full"] = np.empty((0, 0), dtype=float)
@@ -314,7 +338,18 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         st.info("Save the hierarchical config above to compute clusters.")
         return
 
-    st.dataframe(h_labels)
+    n_outliers = st.session_state["hierarchical_n_outliers"]
+
+    st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / len(df):.2%}")
+    st.text(f"Clusters found: {len(h_layout_df):,}, number of points in cluster: {h_layout_df[['cluster', 'size']]['size'].sum():,}")
+
+    # dataframe where each col is a cluster and values are size
+
+    st.dataframe(
+        h_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
+        hide_index=True,
+    )
+
     df_with_clusters = df.copy()
     df_with_clusters["cluster"] = h_labels
     X_scaled_hc = pd.DataFrame(

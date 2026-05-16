@@ -76,8 +76,21 @@ def run_hierarchical_clustering(
     feature_cols: list[str],
     *,
     n_components: int = 10,
-) -> tuple[pd.DataFrame, np.ndarray]:
-    return hierarchical_clustering(df, X_scaled, feature_cols, n_components=n_components)
+    n_neighbors: int = 30,
+    min_dist: float = 0.0,
+    min_samples: int = 5,
+    min_cluster_size: int = 15,
+) -> tuple[pd.DataFrame, np.ndarray, int]:
+    return hierarchical_clustering(
+        df,
+        X_scaled,
+        feature_cols,
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        min_samples=min_samples,
+        min_cluster_size=min_cluster_size,
+    )
 
 
 def get_cluster_subset(

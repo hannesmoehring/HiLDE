@@ -46,6 +46,8 @@ def init_state() -> None:
         # hierarchical config panel
         "hclust_normalize": True,
         "hclust_umap_n_components": 2,
+        "hclust_min_samples": 5,
+        "hclust_min_cluster_size": 15,
         "hclust_saved_config": None,
         "hclust_precompute": True,
         "hclust_topo_fig": None,

@@ -8,7 +8,6 @@ from sklearn.tree import DecisionTreeClassifier, export_text
 from src.analysis.dim_reducer import reduce_dimensionality
 
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
-KDE_MIN_PTS = 5  # minimum points to render a KDE blob
 
 
 def cluster_gauss_kde(
@@ -25,8 +24,6 @@ def cluster_gauss_kde(
 
     for i, c in enumerate(layout_df["cluster"]):
         pts = X_scaled_df.loc[df_points["cluster"] == c].to_numpy()
-        if len(pts) < KDE_MIN_PTS:
-            continue
 
         pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **kwargs)
 

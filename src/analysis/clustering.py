@@ -40,7 +40,7 @@ def hierarchical_clustering(
     min_dist: float = 0.0,
     min_samples: int = 5,
     min_cluster_size: int = 15,
-) -> tuple[pd.DataFrame, np.ndarray]:
+) -> tuple[pd.DataFrame, np.ndarray, int]:
 
     X_umap = reduce_dimensionality("UMAP", X=X_scaled, n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist)
     labels = compute_clusters(X_umap, "HDBSCAN", min_samples=min_samples, min_cluster_size=min_cluster_size)
@@ -58,7 +58,9 @@ def hierarchical_clustering(
         dissimilarity="euclidean",
     )
 
-    sizes = pd.Series(labels).value_counts().sort_index()
+    all_sizes = pd.Series(labels).value_counts().sort_index()
+    n_outliers = int(all_sizes.get(-1, 0))
+    sizes = all_sizes.drop(-1, errors="ignore")
 
     layout_df = pd.DataFrame(
         {
@@ -68,4 +70,4 @@ def hierarchical_clustering(
             "size": sizes.to_numpy(),
         },
     )
-    return layout_df, labels
+    return layout_df, labels, n_outliers
