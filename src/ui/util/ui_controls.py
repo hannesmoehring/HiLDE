@@ -32,6 +32,21 @@ from src.ui.util.visualization import (
 MIN_COMPONENTS_FOR_2D = 2
 
 
+def _get_path_subset(
+    df: pd.DataFrame,
+    X: np.ndarray,
+    path: tuple[int, ...],
+) -> tuple[pd.DataFrame, np.ndarray]:
+    if not path:
+        return df, X
+    h_labels = st.session_state["hierarchical_labels"]
+    sub_df, sub_X = get_cluster_subset(df, X, h_labels, path[0])
+    for i, cluster_id in enumerate(path[1:], 1):
+        level_labels = st.session_state["hierarchical_sublevel_cache"][str(path[:i])]["h_labels"]
+        sub_df, sub_X = get_cluster_subset(sub_df, sub_X, level_labels, cluster_id)
+    return sub_df, sub_X
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG 1 — Hierarchical clustering
 # ──────────────────────────────────────────────────────────────────────────────
@@ -98,7 +113,7 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
         X_hc = StandardScaler().fit_transform(X_hc)
 
     with st.spinner("Computing hierarchical clusters…"):
-        layout_df, h_labels, n_outliers = run_hierarchical_clustering(
+        layout_df, h_labels, n_outliers, glosh_scores = run_hierarchical_clustering(
             df,
             X_hc,
             feature_columns,
@@ -112,9 +127,13 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
     st.session_state["hierarchical_layout_df"] = layout_df
     st.session_state["hierarchical_labels"] = h_labels
     st.session_state["hierarchical_n_outliers"] = n_outliers
+    st.session_state["hierarchical_glosh_scores"] = glosh_scores
     st.session_state["selected_cluster_id"] = None
     st.session_state["cluster_selected_id_for_embed"] = None
     st.session_state["cluster_embedding_full"] = np.empty((0, 0), dtype=float)
+    st.session_state["hierarchical_selection_stack"] = []
+    st.session_state["hierarchical_sublevel_cache"] = {}
+    st.session_state["cluster_path_for_embed"] = ()
 
     # Invalidate stale cached visuals
     st.session_state["hclust_topo_fig"] = None
@@ -218,22 +237,22 @@ def _explore_snapshot() -> dict:
 
 def handle_exploration_save(df: pd.DataFrame, X: np.ndarray, _feature_columns: list[str]) -> None:
     snapshot = _explore_snapshot()
-    selected_cluster = st.session_state.get("selected_cluster_id")
-    h_labels = st.session_state.get("hierarchical_labels")
+    stack = st.session_state.get("hierarchical_selection_stack", [])
+    n_layers = int(st.session_state.get("hierarchical_layers", 1))
 
-    if selected_cluster is None or h_labels is None:
-        # No cluster selected yet — persist config so it's ready when one is selected
+    if len(stack) < n_layers:
         st.session_state["explore_saved_config"] = snapshot
         return
 
-    cluster_changed = st.session_state.get("cluster_selected_id_for_embed") != selected_cluster
+    current_path = tuple(stack[:n_layers])
+    path_changed = st.session_state.get("cluster_path_for_embed") != current_path
     config_changed = snapshot != st.session_state.get("explore_saved_config")
 
-    if not cluster_changed and not config_changed:
+    if not path_changed and not config_changed:
         st.info("No changes — exploration config unchanged.")
         return
 
-    _sub_df, sub_X = get_cluster_subset(df, X, h_labels, selected_cluster)
+    _sub_df, sub_X = _get_path_subset(df, X, current_path)
 
     with st.spinner("Computing cluster embedding…"):
         result = compute_embedding(method=st.session_state.method, X=sub_X, config=current_config())
@@ -248,7 +267,8 @@ def handle_exploration_save(df: pd.DataFrame, X: np.ndarray, _feature_columns: l
         st.session_state["cluster_pca_x_component"] = int(ordered[0])
         st.session_state["cluster_pca_y_component"] = int(ordered[1])
 
-    st.session_state["cluster_selected_id_for_embed"] = selected_cluster
+    st.session_state["cluster_path_for_embed"] = current_path
+    st.session_state["cluster_selected_id_for_embed"] = stack[0]  # backward compat
     st.session_state["explore_saved_config"] = snapshot
 
 
@@ -323,6 +343,27 @@ def render_pca_controls(
     st.info(f"Total variance explained by selected components: {selected_total:.2%}")
 
 
+def _render_glosh_column(h_labels: np.ndarray) -> None:
+    st.markdown("**Outliers GLOSH**")
+    glosh_scores = st.session_state.get("hierarchical_glosh_scores")
+    if glosh_scores is None:
+        return
+    outlier_mask = h_labels == -1
+    if not outlier_mask.any():
+        st.caption("No outlier points detected.")
+        return
+    outlier_scores = glosh_scores[outlier_mask]
+    st.caption(
+        f"min: {outlier_scores.min():.3f}  median: {float(np.median(outlier_scores)):.3f}  max: {outlier_scores.max():.3f}",
+    )
+    top_n = (
+        pd.DataFrame({"row": np.where(outlier_mask)[0], "glosh": glosh_scores[outlier_mask]})
+        .sort_values("glosh", ascending=False)
+        .reset_index(drop=True)
+    )
+    st.dataframe(top_n, hide_index=True)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Hierarchical section (topography + cluster characteristics)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -340,15 +381,21 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
 
     n_outliers = st.session_state["hierarchical_n_outliers"]
 
-    st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / len(df):.2%}")
-    st.text(f"Clusters found: {len(h_layout_df):,}, number of points in cluster: {h_layout_df[['cluster', 'size']]['size'].sum():,}")
+    c1, c2, c3 = st.columns([1, 1, 1])
+    with c1:
+        st.markdown("**Information**")
+        st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / len(df):.2%}")
+        st.text(f"Clusters found: {len(h_layout_df):,}, number of points in cluster: {h_layout_df[['cluster', 'size']]['size'].sum():,}")
 
-    # dataframe where each col is a cluster and values are size
+    with c2:
+        st.markdown("**Cluster size distribution**")
+        st.dataframe(
+            h_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
+            hide_index=True,
+        )
 
-    st.dataframe(
-        h_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
-        hide_index=True,
-    )
+    with c3:
+        _render_glosh_column(h_labels)
 
     df_with_clusters = df.copy()
     df_with_clusters["cluster"] = h_labels
@@ -407,6 +454,162 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Intermediate hierarchical sublevel panel
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def render_hierarchical_sublevel(
+    df: pd.DataFrame,
+    X: np.ndarray,
+    feature_columns: list[str],
+    parent_path: tuple[int, ...],
+    layer: int,
+) -> int | None:
+    cache_key = str(parent_path)
+    cache: dict = st.session_state.setdefault("hierarchical_sublevel_cache", {})
+
+    if cache_key not in cache:
+        sub_df, sub_X = _get_path_subset(df, X, parent_path)
+        snapshot = st.session_state.get("hclust_saved_config", {})
+        min_cluster_size = int(snapshot.get("min_cluster_size", 15))
+
+        if len(sub_df) < min_cluster_size * 2:
+            return None
+
+        X_hc = sub_X.copy()
+        if snapshot.get("normalize", True):
+            X_hc = StandardScaler().fit_transform(X_hc)
+
+        n_comp = min(int(snapshot.get("umap_n_components", 2)), sub_X.shape[1], len(sub_df) - 1)
+        n_nbrs = min(30, len(sub_df) - 1)
+
+        with st.spinner(f"Computing sub-clusters for layer {layer}…"):
+            sub_layout_df, sub_h_labels, sub_n_outliers, _sub_glosh = run_hierarchical_clustering(
+                sub_df,
+                X_hc,
+                feature_columns,
+                n_components=n_comp,
+                n_neighbors=n_nbrs,
+                min_samples=int(snapshot.get("min_samples", 5)),
+                min_cluster_size=min_cluster_size,
+            )
+
+        if sub_layout_df.empty:
+            return None
+
+        df_with_sub = sub_df.copy()
+        df_with_sub["cluster"] = sub_h_labels
+        X_scaled_vis = pd.DataFrame(
+            StandardScaler().fit_transform(sub_df[feature_columns].to_numpy()),
+            columns=feature_columns,
+        )
+        pure_cols = [c for c in sub_df.columns if c not in ["row_id"]]
+        explore_method = str(snapshot.get("explore_method", "UMAP"))
+
+        with st.spinner(f"Rendering layer {layer} topography…"):
+            sub_topo_fig = cluster_gauss_kde(
+                df_with_sub,
+                X_scaled_vis,
+                sub_layout_df,
+                kde_dr_method=explore_method,
+                perplexity=st.session_state.get("tsne_perplexity") if explore_method == "t-SNE" else None,
+                learning_rate=st.session_state.get("tsne_learning_rate") if explore_method == "t-SNE" else None,
+                n_neighbors=st.session_state.get("umap_n_neighbors") if explore_method == "UMAP" else None,
+                min_dist=st.session_state.get("umap_min_dist") if explore_method == "UMAP" else None,
+            )
+
+        sub_chars: dict[int, tuple] = {}
+        if snapshot.get("precompute", True):
+            valid_ids = [int(cid) for cid in sub_layout_df["cluster"].unique() if int(cid) != -1]
+            with st.spinner(f"Precomputing layer {layer} characteristics…"):
+                for cid in valid_ids:
+                    sub_chars[cid] = cluster_characteristics(cid, df_with_sub, X_scaled_vis[pure_cols], pure_cols)
+
+        cache[cache_key] = {
+            "layout_df": sub_layout_df,
+            "h_labels": sub_h_labels,
+            "n_outliers": sub_n_outliers,
+            "topo_fig": sub_topo_fig,
+            "characteristics": sub_chars,
+        }
+
+    cached = cache[cache_key]
+    sub_layout_df = cached["layout_df"]
+    sub_h_labels = cached["h_labels"]
+    sub_n_outliers = cached["n_outliers"]
+    sub_topo_fig = cached["topo_fig"]
+    sub_chars = cached["characteristics"]
+
+    sub_df_full, _ = _get_path_subset(df, X, parent_path)
+    n_parent = len(sub_df_full)
+
+    st.subheader(f"Layer {layer} Sub-Cluster Topography — parent path {parent_path}")
+    st.text(f"Points in parent cluster: {n_parent:,}")
+    st.text(f"Outliers (noise points): {sub_n_outliers}, ratio: {sub_n_outliers / n_parent:.2%}")
+    st.text(
+        f"Sub-clusters found: {len(sub_layout_df):,}, points in sub-clusters: {sub_layout_df['size'].sum():,}",
+    )
+    st.dataframe(
+        sub_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
+        hide_index=True,
+    )
+
+    sub_topo_fig.update_layout(height=650)
+    topo_col, char_col = st.columns([1, 1])
+    chart_key = f"hierarchical_topo_plot_layer_{layer}_{parent_path}"
+
+    with topo_col:
+        topo_event = st.plotly_chart(
+            sub_topo_fig,
+            key=chart_key,
+            width="stretch",
+            on_select="rerun",
+            selection_mode="points",
+        )
+
+    clicked = get_selected_indices(topo_event)
+    if clicked:
+        new_id = int(sub_layout_df["cluster"].iloc[clicked[0]])
+        full_idx = layer - 1
+        stack = list(st.session_state.get("hierarchical_selection_stack", []))
+        stack = stack[:full_idx]
+        stack.append(new_id)
+        st.session_state["hierarchical_selection_stack"] = stack
+
+    stack = st.session_state.get("hierarchical_selection_stack", [])
+    full_idx = layer - 1
+    current_selection: int | None = stack[full_idx] if len(stack) > full_idx else None
+
+    with char_col:
+        if current_selection is None:
+            st.info(f"Click a sub-cluster in layer {layer} to continue drilling down.")
+        else:
+            st.markdown(f"**Sub-cluster {current_selection}** — n={int((sub_h_labels == current_selection).sum())} points")
+            pure_cols = [c for c in sub_df_full.columns if c not in ["row_id"]]
+            if current_selection in sub_chars:
+                char_fig, rules = sub_chars[current_selection]
+            else:
+                df_with_sub = sub_df_full.copy()
+                df_with_sub["cluster"] = sub_h_labels
+                X_scaled_vis = pd.DataFrame(
+                    StandardScaler().fit_transform(sub_df_full[feature_columns].to_numpy()),
+                    columns=feature_columns,
+                )
+                char_fig, rules = cluster_characteristics(
+                    current_selection,
+                    df_with_sub,
+                    X_scaled_vis[pure_cols],
+                    pure_cols,
+                )
+            char_fig.update_layout(height=620)
+            st.plotly_chart(char_fig, width="stretch")
+            with st.expander("Decision tree rules"):
+                st.code(rules)
+
+    return current_selection
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Data layer for the exploration scatter plot
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -442,7 +645,7 @@ def compute_data_layer(
 
     interactive_mode = bool(st.session_state["interactive_ranges_mode"])
     interactive_mask = compute_interactive_mask(X_scaled_df, feature_columns) if interactive_mode else None
-
+    assert not isinstance(cluster_labels, tuple)  # yeah yeah i know
     plot_df = build_plot_df(df, embedding_2d, cluster_labels, interactive_mask)
     st.session_state.plot_df = plot_df
 
@@ -527,21 +730,21 @@ def render_cluster_exploration(
     df: pd.DataFrame,
     X: np.ndarray,
     feature_columns: list[str],
-    selected_cluster: int,
+    selection_path: tuple[int, ...],
 ) -> None:
-    st.subheader(f"Exploration — Cluster {selected_cluster}")
+    path_label = " → ".join(f"C{c}" for c in selection_path)
+    st.subheader(f"Exploration — {path_label}")
 
-    # Auto-compute when user switches to a different cluster
-    cluster_switched = st.session_state.get("cluster_selected_id_for_embed") != selected_cluster
-    if st.session_state.get("explore_saved_config") is not None and cluster_switched:
+    # Auto-compute when the selection path changes
+    path_switched = st.session_state.get("cluster_path_for_embed") != selection_path
+    if st.session_state.get("explore_saved_config") is not None and path_switched:
         handle_exploration_save(df, X, feature_columns)
 
     if st.session_state["cluster_embedding_full"].size == 0:
         st.info("Save the exploration config above to compute the embedding.")
         return
 
-    h_labels = st.session_state["hierarchical_labels"]
-    sub_df, sub_X = get_cluster_subset(df, X, h_labels, selected_cluster)
+    sub_df, sub_X = _get_path_subset(df, X, selection_path)
 
     resolved = resolve_cluster_embedding_2d()
     if resolved is None:

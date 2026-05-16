@@ -62,7 +62,7 @@ def run_hierarchical_clustering(
     min_dist: float = 0.0,
     min_samples: int = 5,
     min_cluster_size: int = 15,
-) -> tuple[pd.DataFrame, np.ndarray, int]:
+) -> tuple[pd.DataFrame, np.ndarray, int, np.ndarray]:
     return hierarchical_clustering(
         df,
         X_scaled,

@@ -52,6 +52,10 @@ def init_state() -> None:
         "hclust_precompute": True,
         "hclust_topo_fig": None,
         "hclust_characteristics": {},
+        # multi-layer drill-down state
+        "hierarchical_selection_stack": [],
+        "hierarchical_sublevel_cache": {},
+        "cluster_path_for_embed": (),
         # cluster-level exploration embedding
         "cluster_embedding_full": np.empty((0, 0), dtype=float),
         "cluster_explained_variance": np.array([], dtype=float),

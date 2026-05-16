@@ -1,3 +1,4 @@
+import hdbscan  # sklearn contrib hdbscan version
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN, HDBSCAN, KMeans
@@ -11,7 +12,7 @@ from src.analysis.dim_reducer import ReductionResult, reduce_dimensionality
 # use Adjusted Rand Index or similar to compare clusterings?
 
 
-def compute_clusters(X_scaled: np.ndarray, method: str, **kwargs) -> np.ndarray:
+def compute_clusters(X_scaled: np.ndarray, method: str, **kwargs) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     match method:
         case "KMeans":
             model = KMeans(n_clusters=kwargs["n_clusters"], random_state=42)
@@ -23,8 +24,12 @@ def compute_clusters(X_scaled: np.ndarray, method: str, **kwargs) -> np.ndarray:
             model = DBSCAN(eps=kwargs["eps"], min_samples=kwargs["min_samples"])
             return model.fit_predict(X_scaled)
         case "HDBSCAN":
-            model = HDBSCAN(min_cluster_size=kwargs["min_cluster_size"], min_samples=kwargs["min_samples"])
-            return model.fit_predict(X_scaled)
+            model = clusterer = hdbscan.HDBSCAN(min_cluster_size=kwargs["min_cluster_size"], min_samples=kwargs["min_samples"])
+            labels = model.fit_predict(X_scaled)
+            glosh_scores = model.outlier_scores_
+            return labels, glosh_scores
+            # model = HDBSCAN(min_cluster_size=kwargs["min_cluster_size"], min_samples=kwargs["min_samples"])
+            # return model.fit_predict(X_scaled)
 
         case _:
             raise ValueError(f"Unknown clustering method: {method}")
@@ -40,10 +45,10 @@ def hierarchical_clustering(
     min_dist: float = 0.0,
     min_samples: int = 5,
     min_cluster_size: int = 15,
-) -> tuple[pd.DataFrame, np.ndarray, int]:
+) -> tuple[pd.DataFrame, np.ndarray, int, np.ndarray]:
 
     X_umap = reduce_dimensionality("UMAP", X=X_scaled, n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist)
-    labels = compute_clusters(X_umap, "HDBSCAN", min_samples=min_samples, min_cluster_size=min_cluster_size)
+    labels, outlier_scores = compute_clusters(X_umap, method="HDBSCAN", min_cluster_size=min_cluster_size, min_samples=min_samples)
 
     mask = labels != -1
     X_scaled_df = pd.DataFrame(X_scaled, columns=feature_cols, index=df.index)
@@ -70,4 +75,4 @@ def hierarchical_clustering(
             "size": sizes.to_numpy(),
         },
     )
-    return layout_df, labels, n_outliers
+    return layout_df, labels, n_outliers, outlier_scores
