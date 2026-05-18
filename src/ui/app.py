@@ -28,10 +28,21 @@ def main() -> None:
     st.caption("Dataset is hardcoded to winequality-red.csv")
 
     df = load_dataset()
-    feature_columns = [c for c in df.columns if c not in ["row_id"]]
+    # feature_columns = [c for c in df.columns if c not in ["row_id"]]
+
+    # -- GENERAL CONFIG --
+    st.subheader("General Configuration")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("### Select dataset")
+        path_to_dataset = st.text_input("Path to dataset CSV", value="datasets/wine_quality/wine+quality/winequality-red.csv")
+
+    with c2:
+        st.markdown("### Select feature columns")
+        feature_columns = st.multiselect("Feature columns", options=df.columns, default=df.columns.drop("row_id").tolist())
+
     X = df[feature_columns].to_numpy()
     max_dims = int(min(X.shape[0], X.shape[1]))
-
     # ── CONFIG 1: Hierarchical clustering ────────────────────────────────────
     st.subheader("Hierarchical Clustering Configuration")
     render_hierarchical_config(max_dims)

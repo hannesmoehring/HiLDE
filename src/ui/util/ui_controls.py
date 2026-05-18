@@ -146,7 +146,6 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
         StandardScaler().fit_transform(df[feature_columns].to_numpy()),
         columns=feature_columns,
     )
-    pure_feature_cols = [c for c in df.columns if c not in ["row_id"]]  # quality was here
 
     with st.spinner("Rendering cluster topography…"):
         topo_fig = cluster_gauss_kde(
@@ -163,14 +162,20 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
 
     if snapshot["precompute"]:
         valid_ids = [int(cid) for cid in layout_df["cluster"].unique() if int(cid) != -1]
+        extra_cols = [
+            c for c in df_with_clusters.columns
+            if c not in feature_columns and c not in {"row_id", "cluster"}
+            and pd.api.types.is_numeric_dtype(df_with_clusters[c])
+        ]
         chars: dict[int, tuple] = {}
         with st.spinner(f"Precomputing characteristics for {len(valid_ids)} clusters…"):
             for cid in valid_ids:
                 chars[cid] = cluster_characteristics(
                     cid,
                     df_with_clusters,
-                    X_scaled_hc[pure_feature_cols],
-                    pure_feature_cols,
+                    X_scaled_hc[feature_columns],
+                    feature_columns,
+                    extra_cols=extra_cols,
                 )
         st.session_state["hclust_characteristics"] = chars
 
@@ -436,16 +441,21 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
             st.info("Click a cluster on the topography map to explore its characteristics.")
             return
         st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
-        pure_feature_cols = [c for c in df.columns if c not in ["row_id"]]  # quality was here
         precomputed = st.session_state.get("hclust_characteristics", {})
         if selected_cluster in precomputed:
             char_fig, rules = precomputed[selected_cluster]
         else:
+            extra_cols = [
+                c for c in df_with_clusters.columns
+                if c not in feature_columns and c not in {"row_id", "cluster"}
+                and pd.api.types.is_numeric_dtype(df_with_clusters[c])
+            ]
             char_fig, rules = cluster_characteristics(
                 selected_cluster,
                 df_with_clusters,
-                X_scaled_hc[pure_feature_cols],
-                pure_feature_cols,
+                X_scaled_hc[feature_columns],
+                feature_columns,
+                extra_cols=extra_cols,
             )
         char_fig.update_layout(height=620)
         st.plotly_chart(char_fig, width="stretch")
@@ -503,7 +513,6 @@ def render_hierarchical_sublevel(
             StandardScaler().fit_transform(sub_df[feature_columns].to_numpy()),
             columns=feature_columns,
         )
-        pure_cols = [c for c in sub_df.columns if c not in ["row_id"]]
         explore_method = str(snapshot.get("explore_method", "UMAP"))
 
         with st.spinner(f"Rendering layer {layer} topography…"):
@@ -521,9 +530,14 @@ def render_hierarchical_sublevel(
         sub_chars: dict[int, tuple] = {}
         if snapshot.get("precompute", True):
             valid_ids = [int(cid) for cid in sub_layout_df["cluster"].unique() if int(cid) != -1]
+            extra_cols = [
+                c for c in df_with_sub.columns
+                if c not in feature_columns and c not in {"row_id", "cluster"}
+                and pd.api.types.is_numeric_dtype(df_with_sub[c])
+            ]
             with st.spinner(f"Precomputing layer {layer} characteristics…"):
                 for cid in valid_ids:
-                    sub_chars[cid] = cluster_characteristics(cid, df_with_sub, X_scaled_vis[pure_cols], pure_cols)
+                    sub_chars[cid] = cluster_characteristics(cid, df_with_sub, X_scaled_vis[feature_columns], feature_columns, extra_cols=extra_cols)
 
         cache[cache_key] = {
             "layout_df": sub_layout_df,
@@ -585,7 +599,6 @@ def render_hierarchical_sublevel(
             st.info(f"Click a sub-cluster in layer {layer} to continue drilling down.")
         else:
             st.markdown(f"**Sub-cluster {current_selection}** — n={int((sub_h_labels == current_selection).sum())} points")
-            pure_cols = [c for c in sub_df_full.columns if c not in ["row_id"]]
             if current_selection in sub_chars:
                 char_fig, rules = sub_chars[current_selection]
             else:
@@ -595,11 +608,17 @@ def render_hierarchical_sublevel(
                     StandardScaler().fit_transform(sub_df_full[feature_columns].to_numpy()),
                     columns=feature_columns,
                 )
+                extra_cols = [
+                    c for c in df_with_sub.columns
+                    if c not in feature_columns and c not in {"row_id", "cluster"}
+                    and pd.api.types.is_numeric_dtype(df_with_sub[c])
+                ]
                 char_fig, rules = cluster_characteristics(
                     current_selection,
                     df_with_sub,
-                    X_scaled_vis[pure_cols],
-                    pure_cols,
+                    X_scaled_vis[feature_columns],
+                    feature_columns,
+                    extra_cols=extra_cols,
                 )
             char_fig.update_layout(height=620)
             st.plotly_chart(char_fig, width="stretch")

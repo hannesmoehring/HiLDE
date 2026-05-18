@@ -84,7 +84,7 @@ def cluster_gauss_kde(
     return fig
 
 
-def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_depth: int = 3):
+def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_cols: list[str] | None = None, tree_depth: int = 3):
     in_cluster = df["cluster"] == cluster_id
     pts = X_scaled_df.loc[in_cluster, feature_cols]
 
@@ -106,14 +106,40 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_dept
             error_y={"type": "data", "array": z_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
             marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean],
             hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>",
-            showlegend=False,
+            name="feature cols",
+            showlegend=bool(extra_cols),
         )
     )
+
+    if extra_cols:
+        extra_order = sorted(extra_cols)
+        g_mean = df[extra_order].mean()
+        g_std = df[extra_order].std().replace(0, 1)
+        c_mean = df.loc[in_cluster, extra_order].mean()
+        c_std = df.loc[in_cluster, extra_order].std()
+        ez_mean = (c_mean - g_mean) / g_std
+        fig.add_trace(
+            go.Bar(
+                x=extra_order,
+                y=ez_mean.to_numpy(),
+                customdata=c_mean.to_numpy(),
+                error_y={"type": "data", "array": c_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
+                marker_color=["darkorange" if v < 0 else "mediumseagreen" for v in ez_mean],
+                hovertemplate=(
+                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
+                    "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+                ),
+                name="analysis cols",
+                showlegend=True,
+            ),
+        )
+
     fig.update_layout(
         title=f"Cluster {cluster_id}  •  n={in_cluster.sum()}",
         yaxis_title="z-score vs. global mean",
         xaxis_tickangle=-40,
         height=520,
+        barmode="group",
     )
 
     # predicate rules — train on ORIGINAL units so thresholds are interpretable
