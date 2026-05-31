@@ -1,7 +1,7 @@
 import hdbscan  # sklearn contrib hdbscan version
 import numpy as np
 import pandas as pd
-from sklearn.cluster import DBSCAN, HDBSCAN, KMeans
+from sklearn.cluster import DBSCAN, KMeans
 from sklearn.manifold import MDS
 from sklearn.mixture import GaussianMixture
 

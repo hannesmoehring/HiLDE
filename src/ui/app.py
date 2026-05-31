@@ -8,17 +8,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np
 import streamlit as st
 
-from src.ui.util.data import load_dataset
-from src.ui.util.state import init_state
-from src.ui.util.ui_controls import (
-    handle_exploration_save,
-    handle_hierarchical_save,
-    render_cluster_exploration,
-    render_exploration_config,
-    render_hierarchical_config,
-    render_hierarchical_section,
-    render_hierarchical_sublevel,
-)
+from src.ui.components.config import render_exploration_config, render_hierarchical_config
+from src.ui.components.exploration import render_cluster_exploration
+from src.ui.components.handlers import handle_exploration_save, handle_hierarchical_save
+from src.ui.components.hierarchical import render_hierarchical_section, render_hierarchical_sublevel
+from src.ui.data import load_dataset
+from src.ui.state import init_state
 
 
 def main() -> None:

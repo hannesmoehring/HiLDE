@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.analysis.clustering import hierarchical_clustering
 from src.analysis.dim_reducer import fit_dimensionality_reducer
-from src.ui.util.state import ReductionConfig
+from src.ui.state import ReductionConfig
 
 DATASET_PATH_RED = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 DATASET_PATH_WHITE = Path("datasets/wine_quality/wine+quality/winequality-white.csv")
@@ -83,6 +83,21 @@ def get_cluster_subset(
 ) -> tuple[pd.DataFrame, np.ndarray]:
     mask = h_labels == cluster_id
     return df[mask].reset_index(drop=True), X[mask]
+
+
+def get_path_subset(
+    df: pd.DataFrame,
+    X: np.ndarray,
+    path: tuple[int, ...],
+) -> tuple[pd.DataFrame, np.ndarray]:
+    if not path:
+        return df, X
+    h_labels = st.session_state["hierarchical_labels"]
+    sub_df, sub_X = get_cluster_subset(df, X, h_labels, path[0])
+    for i, cluster_id in enumerate(path[1:], 1):
+        level_labels = st.session_state["hierarchical_sublevel_cache"][str(path[:i])]["h_labels"]
+        sub_df, sub_X = get_cluster_subset(sub_df, sub_X, level_labels, cluster_id)
+    return sub_df, sub_X
 
 
 def export_selection(selected_df: pd.DataFrame, config: ReductionConfig) -> Path:

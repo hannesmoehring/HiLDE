@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import gaussian_kde
-from sklearn.tree import DecisionTreeClassifier, export_text
 
+from src.analysis.characteristics import fit_cluster_decision_tree
 from src.analysis.dim_reducer import reduce_dimensionality
 
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
@@ -143,9 +143,7 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_col
     )
 
     # predicate rules — train on ORIGINAL units so thresholds are interpretable
-    tree = DecisionTreeClassifier(max_depth=tree_depth, class_weight="balanced", random_state=0)
-    tree.fit(df[feature_cols].to_numpy(), in_cluster.to_numpy().astype(int))
-    rules = export_text(tree, feature_names=list(feature_cols))
+    rules = fit_cluster_decision_tree(df, feature_cols, in_cluster, tree_depth)
 
     return fig, rules
 
