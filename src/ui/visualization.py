@@ -2,24 +2,20 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import umap as _umap
 from scipy.stats import gaussian_kde
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.tree import DecisionTreeClassifier, export_text
 
-from src.analysis.dim_reducer import local_2d
+from src.analysis.characteristics import fit_cluster_decision_tree
+from src.analysis.dim_reducer import reduce_dimensionality
 
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
-KDE_MIN_PTS = 5  # minimum points to render a KDE blob
 
 
 def cluster_gauss_kde(
     df_points: pd.DataFrame,
     X_scaled_df: pd.DataFrame,
     layout_df: pd.DataFrame,
-    *,
-    kde_dr_method: str = "PCA",
+    kde_dr_method: str,
+    **kwargs,
 ) -> go.Figure:
     centroids_2d = layout_df[["x", "y"]].to_numpy()
     size_map = layout_df.set_index("cluster")["size"]
@@ -28,10 +24,8 @@ def cluster_gauss_kde(
 
     for i, c in enumerate(layout_df["cluster"]):
         pts = X_scaled_df.loc[df_points["cluster"] == c].to_numpy()
-        if len(pts) < KDE_MIN_PTS:
-            continue
 
-        pts_2d = local_2d(pts, kde_dr_method)
+        pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **kwargs)
 
         # KDE on the local 2D points
         kde = gaussian_kde(pts_2d.T, bw_method="scott")
@@ -90,14 +84,16 @@ def cluster_gauss_kde(
     return fig
 
 
-def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_depth: int = 3):
+def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_cols: list[str] | None = None, tree_depth: int = 3):
     in_cluster = df["cluster"] == cluster_id
     pts = X_scaled_df.loc[in_cluster, feature_cols]
 
     z_mean = pts.mean()
     z_std = pts.std()
-    order = z_mean.abs().sort_values(ascending=False).index.tolist()
+    raw_mean = df.loc[in_cluster, feature_cols].mean()
+    order = sorted(feature_cols)
     z_mean, z_std = z_mean[order], z_std[order]
+    raw_mean = raw_mean[order]
 
     fig = go.Figure()
 
@@ -106,23 +102,48 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, tree_dept
         go.Bar(
             x=order,
             y=z_mean.to_numpy(),
+            customdata=raw_mean.to_numpy(),
             error_y={"type": "data", "array": z_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
             marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean],
-            hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<extra></extra>",
-            showlegend=False,
+            hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>",
+            name="feature cols",
+            showlegend=bool(extra_cols),
         )
     )
+
+    if extra_cols:
+        extra_order = sorted(extra_cols)
+        g_mean = df[extra_order].mean()
+        g_std = df[extra_order].std().replace(0, 1)
+        c_mean = df.loc[in_cluster, extra_order].mean()
+        c_std = df.loc[in_cluster, extra_order].std()
+        ez_mean = (c_mean - g_mean) / g_std
+        fig.add_trace(
+            go.Bar(
+                x=extra_order,
+                y=ez_mean.to_numpy(),
+                customdata=c_mean.to_numpy(),
+                error_y={"type": "data", "array": c_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
+                marker_color=["darkorange" if v < 0 else "mediumseagreen" for v in ez_mean],
+                hovertemplate=(
+                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
+                    "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+                ),
+                name="analysis cols",
+                showlegend=True,
+            ),
+        )
+
     fig.update_layout(
         title=f"Cluster {cluster_id}  •  n={in_cluster.sum()}",
         yaxis_title="z-score vs. global mean",
         xaxis_tickangle=-40,
         height=520,
+        barmode="group",
     )
 
     # predicate rules — train on ORIGINAL units so thresholds are interpretable
-    tree = DecisionTreeClassifier(max_depth=tree_depth, class_weight="balanced", random_state=0)
-    tree.fit(df[feature_cols].to_numpy(), in_cluster.to_numpy().astype(int))
-    rules = export_text(tree, feature_names=list(feature_cols))
+    rules = fit_cluster_decision_tree(df, feature_cols, in_cluster, tree_depth)
 
     return fig, rules
 

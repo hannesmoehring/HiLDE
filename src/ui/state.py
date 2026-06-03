@@ -46,10 +46,16 @@ def init_state() -> None:
         # hierarchical config panel
         "hclust_normalize": True,
         "hclust_umap_n_components": 2,
+        "hclust_min_samples": 5,
+        "hclust_min_cluster_size": 15,
         "hclust_saved_config": None,
         "hclust_precompute": True,
         "hclust_topo_fig": None,
         "hclust_characteristics": {},
+        # multi-layer drill-down state
+        "hierarchical_selection_stack": [],
+        "hierarchical_sublevel_cache": {},
+        "cluster_path_for_embed": (),
         # cluster-level exploration embedding
         "cluster_embedding_full": np.empty((0, 0), dtype=float),
         "cluster_explained_variance": np.array([], dtype=float),

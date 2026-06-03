@@ -463,6 +463,26 @@ wheels = [
 ]
 
 [[package]]
+name = "hdbscan"
+version = "0.8.43"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "joblib" },
+    { name = "numpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/6c/152c4c7831563488d360b2da03671631bb95431a19297a92178f65514cd5/hdbscan-0.8.43.tar.gz", hash = "sha256:cfe6e7e68f153c92cef3d19a86d29c1075f33774b1e97d284ba79b157506c8bb", size = 7089058, upload-time = "2026-05-13T03:09:18.567Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/f1/125d300380cde6761d84808670fa73153dc41c7ef742c90bcf838fce4a39/hdbscan-0.8.43-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:97a8f43c0081c5b15094234b5b854f92bdea2b93b8152c38e2f5ec69203177ab", size = 2559588, upload-time = "2026-05-13T03:08:30.054Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/2d/65a1f90f85f64888a55ad23353eed7f9fb41a26d84ea5774d5df8e6bad3c/hdbscan-0.8.43-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a3831c2c799360be302ddc011b9385ab1c836bcd3a4bea10cd91b7e4c0335d32", size = 5793238, upload-time = "2026-05-13T03:09:30.225Z" },
+    { url = "https://files.pythonhosted.org/packages/68/7a/13c7a3bb1c057c91ba68c19e3f4f87d59fde520f83dbdade88584f435cf1/hdbscan-0.8.43-cp313-cp313-win_amd64.whl", hash = "sha256:cbdf0d252c323fd76bc2fb656ed71ca5ed184494b9606d6dfb6f25fd7a2abbab", size = 1937269, upload-time = "2026-05-13T03:08:52.827Z" },
+    { url = "https://files.pythonhosted.org/packages/38/61/e72e1ca6f2c06bd463600c372cfeccbbda270307fed1df4d9f4c46b16f83/hdbscan-0.8.43-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:484f49639239bf57c58e7290da52ce6ba0ee87bf1212462523c4d6c1e631e104", size = 2582755, upload-time = "2026-05-13T03:08:26.208Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/57/ef6360710177243916be0aa611fa495d47f9e320a33f8d43c32bc0fef738/hdbscan-0.8.43-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0ef9de8ddffe492c42e6bacbef0f88c9828f4408ff29572d1fa5a9f30eb7929a", size = 5766844, upload-time = "2026-05-13T03:09:35.75Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/d2/366e699e1fcb77a80bfa779775ae9c6f80638bdda7bbbd2c29f3add28bcd/hdbscan-0.8.43-cp314-cp314-win_amd64.whl", hash = "sha256:a81473c09bd68aeecc7fdab3afb8f9f49cc6066843f5629bfe176271a2db3607", size = 1956593, upload-time = "2026-05-13T03:08:48.932Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.11"
 source = { registry = "https://pypi.org/simple" }
@@ -1674,6 +1694,7 @@ name = "shd"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "hdbscan" },
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "nbformat" },
@@ -1691,6 +1712,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "hdbscan", specifier = ">=0.8.43" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "nbformat", specifier = ">=5.10.4" },
