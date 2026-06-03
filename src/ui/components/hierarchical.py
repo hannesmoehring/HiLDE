@@ -103,9 +103,9 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
             char_fig, rules = precomputed[selected_cluster]
         else:
             extra_cols = [
-                c for c in df_with_clusters.columns
-                if c not in feature_columns and c not in {"row_id", "cluster"}
-                and pd.api.types.is_numeric_dtype(df_with_clusters[c])
+                c
+                for c in df_with_clusters.columns
+                if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_clusters[c])
             ]
             char_fig, rules = cluster_characteristics(
                 selected_cluster,
@@ -132,17 +132,16 @@ def render_hierarchical_sublevel(
 
     if cache_key not in cache:
         sub_df, sub_X = get_path_subset(df, X, parent_path)
-        snapshot = st.session_state.get("hclust_saved_config", {})
-        min_cluster_size = int(snapshot.get("min_cluster_size", 15))
+        min_cluster_size = int(st.session_state["hclust_min_cluster_size"])
 
         if len(sub_df) < min_cluster_size * 2:
             return None
 
         X_hc = sub_X.copy()
-        if snapshot.get("normalize", True):
+        if st.session_state["normalize"]:
             X_hc = StandardScaler().fit_transform(X_hc)
 
-        n_comp = min(int(snapshot.get("umap_n_components", 2)), sub_X.shape[1], len(sub_df) - 1)
+        n_comp = min(int(st.session_state["hclust_umap_n_components"]), sub_X.shape[1], len(sub_df) - 1)
         n_nbrs = min(30, len(sub_df) - 1)
 
         with st.spinner(f"Computing sub-clusters for layer {layer}…"):
@@ -152,7 +151,8 @@ def render_hierarchical_sublevel(
                 feature_columns,
                 n_components=n_comp,
                 n_neighbors=n_nbrs,
-                min_samples=int(snapshot.get("min_samples", 5)),
+                min_samples=int(st.session_state["hclust_min_samples"]),
+                min_dist=st.session_state["umap_min_dist"],
                 min_cluster_size=min_cluster_size,
             )
 
@@ -165,7 +165,7 @@ def render_hierarchical_sublevel(
             StandardScaler().fit_transform(sub_df[feature_columns].to_numpy()),
             columns=feature_columns,
         )
-        explore_method = str(snapshot.get("explore_method", "UMAP"))
+        explore_method = st.session_state["method"]
 
         with st.spinner(f"Rendering layer {layer} topography…"):
             sub_topo_fig = cluster_gauss_kde(
@@ -180,12 +180,12 @@ def render_hierarchical_sublevel(
             )
 
         sub_chars: dict[int, tuple] = {}
-        if snapshot.get("precompute", True):
+        if st.session_state["hclust_precompute"]:
             valid_ids = [int(cid) for cid in sub_layout_df["cluster"].unique() if int(cid) != -1]
             extra_cols = [
-                c for c in df_with_sub.columns
-                if c not in feature_columns and c not in {"row_id", "cluster"}
-                and pd.api.types.is_numeric_dtype(df_with_sub[c])
+                c
+                for c in df_with_sub.columns
+                if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_sub[c])
             ]
             with st.spinner(f"Precomputing layer {layer} characteristics…"):
                 for cid in valid_ids:
@@ -261,9 +261,9 @@ def render_hierarchical_sublevel(
                     columns=feature_columns,
                 )
                 extra_cols = [
-                    c for c in df_with_sub.columns
-                    if c not in feature_columns and c not in {"row_id", "cluster"}
-                    and pd.api.types.is_numeric_dtype(df_with_sub[c])
+                    c
+                    for c in df_with_sub.columns
+                    if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_sub[c])
                 ]
                 char_fig, rules = cluster_characteristics(
                     current_selection,

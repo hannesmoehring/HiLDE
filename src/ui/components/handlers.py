@@ -12,42 +12,10 @@ from src.ui.visualization import cluster_characteristics, cluster_gauss_kde
 _MIN_COMPONENTS_FOR_2D = 2
 
 
-def _hclust_snapshot() -> dict:
-    return {
-        "normalize": bool(st.session_state["hclust_normalize"]),
-        "umap_n_components": int(st.session_state["hclust_umap_n_components"]),
-        "min_samples": int(st.session_state["hclust_min_samples"]),
-        "min_cluster_size": int(st.session_state["hclust_min_cluster_size"]),
-        "explore_method": str(st.session_state["method"]),
-        "layers": int(st.session_state["hierarchical_layers"]),
-        "precompute": bool(st.session_state["hclust_precompute"]),
-    }
-
-
-def _explore_snapshot() -> dict:
-    snap: dict = {
-        "method": str(st.session_state["method"]),
-        "normalize": bool(st.session_state["normalize"]),
-    }
-    match snap["method"]:
-        case "PCA":
-            snap["pca_components"] = int(st.session_state["pca_components"])
-        case "t-SNE":
-            snap["tsne_perplexity"] = float(st.session_state["tsne_perplexity"])
-            snap["tsne_learning_rate"] = float(st.session_state["tsne_learning_rate"])
-            snap["tsne_random_state"] = int(st.session_state["tsne_random_state"])
-        case "UMAP":
-            snap["umap_n_neighbors"] = int(st.session_state["umap_n_neighbors"])
-            snap["umap_min_dist"] = float(st.session_state["umap_min_dist"])
-            snap["umap_random_state"] = int(st.session_state["umap_random_state"])
-    return snap
-
-
 def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: list[str]) -> None:
-    snapshot = _hclust_snapshot()
 
     X_hc = df[feature_columns].to_numpy()
-    if snapshot["normalize"]:
+    if st.session_state["normalize"]:
         X_hc = StandardScaler().fit_transform(X_hc)
 
     with st.spinner("Computing hierarchical clusters…"):
@@ -55,9 +23,11 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
             df,
             X_hc,
             feature_columns,
-            n_components=snapshot["umap_n_components"],
-            min_samples=snapshot["min_samples"],
-            min_cluster_size=snapshot["min_cluster_size"],
+            n_components=st.session_state["hclust_umap_n_components"],
+            min_samples=st.session_state["hclust_min_samples"],
+            min_cluster_size=st.session_state["hclust_min_cluster_size"],
+            min_dist=st.session_state["umap_min_dist"],
+            n_neighbors=st.session_state["umap_n_neighbors"],
         )
 
     st.session_state["hierarchical_layout_df"] = layout_df
@@ -88,20 +58,20 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
             df_with_clusters,
             X_scaled_hc,
             layout_df,
-            kde_dr_method=snapshot["explore_method"],
-            perplexity=st.session_state["tsne_perplexity"] if snapshot["explore_method"] == "t-SNE" else None,
-            learning_rate=st.session_state["tsne_learning_rate"] if snapshot["explore_method"] == "t-SNE" else None,
-            n_neighbors=st.session_state["umap_n_neighbors"] if snapshot["explore_method"] == "UMAP" else None,
-            min_dist=st.session_state["umap_min_dist"] if snapshot["explore_method"] == "UMAP" else None,
+            kde_dr_method=st.session_state["method"],
+            perplexity=st.session_state["tsne_perplexity"] if st.session_state["method"] == "t-SNE" else None,
+            learning_rate=st.session_state["tsne_learning_rate"] if st.session_state["method"] == "t-SNE" else None,
+            n_neighbors=st.session_state["umap_n_neighbors"] if st.session_state["method"] == "UMAP" else None,
+            min_dist=st.session_state["umap_min_dist"] if st.session_state["method"] == "UMAP" else None,
         )
     st.session_state["hclust_topo_fig"] = topo_fig
 
-    if snapshot["precompute"]:
+    if st.session_state["hclust_precompute"]:
         valid_ids = [int(cid) for cid in layout_df["cluster"].unique() if int(cid) != -1]
         extra_cols = [
-            c for c in df_with_clusters.columns
-            if c not in feature_columns and c not in {"row_id", "cluster"}
-            and pd.api.types.is_numeric_dtype(df_with_clusters[c])
+            c
+            for c in df_with_clusters.columns
+            if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_clusters[c])
         ]
         chars: dict[int, tuple] = {}
         with st.spinner(f"Precomputing characteristics for {len(valid_ids)} clusters…"):
@@ -115,25 +85,12 @@ def handle_hierarchical_save(df: pd.DataFrame, _X: np.ndarray, feature_columns: 
                 )
         st.session_state["hclust_characteristics"] = chars
 
-    st.session_state["hclust_saved_config"] = snapshot
-
 
 def handle_exploration_save(df: pd.DataFrame, X: np.ndarray, _feature_columns: list[str]) -> None:
-    snapshot = _explore_snapshot()
-    stack = st.session_state.get("hierarchical_selection_stack", [])
-    n_layers = int(st.session_state.get("hierarchical_layers", 1))
-
-    if len(stack) < n_layers:
-        st.session_state["explore_saved_config"] = snapshot
-        return
+    stack = st.session_state["hierarchical_selection_stack"]
+    n_layers = st.session_state["hierarchical_layers"]
 
     current_path = tuple(stack[:n_layers])
-    path_changed = st.session_state.get("cluster_path_for_embed") != current_path
-    config_changed = snapshot != st.session_state.get("explore_saved_config")
-
-    if not path_changed and not config_changed:
-        st.info("No changes — exploration config unchanged.")
-        return
 
     _sub_df, sub_X = get_path_subset(df, X, current_path)
 
@@ -151,5 +108,3 @@ def handle_exploration_save(df: pd.DataFrame, X: np.ndarray, _feature_columns: l
         st.session_state["cluster_pca_y_component"] = int(ordered[1])
 
     st.session_state["cluster_path_for_embed"] = current_path
-    st.session_state["cluster_selected_id_for_embed"] = stack[0]  # backward compat
-    st.session_state["explore_saved_config"] = snapshot

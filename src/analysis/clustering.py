@@ -39,12 +39,11 @@ def hierarchical_clustering(
     df: pd.DataFrame,
     X_scaled: np.ndarray,
     feature_cols: list[str],
-    *,
-    n_components: int = 10,
-    n_neighbors: int = 30,
-    min_dist: float = 0.0,
-    min_samples: int = 5,
-    min_cluster_size: int = 15,
+    n_components: int,
+    n_neighbors: int,
+    min_dist: float,
+    min_samples: int,
+    min_cluster_size: int,
 ) -> tuple[pd.DataFrame, np.ndarray, int, np.ndarray]:
 
     X_umap = reduce_dimensionality("UMAP", X=X_scaled, n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist)

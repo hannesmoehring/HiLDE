@@ -7,6 +7,8 @@ from sklearn.preprocessing import StandardScaler
 
 from src.analysis.clustering import compute_clusters
 from src.analysis.predicate_generator import generate_predicate
+from src.ui.components.handlers import handle_exploration_save
+from src.ui.components.pca import render_pca_controls, resolve_cluster_embedding_2d
 from src.ui.data import build_plot_df, compute_interactive_mask, export_selection, get_path_subset
 from src.ui.state import current_config, get_selected_indices
 from src.ui.visualization import make_feature_range_fig, make_scatter_fig
@@ -120,15 +122,13 @@ def render_cluster_exploration(
     feature_columns: list[str],
     selection_path: tuple[int, ...],
 ) -> None:
-    from src.ui.components.handlers import handle_exploration_save
-    from src.ui.components.pca import render_pca_controls, resolve_cluster_embedding_2d
 
     path_label = " → ".join(f"C{c}" for c in selection_path)
     st.subheader(f"Exploration — {path_label}")
 
     # Auto-compute when the selection path changes
-    path_switched = st.session_state.get("cluster_path_for_embed") != selection_path
-    if st.session_state.get("explore_saved_config") is not None and path_switched:
+    path_switched = st.session_state["cluster_path_for_embed"] != selection_path
+    if path_switched:
         handle_exploration_save(df, X, feature_columns)
 
     if st.session_state["cluster_embedding_full"].size == 0:
