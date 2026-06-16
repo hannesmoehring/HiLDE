@@ -2,49 +2,33 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from scipy.stats import gaussian_kde
 
+from src.analysis.analysis_routine import HierarchyObject
 from src.analysis.characteristics import fit_cluster_decision_tree
-from src.analysis.dim_reducer import reduce_dimensionality
+from src.ui.tree_nav import child_size
 
 PCA_VARIANCE_LABEL_THRESHOLD = 4.0
 
+_KDE_GRID = np.linspace(-0.5, 0.5, 60)
 
-def cluster_gauss_kde(
-    df_points: pd.DataFrame,
-    X_scaled_df: pd.DataFrame,
-    layout_df: pd.DataFrame,
-    kde_dr_method: str,
-    **kwargs,
-) -> go.Figure:
-    centroids_2d = layout_df[["x", "y"]].to_numpy()
-    size_map = layout_df.set_index("cluster")["size"]
+
+def cluster_gauss_kde(node: HierarchyObject) -> go.Figure:
+    children = node["next_object_layer"] or []
+    sizes = [child_size(c) for c in children]
+    max_size = max(sizes) if sizes else 1
 
     fig = go.Figure()
 
-    for i, c in enumerate(layout_df["cluster"]):
-        pts = X_scaled_df.loc[df_points["cluster"] == c].to_numpy()
+    for i, child in enumerate(children):
+        Z = child["kde"]
+        if Z is None:
+            continue
+        cx, cy = child["rel_position"] or (0.0, 0.0)
+        size = sizes[i]
 
-        pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **kwargs)
-
-        # KDE on the local 2D points
-        kde = gaussian_kde(pts_2d.T, bw_method="scott")
-        pad = 0.5 * pts_2d.std(axis=0).max()
-        lx_min, lx_max = pts_2d[:, 0].min() - pad, pts_2d[:, 0].max() + pad
-        ly_min, ly_max = pts_2d[:, 1].min() - pad, pts_2d[:, 1].max() + pad
-        lx = np.linspace(lx_min, lx_max, 60)
-        ly = np.linspace(ly_min, ly_max, 60)
-        LX, LY = np.meshgrid(lx, ly)
-        Z = kde(np.vstack([LX.ravel(), LY.ravel()])).reshape(LX.shape)
-
-        # scale the local footprint and place at the cluster's MDS position
-        cx, cy = centroids_2d[i]
-        local_extent = max(lx_max - lx_min, ly_max - ly_min)
-        target_size = 0.8 * np.sqrt(size_map[c] / size_map.max()) + 0.3  # tunable
-        scale = target_size / local_extent
-
-        plot_x = (lx - (lx_min + lx_max) / 2) * scale + cx
-        plot_y = (ly - (ly_min + ly_max) / 2) * scale + cy
+        target_size = 0.8 * np.sqrt(size / max_size) + 0.3
+        plot_x = _KDE_GRID * target_size + cx
+        plot_y = _KDE_GRID * target_size + cy
 
         fig.add_trace(
             go.Contour(
@@ -59,74 +43,98 @@ def cluster_gauss_kde(
             ),
         )
 
-    # clickable centroid markers — Plotly selection events fire on Scatter traces only
+    # clickable centroid markers — index i maps directly to next_object_layer[i]
     fig.add_trace(
         go.Scatter(
-            x=layout_df["x"],
-            y=layout_df["y"],
+            x=[c["rel_position"][0] if c["rel_position"] else 0.0 for c in children],
+            y=[c["rel_position"][1] if c["rel_position"] else 0.0 for c in children],
             mode="markers+text",
             marker={"size": 18, "color": "white", "opacity": 0.7, "line": {"width": 2, "color": "black"}},
-            text=[f"C{c}" for c in layout_df["cluster"]],
+            text=[f"C{i}" for i in range(len(children))],
             textposition="top center",
-            customdata=layout_df[["cluster", "size"]].to_numpy(),
+            customdata=[[i, sizes[i]] for i in range(len(children))],
             hovertemplate="<b>Cluster %{customdata[0]}</b><br>Size: %{customdata[1]}<extra></extra>",
             name="clusters",
             showlegend=False,
-        )
+        ),
     )
 
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
     fig.update_layout(
-        title="Cluster topography — global MDS layout, local KDE per cluster",
+        title="Cluster topography — MDS layout, pre-computed KDE per cluster",
         plot_bgcolor="white",
     )
-
     return fig
 
 
-def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_cols: list[str] | None = None, tree_depth: int = 3):
-    in_cluster = df["cluster"] == cluster_id
-    pts = X_scaled_df.loc[in_cluster, feature_cols]
+_DEFAULT_TREE_DEPTH = 3
 
-    z_mean = pts.mean()
-    z_std = pts.std()
-    raw_mean = df.loc[in_cluster, feature_cols].mean()
-    order = sorted(feature_cols)
-    z_mean, z_std = z_mean[order], z_std[order]
-    raw_mean = raw_mean[order]
+
+def cluster_characteristics_fig(
+    characteristics: pd.DataFrame,
+    n_points: int,
+    df: pd.DataFrame,
+    row_indices: np.ndarray,
+    feature_cols: list[str],
+) -> tuple[go.Figure, str]:
+    order = characteristics.index.tolist()
+    z_mean = characteristics["z_mean"]
+    z_std = characteristics["z_std"]
+    raw_mean = characteristics["raw_mean"]
+
+    extra_cols = [
+        c for c in df.columns
+        if c not in feature_cols and c not in {"row_id"} and pd.api.types.is_numeric_dtype(df[c])
+    ]
 
     fig = go.Figure()
-
     fig.add_hline(y=0, line_dash="dot", line_color="gray", opacity=0.6)
     fig.add_trace(
         go.Bar(
             x=order,
-            y=z_mean.to_numpy(),
-            customdata=raw_mean.to_numpy(),
-            error_y={"type": "data", "array": z_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
-            marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean],
-            hovertemplate="<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>",
+            y=z_mean[order].to_numpy(),
+            customdata=raw_mean[order].to_numpy(),
+            error_y={
+                "type": "data",
+                "array": z_std[order].to_numpy(),
+                "visible": True,
+                "color": "rgba(0,0,0,0.35)",
+                "thickness": 1.5,
+            },
+            marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean[order]],
+            hovertemplate=(
+                "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
+                "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+            ),
             name="feature cols",
-            showlegend=bool(extra_cols),
-        )
+            showlegend=len(extra_cols) > 0,
+        ),
     )
 
     if extra_cols:
         extra_order = sorted(extra_cols)
+        cluster_rows = df.iloc[row_indices]
         g_mean = df[extra_order].mean()
         g_std = df[extra_order].std().replace(0, 1)
-        c_mean = df.loc[in_cluster, extra_order].mean()
-        c_std = df.loc[in_cluster, extra_order].std()
+        c_mean = cluster_rows[extra_order].mean()
+        c_std = cluster_rows[extra_order].std()
         ez_mean = (c_mean - g_mean) / g_std
         fig.add_trace(
             go.Bar(
                 x=extra_order,
                 y=ez_mean.to_numpy(),
                 customdata=c_mean.to_numpy(),
-                error_y={"type": "data", "array": c_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
+                error_y={
+                    "type": "data",
+                    "array": c_std.to_numpy(),
+                    "visible": True,
+                    "color": "rgba(0,0,0,0.35)",
+                    "thickness": 1.5,
+                },
                 marker_color=["darkorange" if v < 0 else "mediumseagreen" for v in ez_mean],
                 hovertemplate=(
-                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>"
+                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
+                    "<br>cluster mean: %{customdata:.2f}<extra></extra>"
                 ),
                 name="analysis cols",
                 showlegend=True,
@@ -134,15 +142,16 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_col
         )
 
     fig.update_layout(
-        title=f"Cluster {cluster_id}  •  n={in_cluster.sum()}",
+        title=f"Cluster characteristics  •  n={n_points}",
         yaxis_title="z-score vs. global mean",
         xaxis_tickangle=-40,
         height=520,
         barmode="group",
     )
 
-    # predicate rules — train on ORIGINAL units so thresholds are interpretable
-    rules = fit_cluster_decision_tree(df, feature_cols, in_cluster, tree_depth)
+    in_cluster = pd.Series(data=False, index=df.index)
+    in_cluster.iloc[row_indices] = True
+    rules = fit_cluster_decision_tree(df, feature_cols, in_cluster, _DEFAULT_TREE_DEPTH)
 
     return fig, rules
 
@@ -165,7 +174,7 @@ def make_scatter_fig(
             color="interactive_group",
             color_discrete_map={"Matches filters": "#1f77b4", "Other": "#bdbdbd"},
             symbol="cluster_label",
-            hover_data=["row_id"],  # quality was here make it configurable?
+            hover_data=["row_id"],
             title=f"{method} projection - interactive filters + clusters in original space",
             height=700,
         )

@@ -9,8 +9,9 @@ from src.analysis.clustering import compute_clusters
 from src.analysis.predicate_generator import generate_predicate
 from src.ui.components.handlers import handle_exploration_save
 from src.ui.components.pca import render_pca_controls, resolve_cluster_embedding_2d
-from src.ui.data import build_plot_df, compute_interactive_mask, export_selection, get_path_subset
+from src.ui.data import build_plot_df, compute_interactive_mask, export_selection
 from src.ui.state import current_config, get_selected_indices
+from src.ui.tree_nav import get_node_at_path
 from src.ui.visualization import make_feature_range_fig, make_scatter_fig
 
 
@@ -45,7 +46,7 @@ def compute_data_layer(
 
     interactive_mode = bool(st.session_state["interactive_ranges_mode"])
     interactive_mask = compute_interactive_mask(X_scaled_df, feature_columns) if interactive_mode else None
-    assert not isinstance(cluster_labels, tuple)  # yeah yeah i know
+    assert not isinstance(cluster_labels, tuple)
     plot_df = build_plot_df(df, embedding_2d, cluster_labels, interactive_mask)
     st.session_state.plot_df = plot_df
 
@@ -118,24 +119,28 @@ def _update_selection(event: object, plot_df: pd.DataFrame, *, interactive_mode:
 
 def render_cluster_exploration(
     df: pd.DataFrame,
-    X: np.ndarray,
     feature_columns: list[str],
     selection_path: tuple[int, ...],
 ) -> None:
-
     path_label = " → ".join(f"C{c}" for c in selection_path)
     st.subheader(f"Exploration — {path_label}")
 
-    # Auto-compute when the selection path changes
     path_switched = st.session_state["cluster_path_for_embed"] != selection_path
     if path_switched:
-        handle_exploration_save(df, X, feature_columns)
+        handle_exploration_save()
 
     if st.session_state["cluster_embedding_full"].size == 0:
         st.info("Save the exploration config above to compute the embedding.")
         return
 
-    sub_df, sub_X = get_path_subset(df, X, selection_path)
+    # Get the leaf node from the tree to recover original df rows and feature data
+    root = st.session_state.get("analysis_tree")
+    if root is None:
+        return
+    leaf = get_node_at_path(root, list(selection_path))
+    sub_X = leaf.get("exploration_points") if "is_leaf" in leaf else leaf.get("cluster_points")  # type: ignore[union-attr]
+    row_indices = leaf["row_indices"]  # type: ignore[index]
+    sub_df = df.iloc[row_indices].reset_index(drop=True)
 
     resolved = resolve_cluster_embedding_2d()
     if resolved is None:

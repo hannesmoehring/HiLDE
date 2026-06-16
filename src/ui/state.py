@@ -19,8 +19,6 @@ class ReductionConfig(TypedDict):
     umap_n_neighbors: int
     umap_min_dist: float
     umap_random_state: int
-    hierarchical_mode: bool
-    hierarchical_layers: int
 
 
 def init_state() -> None:
@@ -35,33 +33,24 @@ def init_state() -> None:
         "interactive_ranges_mode": False,
         "interactive_features": [],
         "clusters_in_original_space": False,
-        "cluster_method": "KMeans",  # TODO DBScan better?
+        "cluster_method": "KMeans",
         "cluster_n_clusters": 5,
         "cluster_labels": np.array([], dtype=int),
-        "hierarchical_layout_df": None,
-        "hierarchical_labels": None,
         "hierarchical_mode": True,
         "hierarchical_layers": 1,
-        "selected_cluster_id": None,
         # hierarchical config panel
         "hclust_normalize": True,
-        "hclust_umap_n_components": 2,
         "hclust_min_samples": 5,
         "hclust_min_cluster_size": 15,
-        "hclust_saved_config": None,
-        "hclust_precompute": True,
-        "hclust_topo_fig": None,
-        "hclust_characteristics": {},
-        # multi-layer drill-down state
-        "hierarchical_selection_stack": [],
-        "hierarchical_sublevel_cache": {},
+        # pre-computed analysis tree + navigation path
+        "analysis_tree": None,
+        "tree_path": [],
         "cluster_path_for_embed": (),
         # cluster-level exploration embedding
         "cluster_embedding_full": np.empty((0, 0), dtype=float),
         "cluster_explained_variance": np.array([], dtype=float),
         "cluster_pca_x_component": 0,
         "cluster_pca_y_component": 1,
-        "cluster_selected_id_for_embed": None,
         "method": "UMAP",
         "normalize": True,
         "pca_components": 4,
@@ -73,7 +62,6 @@ def init_state() -> None:
         "umap_n_neighbors": 15,
         "umap_min_dist": 0.1,
         "umap_random_state": 42,
-        "explore_saved_config": None,
     }
 
     for key, value in defaults.items():
@@ -94,8 +82,6 @@ def current_config() -> ReductionConfig:
         "umap_n_neighbors": st.session_state["umap_n_neighbors"],
         "umap_min_dist": st.session_state["umap_min_dist"],
         "umap_random_state": st.session_state["umap_random_state"],
-        "hierarchical_mode": st.session_state["hierarchical_mode"],
-        "hierarchical_layers": st.session_state["hierarchical_layers"],
     }
 
 

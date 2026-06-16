@@ -10,16 +10,20 @@ def compute_cluster_kde(
     pts: np.ndarray,
     kde_dr_method: str,
     config: dict,  # type: ignore[type-arg]
-) -> gaussian_kde:
+) -> np.ndarray:
     pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **config)  # type: ignore[arg-type]
 
     kde = gaussian_kde(pts_2d.T, bw_method="scott")
     pad = 0.5 * pts_2d.std(axis=0).max()
     lx_min, lx_max = pts_2d[:, 0].min() - pad, pts_2d[:, 0].max() + pad
     ly_min, ly_max = pts_2d[:, 1].min() - pad, pts_2d[:, 1].max() + pad
-    lx = np.linspace(lx_min, lx_max, 60)
-    ly = np.linspace(ly_min, ly_max, 60)
-    LX, LY = np.meshgrid(lx, ly)
+
+    # Normalised grid [-0.5, 0.5] so callers can scale/position using rel_position + cluster size
+    lx_norm = np.linspace(-0.5, 0.5, 60)
+    ly_norm = np.linspace(-0.5, 0.5, 60)
+    lx_actual = lx_norm * (lx_max - lx_min) + (lx_min + lx_max) / 2
+    ly_actual = ly_norm * (ly_max - ly_min) + (ly_min + ly_max) / 2
+    LX, LY = np.meshgrid(lx_actual, ly_actual)
     return kde(np.vstack([LX.ravel(), LY.ravel()])).reshape(LX.shape)
 
 

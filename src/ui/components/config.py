@@ -7,7 +7,6 @@ def render_hierarchical_config(max_dims: int) -> None:
     c1, c2 = st.columns([1, 2])
     with c1:
         st.checkbox("Normalize (StandardScaler)", key="hclust_normalize")
-        st.checkbox("Precompute characteristics", key="hclust_precompute")
         st.number_input(
             "Hierarchical levels deep",
             min_value=1,
@@ -16,12 +15,6 @@ def render_hierarchical_config(max_dims: int) -> None:
             key="hierarchical_layers",
         )
     with c2:
-        st.slider(
-            "UMAP precompute dims (before HDBSCAN)",
-            min_value=2,
-            max_value=max_dims,
-            key="hclust_umap_n_components",
-        )
         c2a, c2b = st.columns(2)
         with c2a:
             st.number_input(

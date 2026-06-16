@@ -3,29 +3,33 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sklearn.preprocessing import StandardScaler
 
-from src.ui.data import get_path_subset, run_hierarchical_clustering
+from src.analysis.analysis_routine import HierarchyObject
 from src.ui.state import get_selected_indices
-from src.ui.visualization import cluster_characteristics, cluster_gauss_kde
+from src.ui.tree_nav import child_size, get_node_at_path
+from src.ui.visualization import cluster_characteristics_fig, cluster_gauss_kde
 
 
-def _render_glosh_column(h_labels: np.ndarray) -> None:
+def _render_glosh_column(node: HierarchyObject) -> None:
     st.markdown("**Outliers GLOSH**")
-    glosh_scores = st.session_state.get("hierarchical_glosh_scores")
-    if glosh_scores is None:
+    scores = node.get("outlier_scores")
+    if scores is None:
+        st.caption("No outlier scores available.")
         return
-    outlier_mask = h_labels == -1
-    if not outlier_mask.any():
+
+    children = node.get("next_object_layer") or []
+    n_in_clusters = sum(child_size(c) for c in children)
+    n_outliers = node["cluster_points"].shape[0] - n_in_clusters
+
+    if n_outliers <= 0:
         st.caption("No outlier points detected.")
         return
-    outlier_scores = glosh_scores[outlier_mask]
-    st.caption(
-        f"min: {outlier_scores.min():.3f}  median: {float(np.median(outlier_scores)):.3f}  max: {outlier_scores.max():.3f}",
-    )
+
+    st.caption(f"Outlier points: {n_outliers}  |  score min: {scores.min():.3f}  median: {float(np.median(scores)):.3f}  max: {scores.max():.3f}")
     top_n = (
-        pd.DataFrame({"row": np.where(outlier_mask)[0], "glosh": glosh_scores[outlier_mask]})
+        pd.DataFrame({"row": np.arange(len(scores)), "glosh": scores})
         .sort_values("glosh", ascending=False)
+        .head(20)
         .reset_index(drop=True)
     )
     st.dataframe(top_n, hide_index=True)
@@ -34,48 +38,31 @@ def _render_glosh_column(h_labels: np.ndarray) -> None:
 def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) -> None:
     st.subheader("Hierarchical Cluster Topography (HDBSCAN)")
 
-    h_layout_df = st.session_state.get("hierarchical_layout_df")
-    h_labels = st.session_state.get("hierarchical_labels")
-
-    if h_layout_df is None or h_labels is None:
+    root = st.session_state.get("analysis_tree")
+    if root is None or "is_leaf" in root:
         st.info("Save the hierarchical config above to compute clusters.")
         return
 
-    n_outliers = st.session_state["hierarchical_n_outliers"]
+    children = root["next_object_layer"] or []
+    sizes = [child_size(c) for c in children]
+    n_in_clusters = sum(sizes)
+    n_outliers = root["cluster_points"].shape[0] - n_in_clusters
 
     c1, c2, c3 = st.columns([1, 1, 1])
     with c1:
         st.markdown("**Information**")
-        st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / len(df):.2%}")
-        st.text(f"Clusters found: {len(h_layout_df):,}, number of points in cluster: {h_layout_df[['cluster', 'size']]['size'].sum():,}")
+        st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / max(root['cluster_points'].shape[0], 1):.2%}")
+        st.text(f"Clusters found: {len(children):,}, points in clusters: {n_in_clusters:,}")
 
     with c2:
         st.markdown("**Cluster size distribution**")
-        st.dataframe(
-            h_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
-            hide_index=True,
-        )
+        size_df = pd.DataFrame({"cluster": range(len(children)), "size": sizes}).sort_values("size", ascending=False).reset_index(drop=True)
+        st.dataframe(size_df, hide_index=True)
 
     with c3:
-        _render_glosh_column(h_labels)
+        _render_glosh_column(root)
 
-    df_with_clusters = df.copy()
-    df_with_clusters["cluster"] = h_labels
-    X_scaled_hc = pd.DataFrame(
-        StandardScaler().fit_transform(df[feature_columns].to_numpy()),
-        columns=feature_columns,
-    )
-
-    topo_fig = st.session_state.get("hclust_topo_fig")
-    if topo_fig is None:
-        with st.spinner("Rendering cluster topography…"):
-            topo_fig = cluster_gauss_kde(
-                df_with_clusters,
-                X_scaled_hc,
-                h_layout_df,
-                kde_dr_method=str(st.session_state["method"]),
-            )
-        st.session_state["hclust_topo_fig"] = topo_fig
+    topo_fig = cluster_gauss_kde(root)
     topo_fig.update_layout(height=650)
 
     topo_col, char_col = st.columns([1, 1])
@@ -89,31 +76,26 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         )
 
     clicked = get_selected_indices(topo_event)
-    if clicked:
-        st.session_state["selected_cluster_id"] = int(h_layout_df["cluster"].iloc[clicked[0]])
+    if clicked and clicked[0] < len(children):
+        st.session_state["tree_path"] = [clicked[0]]
 
-    selected_cluster = st.session_state.get("selected_cluster_id")
+    tree_path: list[int] = st.session_state.get("tree_path", [])
+    selected_idx = tree_path[0] if tree_path else None
+
     with char_col:
-        if selected_cluster is None:
+        if selected_idx is None:
             st.info("Click a cluster on the topography map to explore its characteristics.")
             return
-        st.markdown(f"**Cluster {selected_cluster}** — n={int((h_labels == selected_cluster).sum())} points")
-        precomputed = st.session_state.get("hclust_characteristics", {})
-        if selected_cluster in precomputed:
-            char_fig, rules = precomputed[selected_cluster]
-        else:
-            extra_cols = [
-                c
-                for c in df_with_clusters.columns
-                if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_clusters[c])
-            ]
-            char_fig, rules = cluster_characteristics(
-                selected_cluster,
-                df_with_clusters,
-                X_scaled_hc[feature_columns],
-                feature_columns,
-                extra_cols=extra_cols,
-            )
+        child = children[selected_idx]
+        n_pts = child_size(child)
+        st.markdown(f"**Cluster {selected_idx}** — n={n_pts} points")
+        char_fig, rules = cluster_characteristics_fig(
+            child["rel_characteristics"],
+            n_pts,
+            df,
+            child["row_indices"],
+            feature_columns,
+        )
         char_fig.update_layout(height=620)
         st.plotly_chart(char_fig, width="stretch")
         with st.expander("Decision tree rules"):
@@ -122,111 +104,45 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
 
 def render_hierarchical_sublevel(
     df: pd.DataFrame,
-    X: np.ndarray,
     feature_columns: list[str],
-    parent_path: tuple[int, ...],
     layer: int,
 ) -> int | None:
-    cache_key = str(parent_path)
-    cache: dict = st.session_state.setdefault("hierarchical_sublevel_cache", {})
+    root = st.session_state.get("analysis_tree")
+    if root is None:
+        return None
 
-    if cache_key not in cache:
-        sub_df, sub_X = get_path_subset(df, X, parent_path)
-        min_cluster_size = int(st.session_state["hclust_min_cluster_size"])
+    tree_path: list[int] = st.session_state.get("tree_path", [])
+    parent_path = tree_path[: layer - 1]
+    parent_node = get_node_at_path(root, parent_path)
 
-        if len(sub_df) < min_cluster_size * 2:
-            return None
+    if "is_leaf" in parent_node:
+        return None
 
-        X_hc = sub_X.copy()
-        if st.session_state["normalize"]:
-            X_hc = StandardScaler().fit_transform(X_hc)
+    children = parent_node["next_object_layer"] or []
+    if not children:
+        return None
 
-        n_comp = min(int(st.session_state["hclust_umap_n_components"]), sub_X.shape[1], len(sub_df) - 1)
-        n_nbrs = min(30, len(sub_df) - 1)
+    sizes = [child_size(c) for c in children]
+    n_in_clusters = sum(sizes)
+    n_parent = parent_node["cluster_points"].shape[0]
+    n_outliers = n_parent - n_in_clusters
 
-        with st.spinner(f"Computing sub-clusters for layer {layer}…"):
-            sub_layout_df, sub_h_labels, sub_n_outliers, _sub_glosh = run_hierarchical_clustering(
-                sub_df,
-                X_hc,
-                feature_columns,
-                n_components=n_comp,
-                n_neighbors=n_nbrs,
-                min_samples=int(st.session_state["hclust_min_samples"]),
-                min_dist=st.session_state["umap_min_dist"],
-                min_cluster_size=min_cluster_size,
-            )
-
-        if sub_layout_df.empty:
-            return None
-
-        df_with_sub = sub_df.copy()
-        df_with_sub["cluster"] = sub_h_labels
-        X_scaled_vis = pd.DataFrame(
-            StandardScaler().fit_transform(sub_df[feature_columns].to_numpy()),
-            columns=feature_columns,
-        )
-        explore_method = st.session_state["method"]
-
-        with st.spinner(f"Rendering layer {layer} topography…"):
-            sub_topo_fig = cluster_gauss_kde(
-                df_with_sub,
-                X_scaled_vis,
-                sub_layout_df,
-                kde_dr_method=explore_method,
-                perplexity=st.session_state.get("tsne_perplexity") if explore_method == "t-SNE" else None,
-                learning_rate=st.session_state.get("tsne_learning_rate") if explore_method == "t-SNE" else None,
-                n_neighbors=st.session_state.get("umap_n_neighbors") if explore_method == "UMAP" else None,
-                min_dist=st.session_state.get("umap_min_dist") if explore_method == "UMAP" else None,
-            )
-
-        sub_chars: dict[int, tuple] = {}
-        if st.session_state["hclust_precompute"]:
-            valid_ids = [int(cid) for cid in sub_layout_df["cluster"].unique() if int(cid) != -1]
-            extra_cols = [
-                c
-                for c in df_with_sub.columns
-                if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_sub[c])
-            ]
-            with st.spinner(f"Precomputing layer {layer} characteristics…"):
-                for cid in valid_ids:
-                    sub_chars[cid] = cluster_characteristics(cid, df_with_sub, X_scaled_vis[feature_columns], feature_columns, extra_cols=extra_cols)
-
-        cache[cache_key] = {
-            "layout_df": sub_layout_df,
-            "h_labels": sub_h_labels,
-            "n_outliers": sub_n_outliers,
-            "topo_fig": sub_topo_fig,
-            "characteristics": sub_chars,
-        }
-
-    cached = cache[cache_key]
-    sub_layout_df = cached["layout_df"]
-    sub_h_labels = cached["h_labels"]
-    sub_n_outliers = cached["n_outliers"]
-    sub_topo_fig = cached["topo_fig"]
-    sub_chars = cached["characteristics"]
-
-    sub_df_full, _ = get_path_subset(df, X, parent_path)
-    n_parent = len(sub_df_full)
-
-    st.subheader(f"Layer {layer} Sub-Cluster Topography — parent path {parent_path}")
+    st.subheader(f"Layer {layer} Sub-Cluster Topography — parent path {tuple(parent_path)}")
     st.text(f"Points in parent cluster: {n_parent:,}")
-    st.text(f"Outliers (noise points): {sub_n_outliers}, ratio: {sub_n_outliers / n_parent:.2%}")
-    st.text(
-        f"Sub-clusters found: {len(sub_layout_df):,}, points in sub-clusters: {sub_layout_df['size'].sum():,}",
-    )
-    st.dataframe(
-        sub_layout_df[["cluster", "size"]].sort_values("size", ascending=False).reset_index(drop=True),
-        hide_index=True,
-    )
+    st.text(f"Outliers (noise points): {n_outliers}, ratio: {n_outliers / max(n_parent, 1):.2%}")
+    st.text(f"Sub-clusters found: {len(children):,}, points in sub-clusters: {n_in_clusters:,}")
+    size_df = pd.DataFrame({"cluster": range(len(children)), "size": sizes}).sort_values("size", ascending=False).reset_index(drop=True)
+    st.dataframe(size_df, hide_index=True)
 
-    sub_topo_fig.update_layout(height=650)
+    topo_fig = cluster_gauss_kde(parent_node)
+    topo_fig.update_layout(height=650)
+
     topo_col, char_col = st.columns([1, 1])
-    chart_key = f"hierarchical_topo_plot_layer_{layer}_{parent_path}"
+    chart_key = f"hierarchical_topo_plot_layer_{layer}_{tuple(parent_path)}"
 
     with topo_col:
         topo_event = st.plotly_chart(
-            sub_topo_fig,
+            topo_fig,
             key=chart_key,
             width="stretch",
             on_select="rerun",
@@ -234,47 +150,33 @@ def render_hierarchical_sublevel(
         )
 
     clicked = get_selected_indices(topo_event)
-    if clicked:
-        new_id = int(sub_layout_df["cluster"].iloc[clicked[0]])
-        full_idx = layer - 1
-        stack = list(st.session_state.get("hierarchical_selection_stack", []))
-        stack = stack[:full_idx]
-        stack.append(new_id)
-        st.session_state["hierarchical_selection_stack"] = stack
+    if clicked and clicked[0] < len(children):
+        new_idx = clicked[0]
+        stack = list(tree_path)
+        stack = stack[: layer - 1]
+        stack.append(new_idx)
+        st.session_state["tree_path"] = stack
+        tree_path = stack
 
-    stack = st.session_state.get("hierarchical_selection_stack", [])
-    full_idx = layer - 1
-    current_selection: int | None = stack[full_idx] if len(stack) > full_idx else None
+    current_idx = tree_path[layer - 1] if len(tree_path) >= layer else None
 
     with char_col:
-        if current_selection is None:
+        if current_idx is None:
             st.info(f"Click a sub-cluster in layer {layer} to continue drilling down.")
         else:
-            st.markdown(f"**Sub-cluster {current_selection}** — n={int((sub_h_labels == current_selection).sum())} points")
-            if current_selection in sub_chars:
-                char_fig, rules = sub_chars[current_selection]
-            else:
-                df_with_sub = sub_df_full.copy()
-                df_with_sub["cluster"] = sub_h_labels
-                X_scaled_vis = pd.DataFrame(
-                    StandardScaler().fit_transform(sub_df_full[feature_columns].to_numpy()),
-                    columns=feature_columns,
-                )
-                extra_cols = [
-                    c
-                    for c in df_with_sub.columns
-                    if c not in feature_columns and c not in {"row_id", "cluster"} and pd.api.types.is_numeric_dtype(df_with_sub[c])
-                ]
-                char_fig, rules = cluster_characteristics(
-                    current_selection,
-                    df_with_sub,
-                    X_scaled_vis[feature_columns],
-                    feature_columns,
-                    extra_cols=extra_cols,
-                )
+            child = children[current_idx]
+            n_pts = child_size(child)
+            st.markdown(f"**Sub-cluster {current_idx}** — n={n_pts} points")
+            char_fig, rules = cluster_characteristics_fig(
+                child["rel_characteristics"],
+                n_pts,
+                df,
+                child["row_indices"],
+                feature_columns,
+            )
             char_fig.update_layout(height=620)
             st.plotly_chart(char_fig, width="stretch")
             with st.expander("Decision tree rules"):
                 st.code(rules)
 
-    return current_selection
+    return current_idx
