@@ -42,9 +42,9 @@ def fit_dimensionality_reducer(
     normalize: bool = True,
     **kwargs: object,
 ) -> ReductionResult:
-    if normalize:
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X)
+    # if normalize:
+    #     scaler = StandardScaler()
+    #     X = scaler.fit_transform(X)
 
     match method.lower():
         case "pca":
@@ -59,7 +59,7 @@ def fit_dimensionality_reducer(
                 n_components=n_components,
                 n_init=8,
                 normalized_stress="auto",
-                dissimilarity="euclidean",
+                metric="euclidean",
                 # n_init=kwargs["n_init"],
                 # normalized_stress=kwargs["normalized_stress"],
                 # dissimilarity=kwargs["dissimilarity"],

@@ -1,7 +1,63 @@
-from __future__ import annotations
-
+import numpy as np
 import pandas as pd
+from scipy.stats import gaussian_kde
 from sklearn.tree import DecisionTreeClassifier, export_text
+
+from src.analysis.dim_reducer import reduce_dimensionality
+
+
+def compute_cluster_kde(
+    pts: np.ndarray,
+    kde_dr_method: str,
+    config: dict,  # type: ignore[type-arg]
+) -> gaussian_kde:
+    pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **config)  # type: ignore[arg-type]
+
+    kde = gaussian_kde(pts_2d.T, bw_method="scott")
+    pad = 0.5 * pts_2d.std(axis=0).max()
+    lx_min, lx_max = pts_2d[:, 0].min() - pad, pts_2d[:, 0].max() + pad
+    ly_min, ly_max = pts_2d[:, 1].min() - pad, pts_2d[:, 1].max() + pad
+    lx = np.linspace(lx_min, lx_max, 60)
+    ly = np.linspace(ly_min, ly_max, 60)
+    LX, LY = np.meshgrid(lx, ly)
+    return kde(np.vstack([LX.ravel(), LY.ravel()])).reshape(LX.shape)
+
+
+def compute_cluster_characteristics(
+    cluster_id: int,
+    df: pd.DataFrame,
+    X_scaled_df: pd.DataFrame,
+    feature_cols: list[str],
+    extra_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    """Returns a DataFrame indexed by column name with z_mean, z_std, raw_mean."""
+    in_cluster = df["cluster"] == cluster_id
+    order = sorted(feature_cols)
+    pts = X_scaled_df.loc[in_cluster, feature_cols]
+
+    rows = pd.DataFrame(
+        {
+            "z_mean": pts.mean()[order],
+            "z_std": pts.std()[order],
+            "raw_mean": df.loc[in_cluster, feature_cols].mean()[order],
+        },
+    )
+
+    if extra_cols:
+        extra_order = sorted(extra_cols)
+        g_mean = df[extra_order].mean()
+        g_std = df[extra_order].std().replace(0, 1)
+        c_mean = df.loc[in_cluster, extra_order].mean()
+        extra_rows = pd.DataFrame(
+            {
+                "z_mean": (c_mean - g_mean) / g_std,
+                "z_std": df.loc[in_cluster, extra_order].std(),
+                "raw_mean": c_mean,
+            },
+        )
+        rows = pd.concat([rows, extra_rows])
+
+    return rows
 
 
 def fit_cluster_decision_tree(
