@@ -46,20 +46,23 @@ def fit_dimensionality_reducer(
         scaler = StandardScaler()
         X = scaler.fit_transform(X)
 
-    match method:
-        case "PCA":
+    match method.lower():
+        case "pca":
             return _pca(X, n_components=n_components)
-        case "t-SNE":
+        case "t-sne":
             return _tsne(X, n_components=n_components, perplexity=kwargs["perplexity"], learning_rate=kwargs["learning_rate"])
-        case "UMAP":
+        case "umap":
             return _umap(X, n_components=n_components, n_neighbors=kwargs["n_neighbors"], min_dist=kwargs["min_dist"])
-        case "MDS":
+        case "mds":
             return _mds(
                 X,
                 n_components=n_components,
-                n_init=kwargs["n_init"],
-                normalized_stress=kwargs["normalized_stress"],
-                dissimilarity=kwargs["dissimilarity"],
+                n_init=8,
+                normalized_stress="auto",
+                dissimilarity="euclidean",
+                # n_init=kwargs["n_init"],
+                # normalized_stress=kwargs["normalized_stress"],
+                # dissimilarity=kwargs["dissimilarity"],
             )
         case _:
             raise ValueError(f"Unknown dimensionality reduction method: {method}")

@@ -56,7 +56,7 @@ def cluster_gauss_kde(
                 contours={"coloring": "heatmap", "showlines": True, "start": Z.max() * 0.05, "size": Z.max() * 0.15},
                 line_smoothing=0.85,
                 hoverinfo="skip",
-            )
+            ),
         )
 
     # clickable centroid markers — Plotly selection events fire on Scatter traces only
@@ -126,8 +126,7 @@ def cluster_characteristics(cluster_id, df, X_scaled_df, feature_cols, extra_col
                 error_y={"type": "data", "array": c_std.to_numpy(), "visible": True, "color": "rgba(0,0,0,0.35)", "thickness": 1.5},
                 marker_color=["darkorange" if v < 0 else "mediumseagreen" for v in ez_mean],
                 hovertemplate=(
-                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
-                    "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}<br>cluster mean: %{customdata:.2f}<extra></extra>"
                 ),
                 name="analysis cols",
                 showlegend=True,
