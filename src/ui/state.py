@@ -40,6 +40,7 @@ def init_state() -> None:
         "hierarchical_layers": 1,
         # hierarchical config panel
         "hclust_normalize": True,
+        "hclust_umap_n_components": 2,
         "hclust_min_samples": 5,
         "hclust_min_cluster_size": 15,
         # pre-computed analysis tree + navigation path

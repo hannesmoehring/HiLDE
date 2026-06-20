@@ -19,6 +19,7 @@ def _build_tree_config() -> dict:
         "hierarchical_layers": int(st.session_state["hierarchical_layers"]),
         "min_cluster_size": int(st.session_state["hclust_min_cluster_size"]),
         "min_samples": int(st.session_state["hclust_min_samples"]),
+        "hdbscan_umap_n_components": int(st.session_state["hclust_umap_n_components"]),
         "kde_dr_method": method,
     }
     if method == "t-SNE":
@@ -44,7 +45,7 @@ def handle_hierarchical_save(df: pd.DataFrame, feature_columns: list[str]) -> No
     st.session_state["selected_df"] = pd.DataFrame()
 
 
-def handle_exploration_save() -> None:
+def handle_exploration_save(df: pd.DataFrame, feature_columns: list[str]) -> None:
     root = st.session_state.get("analysis_tree")
     if root is None:
         return
@@ -55,8 +56,9 @@ def handle_exploration_save() -> None:
         return
 
     leaf = get_node_at_path(root, path)
-    sub_X = leaf.get("exploration_points") if "is_leaf" in leaf else leaf.get("cluster_points")  # type: ignore[union-attr]
-    if sub_X is None or len(sub_X) == 0:
+    row_indices = leaf["row_indices"]  # type: ignore[index]
+    sub_X = df.iloc[row_indices][feature_columns].to_numpy()
+    if len(sub_X) == 0:
         return
 
     with st.spinner("Computing cluster embedding…"):

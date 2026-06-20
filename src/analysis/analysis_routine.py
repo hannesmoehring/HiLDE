@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal, TypedDict, cast
 
 import numpy as np
@@ -14,6 +15,16 @@ _KDE_MIN_PTS = 3
 _MIN_CLUSTERS_FOR_HIERARCHY = 2
 
 
+@dataclass
+class _NodeCtx:
+    X_orig: np.ndarray
+    feature_cols: list[str]
+    depth: int
+    rel_position: tuple[float, float]
+    rel_characteristics: pd.DataFrame
+    row_indices: np.ndarray
+
+
 class HierarchyObject(TypedDict):
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
@@ -24,7 +35,7 @@ class HierarchyObject(TypedDict):
     next_object_layer: list[AnalysisObject] | None
 
 
-class ExplorationObject(TypedDict):
+class ExplorationObject(TypedDict):  # add embedded points
     is_leaf: Literal[True]
     depth: int
     kde: np.ndarray | None
@@ -48,54 +59,65 @@ def compute_analysis_tree(
     else:
         X = df[feature_cols].to_numpy()
 
+    umap_n_comp = config["hdbscan_umap_n_components"]
+    if umap_n_comp and umap_n_comp < X.shape[1]:
+        n_comp = min(umap_n_comp, X.shape[1], len(X) - 1)
+        n_nbrs = min(30, len(X) - 1)
+        X_reduced = reduce_dimensionality("UMAP", X=X, n_components=n_comp, n_neighbors=n_nbrs, min_dist=0.1)
+    else:
+        X_reduced = X
+
     return _build_next(
-        X=X,
+        X=X_reduced,
         config=config,
-        depth=0,
-        feature_cols=feature_cols,
-        rel_position=(0.0, 0.0),
-        rel_characteristics=pd.DataFrame(),
-        row_indices=np.arange(len(df)),
+        ctx=_NodeCtx(
+            X_orig=X,
+            feature_cols=feature_cols,
+            depth=0,
+            rel_position=(0.0, 0.0),
+            rel_characteristics=pd.DataFrame(),
+            row_indices=np.arange(len(df)),
+        ),
     )
 
 
-def _build_next(
-    X: np.ndarray,
-    config: dict,
-    depth: int,
-    feature_cols: list[str],
-    rel_position: tuple[float, float],
-    rel_characteristics: pd.DataFrame,
-    row_indices: np.ndarray,
-) -> AnalysisObject:
-    if depth >= config["hierarchical_layers"] or len(X) < config["min_cluster_size"] * 2:
+def _build_next(X: np.ndarray, config: dict, ctx: _NodeCtx) -> AnalysisObject:
+    if ctx.depth >= config["hierarchical_layers"] or len(X) < config["min_cluster_size"] * 2:
         return ExplorationObject(
             is_leaf=True,
-            depth=depth,
+            depth=ctx.depth,
             kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
-            rel_characteristics=rel_characteristics,
-            rel_position=rel_position,
+            rel_characteristics=ctx.rel_characteristics,
+            rel_position=ctx.rel_position,
             exploration_points=X,
-            row_indices=row_indices,
+            row_indices=ctx.row_indices,
         )
     else:
-        labels, outlier_scores = compute_clusters(X, method="HDBSCAN", min_cluster_size=config["min_cluster_size"], min_samples=config["min_samples"])
+        labels, outlier_scores = compute_clusters(
+            X,
+            method="HDBSCAN",
+            min_cluster_size=config["min_cluster_size"],
+            min_samples=config["min_samples"],
+        )
         valid_cluster_ids = [c for c in np.unique(labels) if c != -1]
         if len(valid_cluster_ids) < _MIN_CLUSTERS_FOR_HIERARCHY:
             return ExplorationObject(
                 is_leaf=True,
-                depth=depth,
+                depth=ctx.depth,
                 kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
-                rel_characteristics=rel_characteristics,
-                rel_position=rel_position,
+                rel_characteristics=ctx.rel_characteristics,
+                rel_position=ctx.rel_position,
                 exploration_points=X,
-                row_indices=row_indices,
+                row_indices=ctx.row_indices,
             )
 
         mask = labels != -1
-        X_scaled_df = pd.DataFrame(X, columns=feature_cols)
-        X_scaled_df["cluster"] = labels
-        centroids = X_scaled_df.loc[mask, feature_cols].groupby(labels[mask]).mean()
+        X_orig_df = pd.DataFrame(ctx.X_orig, columns=ctx.feature_cols)
+        X_orig_df["cluster"] = labels
+        reduced_cols = [f"dim_{i}" for i in range(X.shape[1])]
+        X_reduced_df = pd.DataFrame(X, columns=reduced_cols)
+        X_reduced_df["cluster"] = labels
+        centroids = X_reduced_df.loc[mask, reduced_cols].groupby(labels[mask]).mean()
 
         centroids_2d = reduce_dimensionality("MDS", X=centroids.values, n_components=2)
         rel_positions: dict[int, tuple[float, float]] = {
@@ -105,9 +127,9 @@ def _build_next(
         rel_characteristics_dict: dict[int, pd.DataFrame] = {
             cluster_id: compute_cluster_characteristics(
                 cluster_id=cluster_id,
-                df=X_scaled_df,
-                X_scaled_df=X_scaled_df,
-                feature_cols=feature_cols,
+                df=X_orig_df,
+                X_scaled_df=X_orig_df,
+                feature_cols=ctx.feature_cols,
             )
             for cluster_id in valid_cluster_ids
         }
@@ -117,25 +139,26 @@ def _build_next(
             if cluster_id == -1:
                 continue
             temp_mask = labels == cluster_id
-            cluster_X = X[temp_mask]
-            cluster_row_indices = row_indices[temp_mask]
             hierarchy_objects.append(
                 _build_next(
-                    X=cluster_X,
+                    X=X[temp_mask],
                     config=config,
-                    depth=depth + 1,
-                    feature_cols=feature_cols,
-                    rel_position=rel_positions[cluster_id],
-                    rel_characteristics=rel_characteristics_dict[cluster_id],
-                    row_indices=cluster_row_indices,
+                    ctx=_NodeCtx(
+                        X_orig=ctx.X_orig[temp_mask],
+                        feature_cols=ctx.feature_cols,
+                        depth=ctx.depth + 1,
+                        rel_position=rel_positions[cluster_id],
+                        rel_characteristics=rel_characteristics_dict[cluster_id],
+                        row_indices=ctx.row_indices[temp_mask],
+                    ),
                 ),
             )
         return HierarchyObject(
-            rel_characteristics=rel_characteristics,
-            rel_position=rel_position,
+            rel_characteristics=ctx.rel_characteristics,
+            rel_position=ctx.rel_position,
             kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
             cluster_points=X,
-            row_indices=row_indices,
+            row_indices=ctx.row_indices,
             outlier_scores=outlier_scores,
             next_object_layer=hierarchy_objects,
         )

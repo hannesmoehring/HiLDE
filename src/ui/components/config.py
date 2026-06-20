@@ -15,6 +15,12 @@ def render_hierarchical_config(max_dims: int) -> None:
             key="hierarchical_layers",
         )
     with c2:
+        st.slider(
+            "UMAP dims before HDBSCAN",
+            min_value=2,
+            max_value=max_dims,
+            key="hclust_umap_n_components",
+        )
         c2a, c2b = st.columns(2)
         with c2a:
             st.number_input(

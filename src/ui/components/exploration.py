@@ -127,20 +127,19 @@ def render_cluster_exploration(
 
     path_switched = st.session_state["cluster_path_for_embed"] != selection_path
     if path_switched:
-        handle_exploration_save()
+        handle_exploration_save(df, feature_columns)
 
     if st.session_state["cluster_embedding_full"].size == 0:
         st.info("Save the exploration config above to compute the embedding.")
         return
 
-    # Get the leaf node from the tree to recover original df rows and feature data
     root = st.session_state.get("analysis_tree")
     if root is None:
         return
     leaf = get_node_at_path(root, list(selection_path))
-    sub_X = leaf.get("exploration_points") if "is_leaf" in leaf else leaf.get("cluster_points")  # type: ignore[union-attr]
     row_indices = leaf["row_indices"]  # type: ignore[index]
     sub_df = df.iloc[row_indices].reset_index(drop=True)
+    sub_X = sub_df[feature_columns].to_numpy()
 
     resolved = resolve_cluster_embedding_2d()
     if resolved is None:
