@@ -7,9 +7,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sklearn.preprocessing import StandardScaler
 
-from src.analysis.clustering import hierarchical_clustering
 from src.analysis.dim_reducer import fit_dimensionality_reducer
 from src.ui.state import ReductionConfig
 
@@ -25,7 +23,6 @@ def load_dataset() -> pd.DataFrame:
     df_red["is_red"] = True
     df_white["is_red"] = False
     df = pd.concat([df_red, df_white], ignore_index=True)
-
     df = df.reset_index(drop=True)
     df["row_id"] = df.index
     return df
@@ -38,12 +35,11 @@ def compute_embedding(
     X: np.ndarray,
     config: ReductionConfig,
 ):
-    normalize = config["normalize"]
     return fit_dimensionality_reducer(
         method=method,
         X=X,
         n_components=config["pca_components"] if method == "PCA" else 2,
-        normalize=normalize,
+        normalize=config["normalize"],
         perplexity=config["tsne_perplexity"] if method == "t-SNE" else None,
         learning_rate=config["tsne_learning_rate"] if method == "t-SNE" else None,
         n_neighbors=config["umap_n_neighbors"] if method == "UMAP" else None,
@@ -51,59 +47,10 @@ def compute_embedding(
     )
 
 
-@st.cache_data
-def run_hierarchical_clustering(
-    df: pd.DataFrame,
-    X_scaled: np.ndarray,
-    feature_cols: list[str],
-    n_components: int,
-    n_neighbors: int,
-    min_dist: float,
-    min_samples: int,
-    min_cluster_size: int,
-) -> tuple[pd.DataFrame, np.ndarray, int, np.ndarray]:
-    return hierarchical_clustering(
-        df,
-        X_scaled,
-        feature_cols,
-        n_components=n_components,
-        n_neighbors=n_neighbors,
-        min_dist=min_dist,
-        min_samples=min_samples,
-        min_cluster_size=min_cluster_size,
-    )
-
-
-def get_cluster_subset(
-    df: pd.DataFrame,
-    X: np.ndarray,
-    h_labels: np.ndarray,
-    cluster_id: int,
-) -> tuple[pd.DataFrame, np.ndarray]:
-    mask = h_labels == cluster_id
-    return df[mask].reset_index(drop=True), X[mask]
-
-
-def get_path_subset(
-    df: pd.DataFrame,
-    X: np.ndarray,
-    path: tuple[int, ...],
-) -> tuple[pd.DataFrame, np.ndarray]:
-    if not path:
-        return df, X
-    h_labels = st.session_state["hierarchical_labels"]
-    sub_df, sub_X = get_cluster_subset(df, X, h_labels, path[0])
-    for i, cluster_id in enumerate(path[1:], 1):
-        level_labels = st.session_state["hierarchical_sublevel_cache"][str(path[:i])]["h_labels"]
-        sub_df, sub_X = get_cluster_subset(sub_df, sub_X, level_labels, cluster_id)
-    return sub_df, sub_X
-
-
 def export_selection(selected_df: pd.DataFrame, config: ReductionConfig) -> Path:
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_file = EXPORT_DIR / f"selected_points_{timestamp}.csv"
-
     export_df = selected_df.copy()
     export_df["reduction_method"] = config["method"]
     export_df["reduction_config"] = str(config)
@@ -131,7 +78,7 @@ def build_plot_df(
 
 
 def compute_interactive_mask(X_scaled_df: pd.DataFrame, feature_columns: list[str]) -> np.ndarray:
-    selected_features = [feature for feature in cast("list[str]", st.session_state.get("interactive_features", [])) if feature in feature_columns]
+    selected_features = [f for f in cast("list[str]", st.session_state.get("interactive_features", [])) if f in feature_columns]
     if not selected_features:
         return np.ones(len(X_scaled_df), dtype=bool)
 

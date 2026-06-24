@@ -1,191 +1,193 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypedDict, cast
-from unittest.mock import MagicMock, patch
+from dataclasses import dataclass
+from typing import Literal, TypedDict, cast
 
+import numpy as np
 import pandas as pd
-import streamlit as st
-from scipy.stats import gaussian_kde
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.characteristics import fit_cluster_decision_tree
-from src.analysis.clustering import hierarchical_clustering
+from src.analysis.characteristics import compute_cluster_characteristics, compute_cluster_kde, fit_cluster_decision_tree
+from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
 
-if TYPE_CHECKING:
-    import numpy as np
-
 _KDE_MIN_PTS = 3
+_MIN_CLUSTERS_FOR_HIERARCHY = 2
+
+
+@dataclass
+class _NodeCtx:
+    X_orig: np.ndarray
+    feature_cols: list[str]
+    depth: int
+    rel_position: tuple[float, float]
+    rel_characteristics: pd.DataFrame
+    row_indices: np.ndarray
 
 
 class HierarchyObject(TypedDict):
-    characteristics_list: list
-    position: tuple[float, float]
-    kde: gaussian_kde | None
-    cluster_points: list
-    next_layer_object: AnalysisLayer
+    rel_characteristics: pd.DataFrame
+    rel_position: tuple[float, float] | None
+    kde: np.ndarray | None
+    cluster_points: np.ndarray
+    row_indices: np.ndarray
+    outlier_scores: np.ndarray | None
+    next_object_layer: list[AnalysisObject] | None
 
 
-class HierarchicalLayer(TypedDict):
-    is_leaf: Literal[False]
-    depth: int
-    hierarchy_object_list: list[HierarchyObject]
-
-
-class ExplorationLayer(TypedDict):
+class ExplorationObject(TypedDict):  # add embedded points
     is_leaf: Literal[True]
     depth: int
-    exploration_points: list
+    kde: np.ndarray | None
+    rel_characteristics: pd.DataFrame
+    rel_position: tuple[float, float] | None
+    exploration_points: np.ndarray
+    row_indices: np.ndarray
 
 
-type AnalysisLayer = HierarchicalLayer | ExplorationLayer
-
-
-class _LayerConfig(TypedDict):
-    max_depth: int
-    min_cluster_size: int
-    min_samples: int
-    n_components: int
-    kde_dr_method: str
+type AnalysisObject = HierarchyObject | ExplorationObject
 
 
 def compute_analysis_tree(
     df: pd.DataFrame,
-    X_scaled: np.ndarray,
     feature_cols: list[str],
-) -> AnalysisLayer:
-    return _build_layer(df=df, X_scaled=X_scaled, feature_cols=feature_cols, depth=0)
-
-
-def _build_layer(
-    df: pd.DataFrame,
-    X_scaled: np.ndarray,
-    feature_cols: list[str],
-    depth: int,
-) -> AnalysisLayer:
-    if depth >= st.session_state["hierarchical_layers"] or len(df) < st.session_state["min_cluster_size"] * 2:
-        return ExplorationLayer(
-            is_leaf=True,
-            depth=depth,
-            exploration_points=list(df.index),
-        )
-
-    X_hc = StandardScaler().fit_transform(X_scaled)
-    n_comp = min(st.session_state["hclust_umap_n_components"], X_hc.shape[1], len(df) - 1)
-    n_nbrs = min(30, len(df) - 1)
-
-    layout_df, labels, _n_outliers, _outlier_scores = hierarchical_clustering(
-        df,
-        X_hc,
-        feature_cols,
-        n_components=n_comp,
-        n_neighbors=n_nbrs,
-        min_samples=st.session_state["min_samples"],
-        min_cluster_size=st.session_state["min_cluster_size"],
-        min_dist=st.session_state["umap_min_dist"],
-    )
-
-    if layout_df.empty:
-        return ExplorationLayer(
-            is_leaf=True,
-            depth=depth,
-            exploration_points=list(df.index),
-        )
-
-    X_scaled_df = pd.DataFrame(X_hc, columns=feature_cols, index=df.index)
-    hierarchy_objects: list[HierarchyObject] = []
-
-    for _, row in layout_df.iterrows():
-        cluster_id = int(row["cluster"])
-        mask = labels == cluster_id
-        cluster_df = df[mask].reset_index(drop=True)
-        cluster_X = X_scaled[mask]
-        cluster_points = list(df.index[mask])
-
-        position = (float(row["x"]), float(row["y"]))
-
-        pts = X_scaled_df.loc[mask].to_numpy()
-        if len(pts) >= _KDE_MIN_PTS:
-            pts_2d = reduce_dimensionality(st.session_state["explore_method"], X=pts, n_components=2)
-            kde = gaussian_kde(pts_2d.T, bw_method="scott")
-        else:
-            kde = None
-
-        rules_str = fit_cluster_decision_tree(
-            df,
-            feature_cols,
-            pd.Series(mask, index=df.index),
-        )
-        characteristics_list = rules_str.splitlines()
-
-        next_layer = _build_layer(
-            df=cluster_df,
-            X_scaled=cluster_X,
-            feature_cols=feature_cols,
-            depth=depth + 1,
-        )
-
-        hierarchy_objects.append(
-            HierarchyObject(
-                characteristics_list=characteristics_list,
-                position=position,
-                kde=kde,
-                cluster_points=cluster_points,
-                next_layer_object=next_layer,
-            ),
-        )
-
-    return HierarchicalLayer(
-        is_leaf=False,
-        depth=depth,
-        hierarchy_object_list=hierarchy_objects,
-    )
-
-
-def _print_tree(node: AnalysisLayer, indent: int = 0) -> None:
-    pad = "  " * indent
-    if node["is_leaf"]:
-        leaf = cast("ExplorationLayer", node)
-        print(f"{pad}ExplorationLayer(depth={leaf['depth']}, points={len(leaf['exploration_points'])})")
+    config: dict,
+) -> AnalysisObject:
+    if config["normalize"]:
+        scaler = StandardScaler()
+        X = scaler.fit_transform(df[feature_cols])
     else:
-        hier = cast("HierarchicalLayer", node)
-        print(f"{pad}HierarchicalLayer(depth={hier['depth']}, clusters={len(hier['hierarchy_object_list'])})")
-        for obj in hier["hierarchy_object_list"]:
-            print(
-                f"{pad}  HierarchyObject pos={obj['position']} pts={len(obj['cluster_points'])}"
-                f" kde={obj['kde'] is not None} chars={len(obj['characteristics_list'])}",
+        X = df[feature_cols].to_numpy()
+
+    umap_n_comp = config["hdbscan_umap_n_components"]
+    if umap_n_comp and umap_n_comp < X.shape[1]:
+        n_comp = min(umap_n_comp, X.shape[1], len(X) - 1)
+        n_nbrs = min(30, len(X) - 1)
+        X_reduced = reduce_dimensionality("UMAP", X=X, n_components=n_comp, n_neighbors=n_nbrs, min_dist=0.1)
+    else:
+        X_reduced = X
+
+    return _build_next(
+        X=X_reduced,
+        config=config,
+        ctx=_NodeCtx(
+            X_orig=X,
+            feature_cols=feature_cols,
+            depth=0,
+            rel_position=(0.0, 0.0),
+            rel_characteristics=pd.DataFrame(),
+            row_indices=np.arange(len(df)),
+        ),
+    )
+
+
+def _build_next(X: np.ndarray, config: dict, ctx: _NodeCtx) -> AnalysisObject:
+    if ctx.depth >= config["hierarchical_layers"] or len(X) < config["min_cluster_size"] * 2:
+        return ExplorationObject(
+            is_leaf=True,
+            depth=ctx.depth,
+            kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+            rel_characteristics=ctx.rel_characteristics,
+            rel_position=ctx.rel_position,
+            exploration_points=X,
+            row_indices=ctx.row_indices,
+        )
+    else:
+        labels, outlier_scores = compute_clusters(
+            X,
+            method="HDBSCAN",
+            min_cluster_size=config["min_cluster_size"],
+            min_samples=config["min_samples"],
+        )
+        valid_cluster_ids = [c for c in np.unique(labels) if c != -1]
+        if len(valid_cluster_ids) < _MIN_CLUSTERS_FOR_HIERARCHY:
+            return ExplorationObject(
+                is_leaf=True,
+                depth=ctx.depth,
+                kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+                rel_characteristics=ctx.rel_characteristics,
+                rel_position=ctx.rel_position,
+                exploration_points=X,
+                row_indices=ctx.row_indices,
             )
-            _print_tree(obj["next_layer_object"], indent + 2)
+
+        mask = labels != -1
+        X_orig_df = pd.DataFrame(ctx.X_orig, columns=ctx.feature_cols)
+        X_orig_df["cluster"] = labels
+        reduced_cols = [f"dim_{i}" for i in range(X.shape[1])]
+        X_reduced_df = pd.DataFrame(X, columns=reduced_cols)
+        X_reduced_df["cluster"] = labels
+        centroids = X_reduced_df.loc[mask, reduced_cols].groupby(labels[mask]).mean()
+
+        centroids_2d = reduce_dimensionality("MDS", X=centroids.values, n_components=2)
+        rel_positions: dict[int, tuple[float, float]] = {
+            cluster_id: (centroids_2d[i, 0], centroids_2d[i, 1]) for i, cluster_id in enumerate(centroids.index)
+        }
+
+        rel_characteristics_dict: dict[int, pd.DataFrame] = {
+            cluster_id: compute_cluster_characteristics(
+                cluster_id=cluster_id,
+                df=X_orig_df,
+                X_scaled_df=X_orig_df,
+                feature_cols=ctx.feature_cols,
+            )
+            for cluster_id in valid_cluster_ids
+        }
+        hierarchy_objects = []
+
+        for cluster_id in np.unique(labels):
+            if cluster_id == -1:
+                continue
+            temp_mask = labels == cluster_id
+            hierarchy_objects.append(
+                _build_next(
+                    X=X[temp_mask],
+                    config=config,
+                    ctx=_NodeCtx(
+                        X_orig=ctx.X_orig[temp_mask],
+                        feature_cols=ctx.feature_cols,
+                        depth=ctx.depth + 1,
+                        rel_position=rel_positions[cluster_id],
+                        rel_characteristics=rel_characteristics_dict[cluster_id],
+                        row_indices=ctx.row_indices[temp_mask],
+                    ),
+                ),
+            )
+        return HierarchyObject(
+            rel_characteristics=ctx.rel_characteristics,
+            rel_position=ctx.rel_position,
+            kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+            cluster_points=X,
+            row_indices=ctx.row_indices,
+            outlier_scores=outlier_scores,
+            next_object_layer=hierarchy_objects,
+        )
 
 
-def example_run() -> None:
-    dataset_path = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
-    df = pd.read_csv(dataset_path, sep=";").head(300).reset_index(drop=True)
-    feature_cols = [c for c in df.columns if c != "quality"]
-    X_scaled = StandardScaler().fit_transform(df[feature_cols].to_numpy())
+def print_tree(node: AnalysisObject, prefix: str = "", *, is_last: bool = True) -> None:
+    connector = "└── " if is_last else "├── "
+    child_prefix = prefix + ("    " if is_last else "│   ")
 
-    fake_state = {
-        "hierarchical_layers": 2,
-        "hclust_saved_config": {
-            "min_cluster_size": 20,
-            "min_samples": 5,
-            "umap_n_components": 5,
-            "kde_dr_method": "UMAP",
-            "umap_n_neighbors": 15,
-            "explore_method": "UMAP",
-        },
-    }
-    mock_state = MagicMock()
-    mock_state.__getitem__.side_effect = fake_state.__getitem__
-    mock_state.get.side_effect = fake_state.get
-
-    with patch.object(st, "session_state", mock_state):
-        tree = compute_analysis_tree(df, X_scaled, feature_cols)
-
-    print("\n--- Analysis Tree ---")
-    _print_tree(tree)
-
-
-if __name__ == "__main__":
-    example_run()
+    if "is_leaf" in node:
+        leaf = cast("ExplorationObject", node)
+        pts = leaf["exploration_points"].shape[0]
+        pos = leaf["rel_position"]
+        pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
+        kde_str = "kde=yes" if leaf["kde"] is not None else "kde=no"
+        rc = leaf["rel_characteristics"]
+        char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
+        print(f"{prefix}{connector}[LEAF] depth={leaf['depth']}  pts={pts}  pos={pos_str}  {kde_str}  {char_str}")
+    else:
+        hier: HierarchyObject = node  # type: ignore[assignment]
+        children = hier["next_object_layer"] or []
+        pts = hier["cluster_points"].shape[0]
+        pos = hier["rel_position"]
+        pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
+        scores = hier["outlier_scores"]
+        outlier_str = f"  outlier_mean={scores.mean():.3f}" if scores is not None else ""
+        kde_str = "kde=yes" if hier["kde"] is not None else "kde=no"
+        rc = hier["rel_characteristics"]
+        char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
+        print(f"{prefix}{connector}[NODE] pts={pts}  children={len(children)}  pos={pos_str}{outlier_str}  {kde_str}  {char_str}")
+        for i, child in enumerate(children):
+            print_tree(child, prefix=child_prefix, is_last=(i == len(children) - 1))
