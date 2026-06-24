@@ -1,0 +1,10 @@
+services:
+  shd:
+    build: .
+    image: shd:latest
+    ports:
+      - "8501:8501"
+    volumes:
+      # Persist exported selections to the host
+      - ./outputs:/app/outputs
+      
