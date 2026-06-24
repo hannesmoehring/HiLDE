@@ -21,4 +21,5 @@ dependencies = [
     "torchvision>=0.26.0",
     "umap-learn>=0.5.11",
     "watchdog>=6.0.0",
+    "zadu>=0.4.2",
 ]
