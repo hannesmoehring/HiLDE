@@ -83,12 +83,51 @@ def render_interactive_filters(X_scaled_df: pd.DataFrame, feature_columns: list[
 
 
 def render_range_analysis(X_scaled: np.ndarray, feature_columns: list[str]) -> None:
-    selected_scaled = X_scaled.take(st.session_state.selected_indices, axis=0)
+    selected_indices = st.session_state.selected_indices
+    selected_scaled = X_scaled.take(selected_indices, axis=0)
     selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
-    range_df_full = pd.DataFrame(generate_predicate("hm", selected_scaled_df, X_scaled, threshold=1.0))
-    range_df_trimmed = pd.DataFrame(generate_predicate("hm", selected_scaled_df, X_scaled, threshold=0.9))
-    if not range_df_full.empty:
+    range_df_full = pd.DataFrame(
+        generate_predicate("db", selected_scaled_df, X_scaled, threshold=1.0, selected_indices=selected_indices),
+    )
+    range_df_trimmed = pd.DataFrame(
+        generate_predicate("db", selected_scaled_df, X_scaled, threshold=0.9, selected_indices=selected_indices),
+    )
+    if range_df_full.empty:
+        return
+
+    is_predicate = range_df_full["in_predicate"]
+    predicate_features = range_df_full.loc[is_predicate, "feature"].tolist()
+
+    _render_predicate_summary(range_df_full, n_selected=len(selected_indices))
+
+    if predicate_features:
+        pred_full = range_df_full[is_predicate].reset_index(drop=True)
+        pred_trim = range_df_trimmed[range_df_trimmed["feature"].isin(predicate_features)].reset_index(drop=True)
+        st.plotly_chart(make_feature_range_fig(pred_full, pred_trim), width="stretch")
+        with st.expander(f"All {len(range_df_full)} features"):
+            st.plotly_chart(make_feature_range_fig(range_df_full, range_df_trimmed), width="stretch")
+    else:
+        st.info("No single feature interval distinguishes this selection — showing all feature ranges.")
         st.plotly_chart(make_feature_range_fig(range_df_full, range_df_trimmed), width="stretch")
+
+
+def _render_predicate_summary(range_df_full: pd.DataFrame, *, n_selected: int) -> None:
+    is_predicate = range_df_full["in_predicate"]
+    predicate_f1 = float(range_df_full["predicate_f1"].iloc[0])
+    n_clauses = int(is_predicate.sum())
+
+    cols = st.columns(3)
+    cols[0].metric("Predicate F1", f"{predicate_f1:.2f}")
+    cols[1].metric("Features used", f"{n_clauses} / {len(range_df_full)}")
+    cols[2].metric("Selected points", f"{n_selected}")
+
+    clauses = range_df_full[is_predicate].sort_values("clause_f1", ascending=False)
+    if not clauses.empty:
+        readable = "  ∧  ".join(
+            f"**{row.feature}** ∈ [{row.sel_min:.2f}, {row.sel_max:.2f}]" for row in clauses.itertuples()
+        )
+        st.markdown(readable)
+        st.caption("Ranges are standardized (z-score) values; bars below show their position within each feature's global range.")
 
 
 def render_analysis_column(

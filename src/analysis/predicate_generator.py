@@ -7,6 +7,7 @@ def generate_predicate(
     df: pd.DataFrame,
     X_scaled: np.ndarray,
     threshold: float = 0.9,
+    selected_indices: list[int] | None = None,
 ) -> object:
     match method:
         case "hm":
@@ -14,7 +15,7 @@ def generate_predicate(
         case "threshold":
             return _predicate_threshold(df, X_scaled, threshold=threshold)
         case "db":
-            ...
+            return _predicate_db(df, X_scaled, threshold=threshold, selected_indices=selected_indices)
         case _:
             raise ValueError(f"Unknown predicate generation method: {method}")
 
@@ -63,6 +64,104 @@ def _build_range_row(
         "global_min": global_min,
         "global_max": global_max,
     }
+
+
+def _f1(pred_mask: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
+    """F1, precision and recall between a predicate's membership and the selection labels."""
+    true_positive = int(np.count_nonzero(pred_mask & y))
+    predicted_positive = int(np.count_nonzero(pred_mask))
+    actual_positive = int(np.count_nonzero(y))
+
+    precision = true_positive / predicted_positive if predicted_positive else 0.0
+    recall = true_positive / actual_positive if actual_positive else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return f1, precision, recall
+
+
+def _predicate_db(
+    df: pd.DataFrame,
+    X_scaled_full: np.ndarray,
+    threshold: float = 0.9,
+    selected_indices: list[int] | None = None,
+) -> list[dict[str, object]]:
+    """DimBridge-style predicate induction.
+
+    Explains the selection (pattern points ``P``) against the full dataset
+    (background points ``B``) by greedily building a conjunction of per-feature
+    interval clauses, adding the clause that most improves the F1 between predicate
+    membership and the selection labels (Recursive Predicate Induction, paper §5.2).
+    """
+    _validate_threshold(threshold)
+    df = df.copy()
+    selected = df.to_numpy()
+    if selected.size == 0:
+        return []
+
+    features = [str(c) for c in df.columns]
+    rows = [
+        _build_range_row(
+            values=selected[:, j],
+            full_values=X_scaled_full[:, j],
+            feature=features[j],
+            threshold=threshold,
+        )
+        for j in range(selected.shape[1])
+    ]
+
+    # Per-feature clause membership over the full dataset.
+    clause_masks = [
+        (X_scaled_full[:, j] >= rows[j]["sel_min"]) & (X_scaled_full[:, j] <= rows[j]["sel_max"])
+        for j in range(len(rows))
+    ]
+
+    # Without selection labels we can only report the marginal ranges (no scoring).
+    if selected_indices is None:
+        for row in rows:
+            row.update(
+                clause_f1=0.0,
+                clause_precision=0.0,
+                clause_recall=0.0,
+                in_predicate=False,
+                predicate_step=None,
+                predicate_f1=0.0,
+            )
+        return rows
+
+    y = np.zeros(X_scaled_full.shape[0], dtype=bool)
+    y[np.asarray(selected_indices, dtype=int)] = True
+
+    for j, row in enumerate(rows):
+        clause_f1, clause_precision, clause_recall = _f1(clause_masks[j], y)
+        row.update(
+            clause_f1=clause_f1,
+            clause_precision=clause_precision,
+            clause_recall=clause_recall,
+            in_predicate=False,
+            predicate_step=None,
+        )
+
+    # Greedy conjunction: keep adding the clause that most improves F1.
+    current_mask = np.ones(X_scaled_full.shape[0], dtype=bool)
+    best_f1 = _f1(current_mask, y)[0]
+    remaining = set(range(len(rows)))
+    step = 0
+
+    while remaining:
+        scored = [(_f1(current_mask & clause_masks[j], y)[0], j) for j in remaining]
+        candidate_f1, best_j = max(scored, key=lambda s: s[0])
+        if candidate_f1 <= best_f1 + 1e-6:
+            break
+        current_mask &= clause_masks[best_j]
+        best_f1 = candidate_f1
+        rows[best_j]["in_predicate"] = True
+        rows[best_j]["predicate_step"] = step
+        remaining.discard(best_j)
+        step += 1
+
+    for row in rows:
+        row["predicate_f1"] = best_f1
+
+    return rows
 
 
 def _predicate_hm(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9) -> list[dict[str, object]]:

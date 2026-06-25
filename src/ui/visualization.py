@@ -248,67 +248,109 @@ def make_pca_variance_fig(explained_ratio: np.ndarray) -> go.Figure:
     return fig
 
 
+# Predicate-range chart palette (indigo for predicate clauses, grey for the rest).
+_RANGE_TRACK = "rgba(140, 140, 150, 0.14)"
+_PRED_EXTENT = "rgba(99, 110, 250, 0.30)"
+_PRED_CORE = "rgba(99, 110, 250, 0.92)"
+_OTHER_EXTENT = "rgba(150, 150, 150, 0.20)"
+_OTHER_CORE = "rgba(150, 150, 150, 0.55)"
+
+
 def make_feature_range_fig(range_df_full: pd.DataFrame, range_df_trimmed: pd.DataFrame) -> go.Figure:
-    g_span = range_df_full["global_max"] - range_df_full["global_min"]
+    """Per-feature range bands placed within each feature's global range (0-100%).
 
-    def norm(series: pd.Series) -> pd.Series:
-        return 2.0 * (series - range_df_full["global_min"]) / g_span - 1.0
+    For every feature a faint full-width track shows the global extent; a translucent
+    band shows the selection's full range (RCM=1.0) and a solid inner band its core
+    (RCM=0.9). Predicate clauses are drawn in indigo, other features in muted grey.
+    """
+    full = range_df_full.reset_index(drop=True)
+    trim = range_df_trimmed.reset_index(drop=True)
 
-    full_norm_min = norm(range_df_full["sel_min"])
-    full_norm_max = norm(range_df_full["sel_max"])
+    has_predicate = "in_predicate" in full.columns
+    in_pred = full["in_predicate"].to_numpy() if has_predicate else np.zeros(len(full), dtype=bool)
+    clause_f1 = full["clause_f1"].to_numpy() if has_predicate else np.zeros(len(full))
 
-    g_span_t = range_df_trimmed["global_max"] - range_df_trimmed["global_min"]
-    trim_norm_min = 2.0 * (range_df_trimmed["sel_min"] - range_df_trimmed["global_min"]) / g_span_t - 1.0
-    trim_norm_max = 2.0 * (range_df_trimmed["sel_max"] - range_df_trimmed["global_min"]) / g_span_t - 1.0
+    def to_pct(values: pd.Series, ref: pd.DataFrame) -> np.ndarray:
+        span = (ref["global_max"] - ref["global_min"]).to_numpy()
+        span = np.where(span == 0, 1.0, span)
+        return (values.to_numpy() - ref["global_min"].to_numpy()) / span
+
+    full_lo, full_hi = to_pct(full["sel_min"], full), to_pct(full["sel_max"], full)
+    core_lo, core_hi = to_pct(trim["sel_min"], trim), to_pct(trim["sel_max"], trim)
+
+    # Order so predicate clauses sit at the top, strongest F1 first.
+    sort_key = np.lexsort((clause_f1, in_pred))  # ascending; Plotly puts index 0 at the bottom
+    category_array = full["feature"].to_numpy()[sort_key].tolist()
+
+    extent_color = [_PRED_EXTENT if f else _OTHER_EXTENT for f in in_pred]
+    core_color = [_PRED_CORE if f else _OTHER_CORE for f in in_pred]
+
+    core_custom = np.column_stack([trim["sel_min"].to_numpy(), trim["sel_max"].to_numpy(), clause_f1])
 
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
             name="Global range",
-            y=range_df_full["feature"],
-            x=[2.0] * len(range_df_full),
-            base=[-1.0] * len(range_df_full),
+            y=full["feature"],
+            x=[1.0] * len(full),
+            base=[0.0] * len(full),
             orientation="h",
-            marker={"color": "rgba(120, 120, 120, 0.35)"},
+            marker={"color": _RANGE_TRACK},
+            hoverinfo="skip",
+            showlegend=False,
+        ),
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Full range",
+            y=full["feature"],
+            x=full_hi - full_lo,
+            base=full_lo,
+            orientation="h",
+            marker={"color": extent_color, "line": {"width": 0}},
             hoverinfo="skip",
         ),
     )
     fig.add_trace(
         go.Bar(
-            name="Selected range (threshold=1.0)",
-            y=range_df_full["feature"],
-            x=full_norm_max - full_norm_min,
-            base=full_norm_min,
-            customdata=range_df_full[["sel_min", "sel_max"]],
+            name="Core range (RCM 0.9)",
+            y=trim["feature"],
+            x=core_hi - core_lo,
+            base=core_lo,
             orientation="h",
-            marker={"color": "rgba(40, 130, 255, 0.75)"},
+            marker={"color": core_color, "line": {"width": 0}},
+            customdata=core_custom,
             hovertemplate=(
-                "<b>%{y}</b><br>Selected min: %{customdata[0]:.2f}<br>Selected max: %{customdata[1]:.2f}<br>Selected range: %{x:.2f}<extra></extra>"
+                "<b>%{y}</b><br>Core range: %{customdata[0]:.2f} – %{customdata[1]:.2f}"
+                "<br>Clause F1: %{customdata[2]:.2f}<extra></extra>"
             ),
         ),
     )
-    fig.add_trace(
-        go.Bar(
-            name="Selected range (threshold=0.9)",
-            y=range_df_trimmed["feature"],
-            x=trim_norm_max - trim_norm_min,
-            base=trim_norm_min,
-            customdata=range_df_trimmed[["sel_min", "sel_max"]],
-            orientation="h",
-            marker={"color": "rgba(255, 140, 60, 0.8)"},
-            hovertemplate=(
-                "<b>%{y}</b><br>Trimmed min: %{customdata[0]:.2f}<br>Trimmed max: %{customdata[1]:.2f}<br>Trimmed range: %{x:.2f}<extra></extra>"
-            ),
-        ),
-    )
+
     fig.update_layout(
-        title="Selected subset standardized ranges (RCM=1.0 and 0.9) inside global feature range",
-        xaxis_title="Standardized feature value",
-        yaxis_title="Feature",
+        template="plotly_white",
+        showlegend=False,
         barmode="overlay",
-        bargap=0.45,
-        height=max(320, 28 * len(range_df_full) + 120),
-        legend={"orientation": "h", "y": 1.1, "x": 0},
+        bargap=0.55,
+        height=max(220, 34 * len(full) + 90),
+        margin={"l": 8, "r": 24, "t": 16, "b": 36},
+        font={"size": 13},
+        hoverlabel={"bgcolor": "white"},
     )
-    fig.update_xaxes(range=[-1, 1])
+    fig.update_xaxes(
+        range=[-0.02, 1.02],
+        tickformat=".0%",
+        tickvals=[0.0, 0.5, 1.0],
+        title_text="Position within feature's global range",
+        showgrid=True,
+        gridcolor="rgba(140,140,150,0.18)",
+        zeroline=False,
+    )
+    fig.update_yaxes(
+        categoryorder="array",
+        categoryarray=category_array,
+        title_text=None,
+        showgrid=False,
+        ticklabelposition="outside",
+    )
     return fig
