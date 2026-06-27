@@ -16,11 +16,9 @@ def init_state() -> None:
         "selected_df": pd.DataFrame(),
         "latest_selection_config": None,
         "plot_df": pd.DataFrame(),
-        "embedding_full": np.empty((0, 0), dtype=float),
-        "explained_variance_ratio": np.array([], dtype=float),
-        "computed_method": None,
         "interactive_ranges_mode": False,
         "interactive_features": [],
+        "predicate_scope": "local",
         "clusters_in_original_space": False,
         "cluster_method": "KMeans",
         "cluster_n_clusters": 5,
@@ -35,17 +33,14 @@ def init_state() -> None:
         # pre-computed analysis tree + navigation path
         "analysis_tree": None,
         "tree_path": [],
-        "cluster_path_for_embed": (),
-        # cluster-level exploration embedding
-        "cluster_embedding_full": np.empty((0, 0), dtype=float),
-        "cluster_explained_variance": np.array([], dtype=float),
+        # scaler fit once during tree build (for the global predicate scope)
+        "global_scaler": None,
+        # cluster-level exploration PCA axis picker
         "cluster_pca_x_component": 0,
         "cluster_pca_y_component": 1,
         "method": "UMAP",
         "normalize": True,
         "pca_components": 4,
-        "pca_x_component": 0,
-        "pca_y_component": 1,
         "tsne_perplexity": 30.0,
         "tsne_learning_rate": 200.0,
         "tsne_random_state": 42,

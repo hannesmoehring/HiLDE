@@ -16,15 +16,15 @@ from sklearn.datasets import (
     make_swiss_roll,
 )
 
-from src.analysis.dim_reducer import fit_dimensionality_reducer
-
 from src.types import Config
+from src.util.datasets import load_mnist_images, load_mnist_labels
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 DATASET_PATH_RED = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 DATASET_PATH_WHITE = Path("datasets/wine_quality/wine+quality/winequality-white.csv")
+MNIST_RAW_DIR = Path("datasets/MNIST/raw")
 EXPORT_DIR = Path("outputs/selections")
 
 
@@ -53,7 +53,9 @@ def _one_hot_df(features: np.ndarray, labels: np.ndarray, feature_names: list[st
     return df
 
 
-def _concentric_rings(n_per_ring: int = 600, radii: tuple[float, ...] = (1.0, 2.5, 4.0), noise: float = 0.12, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+def _concentric_rings(
+    n_per_ring: int = 600, radii: tuple[float, ...] = (1.0, 2.5, 4.0), noise: float = 0.12, seed: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     coords, labels = [], []
     for i, r in enumerate(radii):
@@ -66,14 +68,25 @@ def _concentric_rings(n_per_ring: int = 600, radii: tuple[float, ...] = (1.0, 2.
 
 @st.cache_data
 def load_mnist_dataframe() -> pd.DataFrame:
-    # Downloaded on demand from OpenML and cached locally by scikit-learn.
-    data = fetch_openml("mnist_784", version=1, as_frame=False)
-    return _one_hot_df(data.data / 255.0, data.target.astype(int), [f"px_{i}" for i in range(784)], [str(d) for d in range(10)])
+    names = [str(d) for d in range(10)]
+    feature_names = [f"px_{i}" for i in range(784)]
+    # Prefer the local IDX files (offline, reliable); fall back to an OpenML download.
+    if (MNIST_RAW_DIR / "train-images-idx3-ubyte").exists():
+        images = np.concatenate(
+            [load_mnist_images(MNIST_RAW_DIR / "train-images-idx3-ubyte"), load_mnist_images(MNIST_RAW_DIR / "t10k-images-idx3-ubyte")],
+        )
+        labels = np.concatenate(
+            [load_mnist_labels(MNIST_RAW_DIR / "train-labels-idx1-ubyte"), load_mnist_labels(MNIST_RAW_DIR / "t10k-labels-idx1-ubyte")],
+        )
+        return _one_hot_df(images.reshape(images.shape[0], 784) / 255.0, labels, feature_names, names).head(10000)  # TODO: REMOVE LIMIT
+
+    data = fetch_openml("mnist_784", version=1, as_frame=False, n_retries=5, delay=2.0)
+    return _one_hot_df(data.data / 255.0, data.target.astype(int), feature_names, names).head(10000)  # TODO: REMOVE LIMIT
 
 
 @st.cache_data
 def load_fashion_mnist_dataframe() -> pd.DataFrame:
-    data = fetch_openml("Fashion-MNIST", version=1, as_frame=False)
+    data = fetch_openml("Fashion-MNIST", version=1, as_frame=False, n_retries=5, delay=2.0)
     names = ["tshirt_top", "trouser", "pullover", "dress", "coat", "sandal", "shirt", "sneaker", "bag", "ankle_boot"]
     return _one_hot_df(data.data / 255.0, data.target.astype(int), [f"px_{i}" for i in range(784)], names)
 
@@ -130,21 +143,6 @@ DATASETS: dict[str, Callable[[], pd.DataFrame]] = {
     "Fashion-MNIST (High)": load_fashion_mnist_dataframe,
     "MNIST (High)": load_mnist_dataframe,
 }
-
-
-@st.cache_data
-def compute_embedding(
-    *,
-    method: str,
-    X: np.ndarray,
-    config: Config,
-):
-    return fit_dimensionality_reducer(
-        method=method,
-        X=X,
-        n_components=2,
-        config=config,
-    )
 
 
 def export_selection(selected_df: pd.DataFrame, config: Config) -> Path:

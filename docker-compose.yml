@@ -2,9 +2,17 @@ services:
   shd:
     build: .
     image: shd:latest
+    mem_limit: 24g
     ports:
       - "8501:8501"
+    environment:
+      # Persist scikit-learn downloads (MNIST/Fashion-MNIST/Olivetti) to the mounted cache
+      - SCIKIT_LEARN_DATA=/app/.cache/sklearn
     volumes:
       # Persist exported selections to the host
       - ./outputs:/app/outputs
+      # Read local datasets (e.g. MNIST raw IDX files) without baking them into the image
+      - ./datasets:/app/datasets:ro
+      # Persist downloaded datasets across container restarts
+      - ./.cache/sklearn:/app/.cache/sklearn
       

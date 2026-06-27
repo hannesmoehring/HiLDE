@@ -8,16 +8,19 @@ from src.ui.visualization import make_pca_variance_fig
 _MIN_COMPONENTS_FOR_2D = 2
 
 
-def resolve_cluster_embedding_2d() -> tuple[np.ndarray, np.ndarray, int, list[str]] | None:
+def resolve_cluster_embedding_2d(
+    embedding_full: np.ndarray,
+    explained_variance: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray, int, list[str]] | None:
     if st.session_state.method != "PCA":
-        return st.session_state["cluster_embedding_full"], np.array([], dtype=float), 0, []
+        return embedding_full, np.array([], dtype=float), 0, []
 
-    explained_ratio = st.session_state["cluster_explained_variance"]
+    explained_ratio = explained_variance if explained_variance is not None else np.array([], dtype=float)
     if explained_ratio.size < _MIN_COMPONENTS_FOR_2D:
-        st.error("PCA metadata is unavailable. Save the exploration config again.")
+        st.error("PCA metadata is unavailable. Re-run Save & Apply.")
         return None
 
-    component_count = st.session_state["cluster_embedding_full"].shape[1]
+    component_count = embedding_full.shape[1]
     component_labels = [f"PC {i + 1}" for i in range(component_count)]
     st.session_state["cluster_pca_x_component"] = min(
         max(0, int(st.session_state["cluster_pca_x_component"])),
@@ -34,7 +37,7 @@ def resolve_cluster_embedding_2d() -> tuple[np.ndarray, np.ndarray, int, list[st
 
     xi = st.session_state["cluster_pca_x_component"]
     yi = st.session_state["cluster_pca_y_component"]
-    embedding_2d = st.session_state["cluster_embedding_full"][:, [xi, yi]]
+    embedding_2d = embedding_full[:, [xi, yi]]
     return embedding_2d, explained_ratio, component_count, component_labels
 
 

@@ -7,7 +7,6 @@ from sklearn.preprocessing import StandardScaler
 
 from src.analysis.clustering import compute_clusters
 from src.analysis.predicate_generator import generate_predicate
-from src.ui.components.handlers import handle_exploration_save
 from src.ui.components.pca import render_pca_controls, resolve_cluster_embedding_2d
 from src.ui.components.scores import render_node_scores
 from src.ui.data import build_plot_df, compute_interactive_mask, export_selection
@@ -83,15 +82,26 @@ def render_interactive_filters(X_scaled_df: pd.DataFrame, feature_columns: list[
         st.info("No points match the active feature ranges. Adjust the sliders to widen the filter.")
 
 
-def render_range_analysis(X_scaled: np.ndarray, feature_columns: list[str]) -> None:
+def render_range_analysis(
+    X_scaled: np.ndarray,
+    feature_columns: list[str],
+    df: pd.DataFrame,
+    row_indices: np.ndarray,
+) -> None:
     selected_indices = st.session_state.selected_indices
-    selected_scaled = X_scaled.take(selected_indices, axis=0)
-    selected_scaled_df = pd.DataFrame(selected_scaled, columns=feature_columns)
+    if st.session_state.get("predicate_scope", "local") == "global":
+        background, sel_scaled, sel_idx = _global_predicate_inputs(df, feature_columns, row_indices, selected_indices)
+    else:
+        background = X_scaled
+        sel_scaled = X_scaled.take(selected_indices, axis=0)
+        sel_idx = selected_indices
+
+    selected_scaled_df = pd.DataFrame(sel_scaled, columns=feature_columns)
     range_df_full = pd.DataFrame(
-        generate_predicate("db", selected_scaled_df, X_scaled, threshold=1.0, selected_indices=selected_indices),
+        generate_predicate("db", selected_scaled_df, background, threshold=1.0, selected_indices=sel_idx),
     )
     range_df_trimmed = pd.DataFrame(
-        generate_predicate("db", selected_scaled_df, X_scaled, threshold=0.9, selected_indices=selected_indices),
+        generate_predicate("db", selected_scaled_df, background, threshold=0.9, selected_indices=sel_idx),
     )
     if range_df_full.empty:
         return
@@ -131,10 +141,28 @@ def _render_predicate_summary(range_df_full: pd.DataFrame, *, n_selected: int) -
         st.caption("Ranges are standardized (z-score) values; bars below show their position within each feature's global range.")
 
 
+def _global_predicate_inputs(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    row_indices: np.ndarray,
+    selected_indices: list[int],
+) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """Background/selection for comparing the selection against the whole dataset,
+    using the single scaler fit during tree build.
+    """
+    scaler = st.session_state.get("global_scaler")
+    all_features = df[feature_columns].to_numpy()
+    background = scaler.transform(all_features) if scaler is not None else all_features
+    global_sel_rows = np.asarray(row_indices)[selected_indices].tolist()
+    return background, background[global_sel_rows], global_sel_rows
+
+
 def render_analysis_column(
     X_scaled: np.ndarray,
     X_scaled_df: pd.DataFrame,
     feature_columns: list[str],
+    df: pd.DataFrame,
+    row_indices: np.ndarray,
     *,
     interactive_mode: bool,
 ) -> None:
@@ -148,7 +176,14 @@ def render_analysis_column(
     elif st.session_state.selected_df.empty:
         st.info("Use lasso or box selection in the plot to capture points.")
     else:
-        render_range_analysis(X_scaled, feature_columns)
+        st.radio(
+            "Compare selection to",
+            options=["local", "global"],
+            format_func=lambda s: "This cluster (local)" if s == "local" else "Whole dataset (global)",
+            key="predicate_scope",
+            horizontal=True,
+        )
+        render_range_analysis(X_scaled, feature_columns, df, row_indices)
 
 
 def _update_selection(event: object, plot_df: pd.DataFrame, *, interactive_mode: bool) -> None:
@@ -165,14 +200,6 @@ def render_cluster_exploration(
     path_label = " → ".join(f"C{c}" for c in selection_path)
     st.subheader(f"Exploration — {path_label}")
 
-    path_switched = st.session_state["cluster_path_for_embed"] != selection_path
-    if path_switched:
-        handle_exploration_save(df, feature_columns)
-
-    if st.session_state["cluster_embedding_full"].size == 0:
-        st.info("Save the exploration config above to compute the embedding.")
-        return
-
     root = st.session_state.get("analysis_tree")
     if root is None:
         return
@@ -183,7 +210,8 @@ def render_cluster_exploration(
 
     render_node_scores(leaf.get("scores"), title="**DR quality — this cluster**")
 
-    resolved = resolve_cluster_embedding_2d()
+    # The exploration embedding is precomputed on the tree node (single source of truth).
+    resolved = resolve_cluster_embedding_2d(leaf["embedding_original"], leaf["embedding_original_variance"])  # type: ignore[index]
     if resolved is None:
         return
     embedding_2d, explained_ratio, component_count, component_labels = resolved
@@ -217,7 +245,7 @@ def render_cluster_exploration(
     _update_selection(event, plot_df, interactive_mode=interactive_mode)
 
     with col_ranges:
-        render_analysis_column(X_scaled, X_scaled_df, feature_columns, interactive_mode=interactive_mode)
+        render_analysis_column(X_scaled, X_scaled_df, feature_columns, df, row_indices, interactive_mode=interactive_mode)
 
     st.divider()
     st.subheader("Selected Datapoints")

@@ -7,7 +7,9 @@
 hm_*
 datasets/*
 outputs/
+.cache/
 CLAUDE.md
+.ruff_cache/
 
 # Python-generated files
 __pycache__/

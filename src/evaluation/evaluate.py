@@ -1,32 +1,39 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 from zadu.zadu import ZADU
 
 from src.analysis.analysis_routine import AnalysisObject, HierarchyObject, NodeScores, compute_analysis_tree
-from src.analysis.dim_reducer import reduce_dimensionality
 from src.types import Config
 
-EVAL_DR_METHOD = "PCA"
+if TYPE_CHECKING:
+    from sklearn.preprocessing import StandardScaler
+
 EVAL_K = 20
 MIN_PTS_FOR_NEIGHBORS = 10
+MIN_PTS_FOR_EMBED = 2
 CADI_RANDOM_SEED = 42
 
 
 def start_evaluation(df: pd.DataFrame, feature_cols: list[str], config: Config) -> AnalysisObject:
     tree = compute_analysis_tree(df, feature_cols, config)
-    _attach_scores(tree, df, feature_cols, config)
+    _attach_scores(tree, df, feature_cols, tree.get("scaler"))
     return tree
 
 
-def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[str], config: Config) -> None:
+def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[str], scaler: StandardScaler | None) -> None:
+    # Reuse the embedding the tree already computed (the one the UI displays) and the
+    # scaler fit once at the root, so scores measure exactly what is shown.
     X = df.iloc[node["row_indices"]][feature_cols].to_numpy()
-    if config["normalize"]:
-        X = StandardScaler().fit_transform(X)
+    if scaler is not None:
+        X = scaler.transform(X)
 
-    emb = _embed_2d(X, config)
+    emb = node["embedding_original"]
+    if emb.shape[0] < MIN_PTS_FOR_EMBED or emb.shape[1] < MIN_PTS_FOR_EMBED:
+        emb = None
 
     if "is_leaf" in node:
         node["scores"] = _score_node(X, emb, None)
@@ -34,15 +41,7 @@ def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[st
 
     node["scores"] = _score_node(X, emb, _child_labels(node))
     for child in node["next_object_layer"] or []:
-        _attach_scores(child, df, feature_cols, config)
-
-
-def _embed_2d(X: np.ndarray, config: Config) -> np.ndarray | None:
-    n = X.shape[0]
-    if n < 2 or X.shape[1] < 2:
-        return None
-    method = config.get("eval_dr_method", EVAL_DR_METHOD)
-    return reduce_dimensionality(method, X=X, n_components=2, config=config)
+        _attach_scores(child, df, feature_cols, scaler)
 
 
 def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None) -> NodeScores:

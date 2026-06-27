@@ -15,11 +15,9 @@ class Config(TypedDict):
     selected_df: pd.DataFrame
     latest_selection_config: None
     plot_df: pd.DataFrame
-    embedding_full: np.ndarray
-    explained_variance_ratio: np.ndarray
-    computed_method: None
     interactive_ranges_mode: bool
     interactive_features: list
+    predicate_scope: str
     clusters_in_original_space: bool
     cluster_method: str
     cluster_n_clusters: int
@@ -34,17 +32,13 @@ class Config(TypedDict):
 
     analysis_tree: None
     tree_path: list
-    cluster_path_for_embed: tuple
+    global_scaler: object | None
 
-    cluster_embedding_full: np.ndarray
-    cluster_explained_variance: np.ndarray
     cluster_pca_x_component: int
     cluster_pca_y_component: int
     method: DRMethod
     normalize: bool
     pca_components: int
-    pca_x_component: int
-    pca_y_component: int
     tsne_perplexity: float
     tsne_learning_rate: float
     tsne_random_state: int

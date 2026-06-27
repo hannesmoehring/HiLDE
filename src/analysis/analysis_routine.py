@@ -9,11 +9,12 @@ from sklearn.preprocessing import StandardScaler
 
 from src.analysis.characteristics import compute_cluster_characteristics, compute_cluster_kde, fit_cluster_decision_tree
 from src.analysis.clustering import compute_clusters
-from src.analysis.dim_reducer import reduce_dimensionality
+from src.analysis.dim_reducer import fit_dimensionality_reducer, reduce_dimensionality
 from src.types import Config
 
 _KDE_MIN_PTS = 3
 _MIN_CLUSTERS_FOR_HIERARCHY = 2
+_MIN_EMBED_DIMS = 2
 
 
 @dataclass
@@ -42,11 +43,13 @@ class HierarchyObject(TypedDict):
     rel_position: tuple[float, float] | None
     kde: np.ndarray | None
     cluster_points: np.ndarray
-    embedding: np.ndarray
+    embedding_original: np.ndarray
+    embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     outlier_scores: np.ndarray | None
     next_object_layer: list[AnalysisObject] | None
     scores: NotRequired[NodeScores]
+    scaler: NotRequired[StandardScaler | None]
 
 
 class ExplorationObject(TypedDict):  # add embedded points
@@ -56,12 +59,29 @@ class ExplorationObject(TypedDict):  # add embedded points
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     exploration_points: np.ndarray
-    embedding: np.ndarray
+    embedding_original: np.ndarray
+    embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     scores: NotRequired[NodeScores]
+    scaler: NotRequired[StandardScaler | None]
 
 
 type AnalysisObject = HierarchyObject | ExplorationObject
+
+
+def _embed_original(X_orig: np.ndarray, config: Config) -> tuple[np.ndarray, np.ndarray | None]:
+    """2D projection of a node's original (normalized) features, plus PCA explained
+    variance when applicable. Falls back to a zero embedding for nodes too small to
+    project so every point still has 2D coordinates for the scatter.
+    """
+    n = X_orig.shape[0]
+    if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:
+        return np.zeros((n, 2), dtype=float), None
+    try:
+        result = fit_dimensionality_reducer(method=config["method"], X=X_orig, n_components=2, config=config)
+    except Exception:
+        return np.zeros((n, 2), dtype=float), None
+    return result.embedding, result.explained_variance_ratio
 
 
 def compute_analysis_tree(
@@ -70,9 +90,10 @@ def compute_analysis_tree(
     config: Config,
 ) -> AnalysisObject:
     if config["normalize"]:
-        scaler = StandardScaler()
-        X = scaler.fit_transform(df[feature_cols])
+        scaler: StandardScaler | None = StandardScaler()
+        X = scaler.fit_transform(df[feature_cols].to_numpy())
     else:
+        scaler = None
         X = df[feature_cols].to_numpy()
 
     umap_n_comp = config["hclust_umap_n_components"]
@@ -83,7 +104,7 @@ def compute_analysis_tree(
     else:
         X_reduced = X
 
-    return _build_next(
+    root = _build_next(
         X=X_reduced,
         config=config,
         ctx=_NodeCtx(
@@ -95,10 +116,13 @@ def compute_analysis_tree(
             row_indices=np.arange(len(df)),
         ),
     )
+    root["scaler"] = scaler  # fit once; reused by scoring and the global predicate scope
+    return root
 
 
 def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
     if ctx.depth >= config["hierarchical_layers"] or len(X) < config["hclust_min_cluster_size"] * 2:
+        emb_orig, emb_var = _embed_original(ctx.X_orig, config)
         return ExplorationObject(
             is_leaf=True,
             depth=ctx.depth,
@@ -106,7 +130,8 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
             exploration_points=X,
-            embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
+            embedding_original=emb_orig,
+            embedding_original_variance=emb_var,
             row_indices=ctx.row_indices,
         )
     else:
@@ -118,6 +143,7 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         )
         valid_cluster_ids = [c for c in np.unique(labels) if c != -1]
         if len(valid_cluster_ids) < _MIN_CLUSTERS_FOR_HIERARCHY:
+            emb_orig, emb_var = _embed_original(ctx.X_orig, config)
             return ExplorationObject(
                 is_leaf=True,
                 depth=ctx.depth,
@@ -125,7 +151,8 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
                 rel_characteristics=ctx.rel_characteristics,
                 rel_position=ctx.rel_position,
                 exploration_points=X,
-                embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
+                embedding_original=emb_orig,
+                embedding_original_variance=emb_var,
                 row_indices=ctx.row_indices,
             )
 
@@ -171,13 +198,15 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
                     ),
                 ),
             )
+        emb_orig, emb_var = _embed_original(ctx.X_orig, config)
         return HierarchyObject(
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
             kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
             cluster_points=X,
             row_indices=ctx.row_indices,
-            embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
+            embedding_original=emb_orig,
+            embedding_original_variance=emb_var,
             outlier_scores=outlier_scores,
             next_object_layer=hierarchy_objects,
         )

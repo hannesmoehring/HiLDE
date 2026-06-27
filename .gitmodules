@@ -1,0 +1,3 @@
+[submodule "external/zadu"]
+	path = external/zadu
+	url = https://github.com/hj-n/zadu.git

@@ -29,7 +29,11 @@ def main() -> None:
         st.markdown("### Select dataset")
         dataset_choice = st.selectbox("Dataset", options=list(DATASETS), key="dataset_choice")
 
-    df = DATASETS[dataset_choice]()
+    try:
+        df = DATASETS[dataset_choice]()
+    except Exception as exc:  # noqa: BLE001 — surface any loader/download failure to the user
+        st.error(f"Could not load '{dataset_choice}': {exc}. This dataset may require a download; check connectivity or pick another dataset.")
+        st.stop()
 
     with c2:
         st.markdown("### Select feature columns")

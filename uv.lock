@@ -1631,7 +1631,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.50.0" },
     { name = "umap-learn", specifier = ">=0.5.11" },
     { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "zadu", specifier = ">=0.4.2" },
+    { name = "zadu", editable = "external/zadu" },
 ]
 
 [package.metadata.requires-dev]
@@ -1916,7 +1916,7 @@ wheels = [
 [[package]]
 name = "zadu"
 version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "external/zadu" }
 dependencies = [
     { name = "faiss-cpu" },
     { name = "hdbscan" },
@@ -1926,7 +1926,14 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/83/4d25b52d37096f017aefbff5930a7b37166a1e9d936a67da0175f7fe909c/zadu-0.4.2.tar.gz", hash = "sha256:106747eb59115f987804c96cfdf78f880b0acabf97ab689203a9dda7ca918b85", size = 32601, upload-time = "2026-05-13T06:58:08.36Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/56/0ac91227e6ca181477b4182b7b28761f5cc2b2bb32a2b23507b56abcb142/zadu-0.4.2-py3-none-any.whl", hash = "sha256:0fb97b132a6852c2fef82a6abd388617b2aac71f10a0061d892fc9086ff987b7", size = 38381, upload-time = "2026-05-13T06:58:06.744Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "faiss-cpu" },
+    { name = "hdbscan" },
+    { name = "matplotlib" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
 ]

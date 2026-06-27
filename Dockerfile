@@ -12,6 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
+#TODO: double check local zadu
+COPY external/zadu ./external/zadu 
+
 RUN uv sync --locked --no-install-project
 
 COPY . .

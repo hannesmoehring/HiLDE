@@ -19,10 +19,11 @@ dependencies = [
     "streamlit>=1.50.0",
     "umap-learn>=0.5.11",
     "watchdog>=6.0.0",
-    "zadu>=0.4.2",
+    "zadu",
 ]
 
 [dependency-groups]
-dev = [
-    "pyinstrument>=5.1.2",
-]
+dev = ["pyinstrument>=5.1.2"]
+
+[tool.uv.sources]
+zadu = { path = "external/zadu", editable = true }
