@@ -9,7 +9,8 @@ import pandas as pd
 import streamlit as st
 
 from src.analysis.dim_reducer import fit_dimensionality_reducer
-from src.ui.state import ReductionConfig
+
+from src.types import Config
 
 DATASET_PATH_RED = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 DATASET_PATH_WHITE = Path("datasets/wine_quality/wine+quality/winequality-white.csv")
@@ -33,21 +34,17 @@ def compute_embedding(
     *,
     method: str,
     X: np.ndarray,
-    config: ReductionConfig,
+    config: Config,
 ):
     return fit_dimensionality_reducer(
         method=method,
         X=X,
-        n_components=config["pca_components"] if method == "PCA" else 2,
-        normalize=config["normalize"],
-        perplexity=config["tsne_perplexity"] if method == "t-SNE" else None,
-        learning_rate=config["tsne_learning_rate"] if method == "t-SNE" else None,
-        n_neighbors=config["umap_n_neighbors"] if method == "UMAP" else None,
-        min_dist=config["umap_min_dist"] if method == "UMAP" else None,
+        n_components=2,
+        config=config,
     )
 
 
-def export_selection(selected_df: pd.DataFrame, config: ReductionConfig) -> Path:
+def export_selection(selected_df: pd.DataFrame, config: Config) -> Path:
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_file = EXPORT_DIR / f"selected_points_{timestamp}.csv"

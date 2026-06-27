@@ -4,14 +4,14 @@ from scipy.stats import gaussian_kde
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 from src.analysis.dim_reducer import reduce_dimensionality
+from src.types import Config
 
 
 def compute_cluster_kde(
     pts: np.ndarray,
-    kde_dr_method: str,
-    config: dict,  # type: ignore[type-arg]
+    config: Config,
 ) -> np.ndarray:
-    pts_2d = reduce_dimensionality(kde_dr_method, X=pts, n_components=2, **config)  # type: ignore[arg-type]
+    pts_2d = reduce_dimensionality(method=config["method"], X=pts, n_components=2, config=config)  # type: ignore[arg-type]
 
     kde = gaussian_kde(pts_2d.T, bw_method="scott")
     pad = 0.5 * pts_2d.std(axis=0).max()

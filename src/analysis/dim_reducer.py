@@ -6,6 +6,8 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import MDS, TSNE
 from sklearn.preprocessing import StandardScaler
 
+from src.types import Config, DRMethod
+
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
 
 
@@ -19,17 +21,14 @@ class ReductionResult:
 def reduce_dimensionality(
     method: str,
     X: np.ndarray,
+    config: Config,
     n_components: int = 2,
-    *,
-    normalize: bool = True,
-    **kwargs,
 ) -> np.ndarray:
     result = fit_dimensionality_reducer(
         method=method,
         X=X,
         n_components=n_components,
-        normalize=normalize,
-        **kwargs,
+        config=config,
     )
     return result.embedding
 
@@ -37,10 +36,8 @@ def reduce_dimensionality(
 def fit_dimensionality_reducer(
     method: str,
     X: np.ndarray,
+    config: Config,
     n_components: int = 2,
-    *,
-    normalize: bool = True,
-    **kwargs: object,
 ) -> ReductionResult:
     # if normalize:
     #     scaler = StandardScaler()
@@ -50,9 +47,9 @@ def fit_dimensionality_reducer(
         case "pca":
             return _pca(X, n_components=n_components)
         case "t-sne":
-            return _tsne(X, n_components=n_components, perplexity=kwargs["perplexity"], learning_rate=kwargs["learning_rate"])
+            return _tsne(X, n_components=n_components, perplexity=config["tsne_perplexity"], learning_rate=config["tsne_learning_rate"])
         case "umap":
-            return _umap(X, n_components=n_components, n_neighbors=kwargs["n_neighbors"], min_dist=kwargs["min_dist"])
+            return _umap(X, n_components=n_components, n_neighbors=config["umap_n_neighbors"], min_dist=config["umap_min_dist"])
         case "mds":
             return _mds(
                 X,

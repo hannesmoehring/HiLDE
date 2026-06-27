@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypedDict, cast
+from typing import Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from src.analysis.characteristics import compute_cluster_characteristics, compute_cluster_kde, fit_cluster_decision_tree
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
+from src.types import Config
 
 _KDE_MIN_PTS = 3
 _MIN_CLUSTERS_FOR_HIERARCHY = 2
@@ -25,14 +26,27 @@ class _NodeCtx:
     row_indices: np.ndarray
 
 
+class NodeScores(TypedDict):
+    n_points: int
+    k: int | None
+    trustworthiness: float | None
+    continuity: float | None
+    mrre_false: float | None
+    mrre_missing: float | None
+    stress: float | None
+    cadi: float | None
+
+
 class HierarchyObject(TypedDict):
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     kde: np.ndarray | None
     cluster_points: np.ndarray
+    embedding: np.ndarray
     row_indices: np.ndarray
     outlier_scores: np.ndarray | None
     next_object_layer: list[AnalysisObject] | None
+    scores: NotRequired[NodeScores]
 
 
 class ExplorationObject(TypedDict):  # add embedded points
@@ -42,7 +56,9 @@ class ExplorationObject(TypedDict):  # add embedded points
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     exploration_points: np.ndarray
+    embedding: np.ndarray
     row_indices: np.ndarray
+    scores: NotRequired[NodeScores]
 
 
 type AnalysisObject = HierarchyObject | ExplorationObject
@@ -51,7 +67,7 @@ type AnalysisObject = HierarchyObject | ExplorationObject
 def compute_analysis_tree(
     df: pd.DataFrame,
     feature_cols: list[str],
-    config: dict,
+    config: Config,
 ) -> AnalysisObject:
     if config["normalize"]:
         scaler = StandardScaler()
@@ -59,11 +75,11 @@ def compute_analysis_tree(
     else:
         X = df[feature_cols].to_numpy()
 
-    umap_n_comp = config["hdbscan_umap_n_components"]
+    umap_n_comp = config["hclust_umap_n_components"]
     if umap_n_comp and umap_n_comp < X.shape[1]:
-        n_comp = min(umap_n_comp, X.shape[1], len(X) - 1)
-        n_nbrs = min(30, len(X) - 1)
-        X_reduced = reduce_dimensionality("UMAP", X=X, n_components=n_comp, n_neighbors=n_nbrs, min_dist=0.1)
+        config["hclust_umap_n_components"] = min(umap_n_comp, X.shape[1], len(X) - 1)
+        config["umap_n_neighbors"] = min(config["umap_n_neighbors"], len(X) - 1)
+        X_reduced = reduce_dimensionality("UMAP", X=X, n_components=config["hclust_umap_n_components"], config=config)
     else:
         X_reduced = X
 
@@ -81,33 +97,35 @@ def compute_analysis_tree(
     )
 
 
-def _build_next(X: np.ndarray, config: dict, ctx: _NodeCtx) -> AnalysisObject:
-    if ctx.depth >= config["hierarchical_layers"] or len(X) < config["min_cluster_size"] * 2:
+def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
+    if ctx.depth >= config["hierarchical_layers"] or len(X) < config["hclust_min_cluster_size"] * 2:
         return ExplorationObject(
             is_leaf=True,
             depth=ctx.depth,
-            kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+            kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
             exploration_points=X,
+            embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
             row_indices=ctx.row_indices,
         )
     else:
         labels, outlier_scores = compute_clusters(
             X,
             method="HDBSCAN",
-            min_cluster_size=config["min_cluster_size"],
-            min_samples=config["min_samples"],
+            min_cluster_size=config["hclust_min_cluster_size"],
+            min_samples=config["hclust_min_samples"],
         )
         valid_cluster_ids = [c for c in np.unique(labels) if c != -1]
         if len(valid_cluster_ids) < _MIN_CLUSTERS_FOR_HIERARCHY:
             return ExplorationObject(
                 is_leaf=True,
                 depth=ctx.depth,
-                kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+                kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
                 rel_characteristics=ctx.rel_characteristics,
                 rel_position=ctx.rel_position,
                 exploration_points=X,
+                embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
                 row_indices=ctx.row_indices,
             )
 
@@ -119,7 +137,7 @@ def _build_next(X: np.ndarray, config: dict, ctx: _NodeCtx) -> AnalysisObject:
         X_reduced_df["cluster"] = labels
         centroids = X_reduced_df.loc[mask, reduced_cols].groupby(labels[mask]).mean()
 
-        centroids_2d = reduce_dimensionality("MDS", X=centroids.values, n_components=2)
+        centroids_2d = reduce_dimensionality("MDS", X=centroids.values, n_components=2, config=config)
         rel_positions: dict[int, tuple[float, float]] = {
             cluster_id: (centroids_2d[i, 0], centroids_2d[i, 1]) for i, cluster_id in enumerate(centroids.index)
         }
@@ -156,9 +174,10 @@ def _build_next(X: np.ndarray, config: dict, ctx: _NodeCtx) -> AnalysisObject:
         return HierarchyObject(
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
-            kde=compute_cluster_kde(X, config["kde_dr_method"], config) if len(X) >= _KDE_MIN_PTS else None,
+            kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
             cluster_points=X,
             row_indices=ctx.row_indices,
+            embedding=reduce_dimensionality(method=config["method"], X=X, n_components=2, config=config),
             outlier_scores=outlier_scores,
             next_object_layer=hierarchy_objects,
         )

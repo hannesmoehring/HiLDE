@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src.analysis.analysis_routine import compute_analysis_tree
+from src.evaluation.evaluate import start_evaluation
+from src.types import Config
 from src.ui.data import compute_embedding
 from src.ui.state import current_config
 from src.ui.tree_nav import get_node_at_path
@@ -12,29 +13,10 @@ from src.ui.tree_nav import get_node_at_path
 _MIN_COMPONENTS_FOR_2D = 2
 
 
-def _build_tree_config() -> dict:
-    method = st.session_state["method"]
-    config: dict = {
-        "normalize": st.session_state["hclust_normalize"],
-        "hierarchical_layers": int(st.session_state["hierarchical_layers"]),
-        "min_cluster_size": int(st.session_state["hclust_min_cluster_size"]),
-        "min_samples": int(st.session_state["hclust_min_samples"]),
-        "hdbscan_umap_n_components": int(st.session_state["hclust_umap_n_components"]),
-        "kde_dr_method": method,
-    }
-    if method == "t-SNE":
-        config["perplexity"] = float(st.session_state["tsne_perplexity"])
-        config["learning_rate"] = float(st.session_state["tsne_learning_rate"])
-    elif method == "UMAP":
-        config["n_neighbors"] = int(st.session_state["umap_n_neighbors"])
-        config["min_dist"] = float(st.session_state["umap_min_dist"])
-    return config
-
-
 def handle_hierarchical_save(df: pd.DataFrame, feature_columns: list[str]) -> None:
-    config = _build_tree_config()
-    with st.spinner("Computing analysis tree…"):
-        tree = compute_analysis_tree(df, feature_columns, config)
+    config: Config = current_config()
+    with st.spinner("Computing analysis tree & quality scores…"):
+        tree = start_evaluation(df, feature_columns, config)
 
     st.session_state["analysis_tree"] = tree
     st.session_state["tree_path"] = []

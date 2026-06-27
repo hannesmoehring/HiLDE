@@ -5,20 +5,7 @@ from typing import TypedDict, cast
 import numpy as np
 import pandas as pd
 import streamlit as st
-
-
-class ReductionConfig(TypedDict):
-    method: str
-    normalize: bool
-    pca_components: int
-    pca_x_component: int | None
-    pca_y_component: int | None
-    tsne_perplexity: float
-    tsne_learning_rate: float
-    tsne_random_state: int
-    umap_n_neighbors: int
-    umap_min_dist: float
-    umap_random_state: int
+from src.types import Config
 
 
 def init_state() -> None:
@@ -64,26 +51,16 @@ def init_state() -> None:
         "umap_min_dist": 0.1,
         "umap_random_state": 42,
     }
-
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
 
 
-def current_config() -> ReductionConfig:
-    return {
-        "method": st.session_state["method"],
-        "normalize": st.session_state["normalize"],
-        "pca_components": st.session_state["pca_components"],
-        "pca_x_component": st.session_state.get("pca_x_component"),
-        "pca_y_component": st.session_state.get("pca_y_component"),
-        "tsne_perplexity": st.session_state["tsne_perplexity"],
-        "tsne_learning_rate": st.session_state["tsne_learning_rate"],
-        "tsne_random_state": st.session_state["tsne_random_state"],
-        "umap_n_neighbors": st.session_state["umap_n_neighbors"],
-        "umap_min_dist": st.session_state["umap_min_dist"],
-        "umap_random_state": st.session_state["umap_random_state"],
-    }
+def current_config() -> Config:
+    # Return a copy: downstream analysis mutates the config in place, and writing
+    # widget-backed keys (e.g. hclust_umap_n_components) back into session_state raises.
+    config: Config = cast("Config", dict(st.session_state))
+    return config
 
 
 def get_selected_indices(event: object) -> list[int]:

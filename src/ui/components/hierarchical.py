@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from src.analysis.analysis_routine import HierarchyObject
+from src.ui.components.scores import render_node_scores
 from src.ui.state import get_selected_indices
 from src.ui.tree_nav import child_size, get_node_at_path
 from src.ui.visualization import cluster_characteristics_fig, cluster_gauss_kde
@@ -62,6 +63,8 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
     with c3:
         _render_glosh_column(root)
 
+    render_node_scores(root.get("scores"), title="**DR quality — all points (root)**")
+
     topo_fig = cluster_gauss_kde(root)
     topo_fig.update_layout(height=650)
 
@@ -89,6 +92,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
         child = children[selected_idx]
         n_pts = child_size(child)
         st.markdown(f"**Cluster {selected_idx}** — n={n_pts} points")
+        render_node_scores(child.get("scores"), title="**DR quality**")
         char_fig, rules = cluster_characteristics_fig(
             child["rel_characteristics"],
             n_pts,
@@ -167,6 +171,7 @@ def render_hierarchical_sublevel(
             child = children[current_idx]
             n_pts = child_size(child)
             st.markdown(f"**Sub-cluster {current_idx}** — n={n_pts} points")
+            render_node_scores(child.get("scores"), title="**DR quality**")
             char_fig, rules = cluster_characteristics_fig(
                 child["rel_characteristics"],
                 n_pts,

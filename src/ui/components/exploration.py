@@ -9,6 +9,7 @@ from src.analysis.clustering import compute_clusters
 from src.analysis.predicate_generator import generate_predicate
 from src.ui.components.handlers import handle_exploration_save
 from src.ui.components.pca import render_pca_controls, resolve_cluster_embedding_2d
+from src.ui.components.scores import render_node_scores
 from src.ui.data import build_plot_df, compute_interactive_mask, export_selection
 from src.ui.state import current_config, get_selected_indices
 from src.ui.tree_nav import get_node_at_path
@@ -179,6 +180,8 @@ def render_cluster_exploration(
     row_indices = leaf["row_indices"]  # type: ignore[index]
     sub_df = df.iloc[row_indices].reset_index(drop=True)
     sub_X = sub_df[feature_columns].to_numpy()
+
+    render_node_scores(leaf.get("scores"), title="**DR quality — this cluster**")
 
     resolved = resolve_cluster_embedding_2d()
     if resolved is None:
