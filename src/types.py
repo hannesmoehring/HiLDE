@@ -9,6 +9,8 @@ type DRMethod = "PCA" | "t-SNE" | "UMAP" | "MDS"
 
 
 class Config(TypedDict):
+    dataset_choice: str
+    characteristics_non_feature_only: bool
     selected_indices: list[int]
     selected_df: pd.DataFrame
     latest_selection_config: None

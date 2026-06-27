@@ -99,6 +99,7 @@ def render_hierarchical_section(df: pd.DataFrame, feature_columns: list[str]) ->
             df,
             child["row_indices"],
             feature_columns,
+            st.session_state.get("characteristics_non_feature_only", False),
         )
         char_fig.update_layout(height=620)
         st.plotly_chart(char_fig, width="stretch")
@@ -178,6 +179,7 @@ def render_hierarchical_sublevel(
                 df,
                 child["row_indices"],
                 feature_columns,
+                st.session_state.get("characteristics_non_feature_only", False),
             )
             char_fig.update_layout(height=620)
             st.plotly_chart(char_fig, width="stretch")

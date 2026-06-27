@@ -76,6 +76,7 @@ def cluster_characteristics_fig(
     df: pd.DataFrame,
     row_indices: np.ndarray,
     feature_cols: list[str],
+    non_feature_only: bool = False,
 ) -> tuple[go.Figure, str]:
     order = characteristics.index.tolist()
     z_mean = characteristics["z_mean"]
@@ -89,27 +90,28 @@ def cluster_characteristics_fig(
 
     fig = go.Figure()
     fig.add_hline(y=0, line_dash="dot", line_color="gray", opacity=0.6)
-    fig.add_trace(
-        go.Bar(
-            x=order,
-            y=z_mean[order].to_numpy(),
-            customdata=raw_mean[order].to_numpy(),
-            error_y={
-                "type": "data",
-                "array": z_std[order].to_numpy(),
-                "visible": True,
-                "color": "rgba(0,0,0,0.35)",
-                "thickness": 1.5,
-            },
-            marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean[order]],
-            hovertemplate=(
-                "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
-                "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+    if not non_feature_only:
+        fig.add_trace(
+            go.Bar(
+                x=order,
+                y=z_mean[order].to_numpy(),
+                customdata=raw_mean[order].to_numpy(),
+                error_y={
+                    "type": "data",
+                    "array": z_std[order].to_numpy(),
+                    "visible": True,
+                    "color": "rgba(0,0,0,0.35)",
+                    "thickness": 1.5,
+                },
+                marker_color=["crimson" if v < 0 else "steelblue" for v in z_mean[order]],
+                hovertemplate=(
+                    "<b>%{x}</b><br>z-score: %{y:.2f}<br>within std: %{error_y.array:.2f}"
+                    "<br>cluster mean: %{customdata:.2f}<extra></extra>"
+                ),
+                name="feature cols",
+                showlegend=len(extra_cols) > 0,
             ),
-            name="feature cols",
-            showlegend=len(extra_cols) > 0,
-        ),
-    )
+        )
 
     if extra_cols:
         extra_order = sorted(extra_cols)

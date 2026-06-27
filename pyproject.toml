@@ -21,3 +21,8 @@ dependencies = [
     "watchdog>=6.0.0",
     "zadu>=0.4.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pyinstrument>=5.1.2",
+]

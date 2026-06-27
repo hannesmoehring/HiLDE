@@ -10,6 +10,8 @@ from src.types import Config
 
 def init_state() -> None:
     defaults: dict[str, object] = {
+        "dataset_choice": "Wine quality (Low)",
+        "characteristics_non_feature_only": False,
         "selected_indices": [],
         "selected_df": pd.DataFrame(),
         "latest_selection_config": None,

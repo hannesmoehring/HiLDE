@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pyinstrument import Profiler
 
 import sys
 from pathlib import Path
@@ -11,7 +12,7 @@ from src.ui.components.config import render_exploration_config, render_hierarchi
 from src.ui.components.exploration import render_cluster_exploration
 from src.ui.components.handlers import handle_hierarchical_save
 from src.ui.components.hierarchical import render_hierarchical_section, render_hierarchical_sublevel
-from src.ui.data import load_dataset
+from src.ui.data import DATASETS
 from src.ui.state import init_state
 from src.ui.tree_nav import get_node_at_path
 
@@ -20,20 +21,20 @@ def main() -> None:
     st.set_page_config(page_title="SHD - Dimensionality Reduction Explorer", layout="wide")
     init_state()
     st.title("SHD Dimensionality Reduction Explorer")
-    st.caption("Dataset is hardcoded to winequality-red.csv")
-
-    df = load_dataset()
 
     # -- GENERAL CONFIG --
     st.subheader("General Configuration")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Select dataset")
-        st.text_input("Path to dataset CSV", value="datasets/wine_quality/wine+quality/winequality-red.csv")
+        dataset_choice = st.selectbox("Dataset", options=list(DATASETS), key="dataset_choice")
+
+    df = DATASETS[dataset_choice]()
 
     with c2:
         st.markdown("### Select feature columns")
         feature_columns = st.multiselect("Feature columns", options=df.columns, default=df.columns.drop("row_id").tolist())
+        st.checkbox("Only show non-feature columns in characteristics", key="characteristics_non_feature_only")
 
     X = df[feature_columns].to_numpy()
     max_dims = int(min(X.shape[0], X.shape[1]))
@@ -53,10 +54,18 @@ def main() -> None:
     with center_col:
         save_clicked = st.button("Save & Apply", key="save_all_btn", type="primary", use_container_width=True)
     if save_clicked:
+        profiler = Profiler()
+        profiler.start()
+
         handle_hierarchical_save(df, feature_columns)
 
+        profiler.stop()
+        profiler.open_in_browser()
+        profiler.write_html("outputs/profiler_report.html")
+
     st.divider()
-    st.expander("Full Dataframe", expanded=False).write(df)
+    with st.expander(f"Dataframe preview — first 200 of {len(df):,} rows, {df.shape[1]} columns", expanded=False):
+        st.dataframe(df.head(200))
     st.divider()
 
     # ── HIERARCHICAL TOPOGRAPHY ───────────────────────────────────────────────
