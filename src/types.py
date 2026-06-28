@@ -29,6 +29,7 @@ class Config(TypedDict):
     hclust_umap_n_components: int
     hclust_min_samples: int
     hclust_min_cluster_size: int
+    dbscan_eps: float
 
     analysis_tree: None
     tree_path: list

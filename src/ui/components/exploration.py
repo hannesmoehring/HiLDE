@@ -33,7 +33,7 @@ def compute_data_layer(
                 cluster_labels = compute_clusters(
                     X_scaled=X_scaled,
                     method=str(st.session_state["cluster_method"]),
-                    n_clusters=int(st.session_state["cluster_n_clusters"]),
+                    config=current_config(),
                 )
         except ValueError as exc:
             st.error(f"Clustering failed: {exc}")
@@ -134,9 +134,7 @@ def _render_predicate_summary(range_df_full: pd.DataFrame, *, n_selected: int) -
 
     clauses = range_df_full[is_predicate].sort_values("clause_f1", ascending=False)
     if not clauses.empty:
-        readable = "  ∧  ".join(
-            f"**{row.feature}** ∈ [{row.sel_min:.2f}, {row.sel_max:.2f}]" for row in clauses.itertuples()
-        )
+        readable = "  ∧  ".join(f"**{row.feature}** ∈ [{row.sel_min:.2f}, {row.sel_max:.2f}]" for row in clauses.itertuples())
         st.markdown(readable)
         st.caption("Ranges are standardized (z-score) values; bars below show their position within each feature's global range.")
 

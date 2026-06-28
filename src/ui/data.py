@@ -78,10 +78,10 @@ def load_mnist_dataframe() -> pd.DataFrame:
         labels = np.concatenate(
             [load_mnist_labels(MNIST_RAW_DIR / "train-labels-idx1-ubyte"), load_mnist_labels(MNIST_RAW_DIR / "t10k-labels-idx1-ubyte")],
         )
-        return _one_hot_df(images.reshape(images.shape[0], 784) / 255.0, labels, feature_names, names).head(10000)  # TODO: REMOVE LIMIT
+        return _one_hot_df(images.reshape(images.shape[0], 784) / 255.0, labels, feature_names, names)  # .head(10000)  # TODO: REMOVE LIMIT
 
     data = fetch_openml("mnist_784", version=1, as_frame=False, n_retries=5, delay=2.0)
-    return _one_hot_df(data.data / 255.0, data.target.astype(int), feature_names, names).head(10000)  # TODO: REMOVE LIMIT
+    return _one_hot_df(data.data / 255.0, data.target.astype(int), feature_names, names)  # .head(10000)  # TODO: REMOVE LIMIT
 
 
 @st.cache_data

@@ -60,27 +60,30 @@ def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
 
     n = X.shape[0]
 
-    try:
-        stress = ZADU([{"id": "stress"}], orig=X).measure(emb)[0]
-        scores["stress"] = float(stress["stress"])
-    except Exception:
-        pass
-
+    # Build a single spec list so stress + tnc + mrre share one ZADU instance:
+    # the orig/emb distance matrix and knn-ranking are then computed once, not ~2x.
+    specs = [{"id": "stress"}]
+    k = None
     if n >= MIN_PTS_FOR_NEIGHBORS:
         k = min(EVAL_K, (n - 1) // 2)
         if k >= 1:
             scores["k"] = k
-            try:
-                tnc, mrre = ZADU(
-                    [{"id": "tnc", "params": {"k": k}}, {"id": "mrre", "params": {"k": k}}],
-                    orig=X,
-                ).measure(emb)
-                scores["trustworthiness"] = float(tnc["trustworthiness"])
-                scores["continuity"] = float(tnc["continuity"])
-                scores["mrre_false"] = float(mrre["mrre_false"])
-                scores["mrre_missing"] = float(mrre["mrre_missing"])
-            except Exception:
-                pass
+            specs.append({"id": "tnc", "params": {"k": k}})
+            specs.append({"id": "mrre", "params": {"k": k}})
+        else:
+            k = None
+
+    try:
+        results = ZADU(specs, orig=X).measure(emb)
+        scores["stress"] = float(results[0]["stress"])
+        if k is not None:
+            tnc, mrre = results[1], results[2]
+            scores["trustworthiness"] = float(tnc["trustworthiness"])
+            scores["continuity"] = float(tnc["continuity"])
+            scores["mrre_false"] = float(mrre["mrre_false"])
+            scores["mrre_missing"] = float(mrre["mrre_missing"])
+    except Exception:
+        pass
 
     if labels is not None:
         scores["cadi"] = _cadi(X, emb, labels)

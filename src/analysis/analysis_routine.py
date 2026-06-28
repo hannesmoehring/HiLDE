@@ -135,12 +135,7 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
             row_indices=ctx.row_indices,
         )
     else:
-        labels, outlier_scores = compute_clusters(
-            X,
-            method="HDBSCAN",
-            min_cluster_size=config["hclust_min_cluster_size"],
-            min_samples=config["hclust_min_samples"],
-        )
+        labels, outlier_scores = compute_clusters(X, method="HDBSCAN", config=config)
         valid_cluster_ids = [c for c in np.unique(labels) if c != -1]
         if len(valid_cluster_ids) < _MIN_CLUSTERS_FOR_HIERARCHY:
             emb_orig, emb_var = _embed_original(ctx.X_orig, config)

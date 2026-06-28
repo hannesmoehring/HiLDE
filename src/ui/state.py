@@ -8,7 +8,7 @@ import streamlit as st
 from src.types import Config
 
 
-def init_state() -> None:
+def init_state(init_streamlit: bool = True) -> Config:
     defaults: dict[str, object] = {
         "dataset_choice": "Wine quality (Low)",
         "characteristics_non_feature_only": False,
@@ -20,7 +20,7 @@ def init_state() -> None:
         "interactive_features": [],
         "predicate_scope": "local",
         "clusters_in_original_space": False,
-        "cluster_method": "KMeans",
+        "cluster_method": "HDBSCAN",
         "cluster_n_clusters": 5,
         "cluster_labels": np.array([], dtype=int),
         "hierarchical_mode": True,
@@ -30,6 +30,7 @@ def init_state() -> None:
         "hclust_umap_n_components": 2,
         "hclust_min_samples": 5,
         "hclust_min_cluster_size": 15,
+        "dbscan_eps": 0.5,
         # pre-computed analysis tree + navigation path
         "analysis_tree": None,
         "tree_path": [],
@@ -48,9 +49,12 @@ def init_state() -> None:
         "umap_min_dist": 0.1,
         "umap_random_state": 42,
     }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    if init_streamlit:
+        for key, value in defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
+
+    return cast("Config", dict(defaults))
 
 
 def current_config() -> Config:
