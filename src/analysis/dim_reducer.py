@@ -76,6 +76,10 @@ def _pca(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
 
 
 def _tsne(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
+    # sklearn requires perplexity < n_samples; clamp so t-SNE works on small clusters
+    # (e.g. hierarchical sub-regions), not just the full dataset.
+    if "perplexity" in kwargs:
+        kwargs["perplexity"] = min(float(kwargs["perplexity"]), max(1.0, X.shape[0] - 1.0))
     tsne = TSNE(n_components=n_components, **kwargs)
     embedding = tsne.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=tsne)
