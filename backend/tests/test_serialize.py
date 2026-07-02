@@ -12,8 +12,8 @@ import json
 
 from backend import datasets as ds
 from backend.serialize import serialize_tree
+from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
-from src.ui.state import init_state
 
 _NODE_KEYS = {
     "id", "is_leaf", "depth", "n_points", "row_indices",
@@ -23,7 +23,7 @@ _NODE_KEYS = {
 
 
 def _build():
-    config = init_state(init_streamlit=False)
+    config = default_config()
     config["hierarchical_layers"] = 2
     df = ds.load("Iris (Low)")
     feats = ds.default_feature_cols(df)

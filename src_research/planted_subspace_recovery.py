@@ -78,7 +78,7 @@ from src.analysis.analysis_routine import _embed_original
 from src.analysis.clustering import compute_clusters
 from src.evaluation.evaluate import start_evaluation
 from src.types import Config
-from src.ui.state import init_state
+from src.config_defaults import init_state
 
 # Lift the small tree helpers from the sibling RQ1 harness rather than reimplement them
 # (importing the module is side-effect-safe: it only runs the experiment under __main__).

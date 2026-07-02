@@ -1,7 +1,7 @@
 """Selection-time predicate induction, wrapping the unchanged calc layer.
 
-Mirrors `src/ui/components/exploration.py::render_range_analysis` +
-`_global_predicate_inputs`, but pure (no Streamlit): given a node's row indices
+Ported from the former `src/ui/components/exploration.py::render_range_analysis`
++ `_global_predicate_inputs`, but pure (no Streamlit): given a node's row indices
 and a within-node selection, reproduce the local/global scaling and run
 `generate_predicate("db", ...)` at RCM 1.0 (full) and 0.9 (trimmed core).
 """

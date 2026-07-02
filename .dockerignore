@@ -6,7 +6,8 @@
 .idea
 .vscode
 **/.DS_Store
-dist
+**/node_modules
+**/dist
 build
 **/*.egg-info
 outputs
@@ -15,6 +16,8 @@ outputs
 hm_*
 notes.md
 research_nb.ipynb
+src_research
+**/*.tsbuildinfo
 
 datasets/*
 !datasets/wine_quality

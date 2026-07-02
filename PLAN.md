@@ -253,14 +253,18 @@ Response: `[{ key, label, n_rows?, feature_cols? }]` from the `DATASETS` registr
       via ResizeObserver; full mobile layout not yet done).
 
 ### Phase 8 — Productionization
-- [ ] 8.1 Build frontend to static assets; serve via FastAPI `StaticFiles` (single
-      container) — decide vs separate frontend host.
-- [ ] 8.2 Update `Dockerfile` / `docker-compose.yml` for the backend+frontend
-      (retire the `streamlit run` command or keep it as a legacy target).
-- [ ] 8.3 Env/config for API base URL, dataset paths, cache dir.
-- [ ] 8.4 README: new run instructions (dev + prod); mark Streamlit path as legacy.
-- [ ] 8.5 Decide fate of `src/ui/` (keep as reference vs remove) — do not delete
-      without explicit approval.
+- [x] 8.1 Serve frontend `dist` via FastAPI `StaticFiles` at `/` (API at `/api/*`).
+      Verified in a real browser against the FastAPI-only server.
+- [x] 8.2 Multi-stage `Dockerfile` (node build → lean Python runtime running
+      uvicorn) + `docker-compose.yml` on :8000. `streamlit run` retired. Image is
+      Streamlit-free via a minimal `backend/requirements.txt` (also avoids the
+      pre-existing kdbcv/scipy lock conflict). NOTE: image not built here (no
+      Docker daemon in this env) — build with `docker compose up --build`.
+- [x] 8.3 Env config: `PORT`, `SCIKIT_LEARN_DATA`; datasets mounted read-only.
+- [x] 8.4 README: dev + production run instructions; Streamlit noted as removed.
+- [x] 8.5 Streamlit removed. `src/ui/` deleted. Shared loaders/config defaults
+      extracted Streamlit-free to `src/datasets.py` + `src/config_defaults.py`;
+      backend + `src_research` imports repointed; backend verified Streamlit-free.
 
 ---
 
@@ -274,6 +278,13 @@ Response: `[{ key, label, n_rows?, feature_cols? }]` from the `DATASETS` registr
    is signed off. (Phase 8.5)
 
 ## Implementation Status (living)
+
+**Phase 7 (polish) & Phase 8 (productionization) — DONE:** smoother continuous KDE
+field, design-system pass, panel transitions; FastAPI serves the built frontend
+(single container), multi-stage Dockerfile + compose, and **Streamlit removed**
+(`src/ui/` deleted; loaders/config extracted Streamlit-free). Interactive feature
+filters (client-side) shipped. Docker image not built here (no daemon) — verified
+the FastAPI-only serving model in a real browser instead.
 
 **Done & verified (Phases 0–5, most of 6):**
 - Backend `backend/`: `serialize.py` (+ round-trip unit test), FastAPI `app.py`

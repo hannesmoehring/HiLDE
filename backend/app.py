@@ -17,13 +17,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import datasets as ds
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
+from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
-from src.ui.state import init_state
 
 app = FastAPI(title="SHD API", version="0.1.0")
 
@@ -41,8 +42,8 @@ _tree_cache: dict[str, dict[str, Any]] = {}
 
 def _merge_config(partial: dict[str, Any]) -> dict[str, Any]:
     """Overlay the frontend's config knobs on the full default Config."""
-    config = init_state(init_streamlit=False)
-    config.update(partial)
+    config = default_config()
+    config.update(partial)  # type: ignore[typeddict-item]
     return config  # type: ignore[return-value]
 
 
@@ -158,3 +159,11 @@ def rows(req: RowsRequest) -> dict[str, Any]:
     sub = df.iloc[req.ids][cols]
     records = json.loads(sub.to_json(orient="records"))  # to_json coerces NaN->null, np types->native
     return {"columns": cols, "rows": records}
+
+
+# Serve the built frontend (production single-container). Mounted last so /api/*
+# routes above take precedence; html=True serves index.html at "/". No-op in dev
+# (no dist/ yet) — the Vite dev server serves the frontend there.
+_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+if _DIST.is_dir():
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="static")

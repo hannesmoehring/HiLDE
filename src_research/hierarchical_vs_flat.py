@@ -75,8 +75,8 @@ from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
 from src.evaluation.evaluate import _score_node, start_evaluation
 from src.types import Config
-from src.ui.data import DATASETS
-from src.ui.state import init_state
+from src.datasets import DATASETS
+from src.config_defaults import init_state
 
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this block to change the experiment.                          #

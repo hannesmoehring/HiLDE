@@ -9,8 +9,8 @@ import src.analysis.analysis_routine as ar
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
 from src.types import Config
-from src.ui.data import load_dataset
-from src.ui.state import init_state
+from src.datasets import load_dataset
+from src.config_defaults import init_state
 
 df = load_dataset()
 

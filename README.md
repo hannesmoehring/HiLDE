@@ -18,16 +18,30 @@ PYTHONPATH=. .venv/bin/python -m uvicorn backend.app:app --port 8000 --reload
 cd frontend && npm install && npm run dev
 ```
 
-Open http://localhost:5173. Build the static bundle with `npm run build` (output
-in `frontend/dist/`). Backend tests: `PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize`.
+Open http://localhost:5173. Backend tests: `PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize`.
 
-## Legacy Streamlit UI
+## Production (single container)
+
+FastAPI serves the built frontend (`frontend/dist`) at `/` and the API at `/api/*`
+from one process — no separate frontend host.
 
 ```bash
-PYTHONPATH=. streamlit run src/ui/app.py
+# Build the frontend once, then run the backend (it auto-mounts frontend/dist):
+cd frontend && npm run build && cd ..
+PYTHONPATH=. .venv/bin/python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
+# -> whole app at http://localhost:8000
+
+# Or via Docker (multi-stage: builds the frontend, then a lean Python runtime):
+docker compose up --build     # -> http://localhost:8000
 ```
 
-(Retired once D3 parity is signed off — see `PLAN.md` Phase 8.)
+Local datasets (wine CSVs, MNIST IDX files) are mounted read-only via
+`docker-compose.yml`; sklearn-provided datasets (iris, digits, …) need no mounts.
+
+> The Streamlit UI (`src/ui/`) has been **removed**; the D3 frontend replaces it.
+> `src/analysis` and `src/evaluation` (the calc layer) are unchanged. Dataset
+> loaders and config defaults now live Streamlit-free in `src/datasets.py` and
+> `src/config_defaults.py`.
 
 ---
 
