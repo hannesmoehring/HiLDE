@@ -52,10 +52,13 @@ export function ConfigPanel({ config, maxDims, onChange }: Props) {
         <NumberField
           label="Hierarchical layers"
           value={config.hierarchical_layers}
-          min={1}
+          min={0}
           max={5}
           onChange={(v) => onChange({ hierarchical_layers: v })}
         />
+        {config.hierarchical_layers === 0 && (
+          <p className="hint">0 = skip clustering; reduce the whole dataset into a single exploration layer.</p>
+        )}
         <NumberField
           label="UMAP pre-reduction components"
           value={config.hclust_umap_n_components}

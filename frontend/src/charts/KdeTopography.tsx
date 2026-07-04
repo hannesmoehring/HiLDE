@@ -1,7 +1,7 @@
 // A — KDE cluster topography. Ports src/ui/visualization.py::cluster_gauss_kde.
 // Small-multiples of per-child 2D KDE density contours, positioned by each child's
 // MDS rel_position and size-scaled by n_points, with clickable centroids C0..Cn.
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as d3 from "d3";
 import type { ContourMultiPolygon } from "d3";
 import { useResize } from "../hooks/useResize";
@@ -188,20 +188,89 @@ export function KdeTopography({ node, onSelectCluster, selectedChild, title }: K
   }, [children]);
 
   const width = size.width;
-  const pw = Math.max(1, width - MARGIN.left - MARGIN.right);
-  const ph = Math.max(1, PLOT_HEIGHT - MARGIN.top - MARGIN.bottom);
+  const hasChart = children.length > 0 && width > 0;
 
-  // Single shared scale factor k for both axes => equal aspect ratio everywhere.
-  const dx = extent.xMax - extent.xMin || 1;
-  const dy = extent.yMax - extent.yMin || 1;
-  const pad = 1.06; // small breathing room
-  const k = Math.min(pw / (dx * pad), ph / (dy * pad));
-  const xMid = (extent.xMin + extent.xMax) / 2;
-  const yMid = (extent.yMin + extent.yMax) / 2;
-  const cx0 = MARGIN.left + pw / 2;
-  const cy0 = MARGIN.top + ph / 2;
-  const fx = (x: number) => cx0 + (x - xMid) * k;
-  const fy = (y: number) => cy0 - (y - yMid) * k; // flip: data y up, screen y down
+  // Zoom/pan state. `transform` is applied to the density layer (via the group's
+  // transform) and to centroid positions (via applyX/applyY); markers keep a
+  // constant screen size so labels stay readable at any zoom level.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
+
+  // Zoom-independent geometry (equal-aspect scale + precomputed contour paths).
+  // Kept out of the render path so panning only updates cheap transform attrs.
+  const geom = useMemo(() => {
+    const pw = Math.max(1, width - MARGIN.left - MARGIN.right);
+    const ph = Math.max(1, PLOT_HEIGHT - MARGIN.top - MARGIN.bottom);
+
+    // Single shared scale factor k for both axes => equal aspect ratio everywhere.
+    const dx = extent.xMax - extent.xMin || 1;
+    const dy = extent.yMax - extent.yMin || 1;
+    const pad = 1.06; // small breathing room
+    const k = Math.min(pw / (dx * pad), ph / (dy * pad));
+    const xMid = (extent.xMin + extent.xMax) / 2;
+    const yMid = (extent.yMin + extent.yMax) / 2;
+    const cx0 = MARGIN.left + pw / 2;
+    const cy0 = MARGIN.top + ph / 2;
+    const fx = (x: number) => cx0 + (x - xMid) * k;
+    const fy = (y: number) => cy0 - (y - yMid) * k; // flip: data y up, screen y down
+
+    const bands = fields.flatMap((field) =>
+      field.bands.map((band, bi) => ({
+        key: `f${field.index}-b${bi}`,
+        d: bandPath(band.coordinates as number[][][][], field, fx, fy),
+        fill: density(band.value / field.gridMax),
+      })),
+    );
+    const markers = fields.map((field) => ({ index: field.index, bx: fx(field.cx), by: fy(field.cy) }));
+    return { bands, markers };
+  }, [fields, extent, width]);
+
+  // Attach the zoom behavior once the SVG is mounted (scroll/pinch to zoom, drag
+  // to pan). A plain click without movement still reaches the centroid onClick.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, 16])
+      .on("zoom", (event) => setTransform(event.transform));
+    zoomRef.current = zoom;
+    const sel = d3.select(svg);
+    sel.call(zoom);
+    return () => {
+      sel.on(".zoom", null);
+      zoomRef.current = null;
+    };
+  }, [hasChart]);
+
+  // Reset the view when we navigate to a different node (drill in/out).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (svg && zoomRef.current) d3.select(svg).call(zoomRef.current.transform, d3.zoomIdentity);
+    else setTransform(d3.zoomIdentity);
+  }, [node]);
+
+  const scaleBy = (factor: number) => {
+    const svg = svgRef.current;
+    if (svg && zoomRef.current) d3.select(svg).transition().duration(180).call(zoomRef.current.scaleBy, factor);
+  };
+  const resetZoom = () => {
+    const svg = svgRef.current;
+    if (svg && zoomRef.current) d3.select(svg).transition().duration(180).call(zoomRef.current.transform, d3.zoomIdentity);
+  };
+
+  const ctrlBtn: CSSProperties = {
+    background: "transparent",
+    color: TEXT,
+    border: `1px solid ${theme.borderStrong}`,
+    borderRadius: 6,
+    padding: "2px 9px",
+    cursor: "pointer",
+    fontSize: 13,
+    lineHeight: 1.2,
+  };
+  const zoomed = transform.k !== 1 || transform.x !== 0 || transform.y !== 0;
 
   return (
     <div
@@ -215,39 +284,63 @@ export function KdeTopography({ node, onSelectCluster, selectedChild, title }: K
         padding: 12,
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-        {title ?? "Cluster topography"}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{title ?? "Cluster topography"}</div>
+        {hasChart && (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+            <button type="button" style={ctrlBtn} onClick={() => scaleBy(1 / 1.4)} title="Zoom out" aria-label="Zoom out">
+              −
+            </button>
+            <button type="button" style={ctrlBtn} onClick={() => scaleBy(1.4)} title="Zoom in" aria-label="Zoom in">
+              +
+            </button>
+            <button
+              type="button"
+              style={{ ...ctrlBtn, opacity: zoomed ? 1 : 0.5, cursor: zoomed ? "pointer" : "default" }}
+              onClick={resetZoom}
+              disabled={!zoomed}
+            >
+              Reset
+            </button>
+          </div>
+        )}
       </div>
 
       {children.length === 0 ? (
         <div style={{ color: MUTED, fontSize: 13, padding: "24px 0" }}>No child clusters.</div>
       ) : width > 0 ? (
-        <svg width={width} height={PLOT_HEIGHT} style={{ display: "block" }}>
-          {/* Density fields: lowest level first so higher levels overlay it. */}
-          {fields.map((field) =>
-            field.bands.map((band, bi) => (
+        <svg
+          ref={svgRef}
+          width={width}
+          height={PLOT_HEIGHT}
+          style={{ display: "block", cursor: "grab", touchAction: "none" }}
+        >
+          {/* Density fields (zoomable layer): lowest level first so higher levels overlay it. */}
+          <g transform={transform.toString()}>
+            {geom.bands.map((b) => (
               <path
-                key={`f${field.index}-b${bi}`}
-                d={bandPath(band.coordinates as number[][][][], field, fx, fy)}
-                fill={density(band.value / field.gridMax)}
+                key={b.key}
+                d={b.d}
+                fill={b.fill}
                 fillRule="evenodd"
                 stroke="none"
                 pointerEvents="none"
               />
-            )),
-          )}
+            ))}
+          </g>
 
-          {/* Clickable centroid markers C0..Cn (index -> children[index]). */}
-          {fields.map((field) => {
-            const px = fx(field.cx);
-            const py = fy(field.cy);
-            const selected = selectedChild === field.index;
+          {/* Clickable centroid markers C0..Cn (index -> children[index]).
+              Positioned through the zoom transform but drawn at constant size. */}
+          {geom.markers.map((m) => {
+            const px = transform.applyX(m.bx);
+            const py = transform.applyY(m.by);
+            const selected = selectedChild === m.index;
             return (
               <g
-                key={`c${field.index}`}
+                key={`c${m.index}`}
                 transform={`translate(${px.toFixed(2)},${py.toFixed(2)})`}
                 style={{ cursor: "pointer" }}
-                onClick={() => onSelectCluster(field.index)}
+                onClick={() => onSelectCluster(m.index)}
               >
                 {selected && (
                   <circle r={13} fill="none" stroke={ACCENT} strokeWidth={2.5} opacity={0.9} />
@@ -270,7 +363,7 @@ export function KdeTopography({ node, onSelectCluster, selectedChild, title }: K
                   fill={selected ? ACCENT : TEXT}
                   pointerEvents="none"
                 >
-                  C{field.index}
+                  C{m.index}
                 </text>
               </g>
             );

@@ -92,6 +92,6 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
 
 
 def _mds(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
-    mds = MDS(n_components=n_components, **kwargs)
+    mds = MDS(n_components=n_components, init="random", **kwargs)
     embedding = mds.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=mds)

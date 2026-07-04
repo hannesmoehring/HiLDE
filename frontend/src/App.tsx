@@ -41,6 +41,13 @@ export default function App() {
       .then((c) => {
         setColumns(c);
         setFeatureCols(c.default_feature_cols);
+        // Default the UMAP pre-reduction to the dataset's full feature dimensionality,
+        // so clustering runs on the full space (the backend skips pre-reduction when
+        // n_components >= n_features).
+        setConfig((cfg) => ({
+          ...cfg,
+          hclust_umap_n_components: Math.max(2, c.default_feature_cols.length),
+        }));
       })
       .catch((e) => setError(String(e)));
   }, [datasetKey]);
