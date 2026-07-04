@@ -44,6 +44,7 @@ def compute_cluster_characteristics(
             "z_mean": pts.mean()[order],
             "z_std": pts.std()[order],
             "raw_mean": df.loc[in_cluster, feature_cols].mean()[order],
+            "is_feature": True,
         },
     )
 
@@ -57,6 +58,7 @@ def compute_cluster_characteristics(
                 "z_mean": (c_mean - g_mean) / g_std,
                 "z_std": df.loc[in_cluster, extra_order].std(),
                 "raw_mean": c_mean,
+                "is_feature": False,
             },
         )
         rows = pd.concat([rows, extra_rows])

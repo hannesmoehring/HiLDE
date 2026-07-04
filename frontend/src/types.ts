@@ -23,6 +23,7 @@ export interface Characteristic {
   z_mean: number | null;
   z_std: number | null;
   raw_mean: number | null;
+  is_feature?: boolean; // false = column present in the dataset but not selected as a feature
 }
 
 // One node of the analysis tree. Internal nodes have children; leaves do not.

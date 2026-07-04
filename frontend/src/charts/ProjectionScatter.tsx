@@ -5,14 +5,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { ProjectionScatterProps } from "./props";
 import { useResize } from "../hooks/useResize";
+import { theme } from "./theme";
 
 const HEIGHT = 480;
 const MARGIN = { top: 16, right: 16, bottom: 40, left: 48 };
-const ACCENT = "#5b8cff";
-const OTHER = "#556066";
-const BG = "#1e222b";
-const TEXT = "#e6e8ec";
-const MUTED = "#9aa2af";
+const ACCENT = theme.accent;
+const OTHER = theme.other;
+const BG = theme.surface;
+const TEXT = theme.textPrimary;
+const MUTED = theme.muted;
 
 type Mode = "lasso" | "box";
 
@@ -29,7 +30,7 @@ function colorFor(
 ): (i: number) => string {
   if (clusterLabels) {
     const uniques = Array.from(new Set(clusterLabels));
-    const scheme = d3.schemeTableau10;
+    const scheme = theme.categorical;
     const map = new Map<string, string>();
     uniques.forEach((label, idx) => map.set(label, scheme[idx % scheme.length]));
     return (i) => map.get(clusterLabels[i]) ?? ACCENT;
@@ -188,8 +189,8 @@ export function ProjectionScatter({
 
   const btn = (m: Mode) => ({
     background: mode === m ? ACCENT : "transparent",
-    color: mode === m ? "#0f1115" : TEXT,
-    border: `1px solid ${mode === m ? ACCENT : MUTED}`,
+    color: mode === m ? theme.accentInk : TEXT,
+    border: `1px solid ${mode === m ? ACCENT : theme.borderStrong}`,
     borderRadius: 6,
     padding: "4px 12px",
     cursor: "pointer",
@@ -208,7 +209,7 @@ export function ProjectionScatter({
       </div>
 
       <svg width={size.width} height={HEIGHT} style={{ background: BG, borderRadius: 8, display: "block" }}>
-        <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+        <g ref={gRef} transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {geom && (
             <>
               {/* axes */}
@@ -275,7 +276,7 @@ export function ProjectionScatter({
                   />
                   <path
                     ref={lassoPathRef}
-                    fill="rgba(91,140,255,0.12)"
+                    fill="rgba(79,70,229,0.12)"
                     stroke={ACCENT}
                     strokeWidth={1.5}
                     style={{ pointerEvents: "none" }}

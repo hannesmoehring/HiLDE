@@ -14,6 +14,7 @@ export default function App() {
   const [datasetKey, setDatasetKey] = useState<string>("");
   const [columns, setColumns] = useState<DatasetColumns | null>(null);
   const [featureCols, setFeatureCols] = useState<string[]>([]);
+  const [charNonFeatureOnly, setCharNonFeatureOnly] = useState(false);
   const [config, setConfig] = useState<AnalysisConfig>(DEFAULT_CONFIG);
 
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
@@ -113,6 +114,14 @@ export default function App() {
                     </label>
                   ))}
               </div>
+              <label className="field--check" style={{ marginTop: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={charNonFeatureOnly}
+                  onChange={(e) => setCharNonFeatureOnly(e.target.checked)}
+                />
+                <span>Only show non-feature columns in characteristics</span>
+              </label>
             </div>
           )}
         </div>
@@ -129,7 +138,7 @@ export default function App() {
         </div>
       </section>
 
-      {analysis && <Navigation analysis={analysis} treePath={treePath} setTreePath={setTreePath} dataset={datasetKey} featureCols={featureCols} config={config} />}
+      {analysis && <Navigation analysis={analysis} treePath={treePath} setTreePath={setTreePath} dataset={datasetKey} featureCols={featureCols} config={config} charNonFeatureOnly={charNonFeatureOnly} />}
     </div>
   );
 }
@@ -141,8 +150,9 @@ function Navigation(props: {
   dataset: string;
   featureCols: string[];
   config: AnalysisConfig;
+  charNonFeatureOnly: boolean;
 }) {
-  const { analysis, treePath, setTreePath, dataset, featureCols, config } = props;
+  const { analysis, treePath, setTreePath, dataset, featureCols, config, charNonFeatureOnly } = props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
 
@@ -171,7 +181,7 @@ function Navigation(props: {
           {child && (
             <div className="layer__side">
               <ScoreTiles scores={child.scores} title={`C${selectedChild} — DR quality`} />
-              <CharacteristicsBar data={child.rel_characteristics} title={`C${selectedChild} characteristics`} />
+              <CharacteristicsBar data={child.rel_characteristics} title={`C${selectedChild} characteristics`} nonFeatureOnly={charNonFeatureOnly} />
             </div>
           )}
         </div>
@@ -199,6 +209,7 @@ function Navigation(props: {
           config={config}
           node={explorationNode}
           pathLabel={pathLabel}
+          nonFeatureOnly={charNonFeatureOnly}
         />
       )}
     </>

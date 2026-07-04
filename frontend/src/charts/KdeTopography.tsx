@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import * as d3 from "d3";
 import type { ContourMultiPolygon } from "d3";
 import { useResize } from "../hooks/useResize";
+import { theme } from "./theme";
 import type { TreeNode } from "../types";
 import type { KdeTopographyProps } from "./props";
 
@@ -12,10 +13,14 @@ const RES = 60; // KDE grid resolution (60x60), extent [-0.5, 0.5]
 const PLOT_HEIGHT = 384;
 const MARGIN = { top: 16, right: 16, bottom: 16, left: 16 };
 
-const BG = "#1e222b";
-const TEXT = "#e6e8ec";
-const MUTED = "#9aa2af";
-const ACCENT = "#6ea8fe";
+const BG = theme.surface;
+const TEXT = theme.textPrimary;
+const MUTED = theme.muted;
+const ACCENT = theme.accent;
+
+// Sequential density ramp for the light surface: pale green (low) → deep blue
+// (high). Unlike viridis, its high end stays dark so hot cores pop on white.
+const density = (ratio: number) => d3.interpolateYlGnBu(0.25 + 0.7 * ratio);
 
 interface ChildField {
   index: number;
@@ -224,7 +229,7 @@ export function KdeTopography({ node, onSelectCluster, selectedChild, title }: K
               <path
                 key={`f${field.index}-b${bi}`}
                 d={bandPath(band.coordinates as number[][][][], field, fx, fy)}
-                fill={d3.interpolateViridis(0.15 + 0.85 * (band.value / field.gridMax))}
+                fill={density(band.value / field.gridMax)}
                 fillRule="evenodd"
                 stroke="none"
                 pointerEvents="none"
@@ -253,8 +258,8 @@ export function KdeTopography({ node, onSelectCluster, selectedChild, title }: K
                 <circle
                   r={7}
                   fill="#ffffff"
-                  fillOpacity={0.85}
-                  stroke="#11141a"
+                  fillOpacity={0.95}
+                  stroke={theme.textPrimary}
                   strokeWidth={2}
                 />
                 <text

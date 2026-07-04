@@ -22,6 +22,7 @@ interface Props {
   config: AnalysisConfig;
   node: TreeNode;
   pathLabel: string;
+  nonFeatureOnly: boolean;
 }
 
 // Per-feature standardized (z-score) matrix for the node's rows, computed in the
@@ -57,7 +58,7 @@ function toCsv(rows: RowsResponse): string {
   return `${header}\n${body}`;
 }
 
-export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel }: Props) {
+export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel, nonFeatureOnly }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const [scope, setScope] = useState<PredicateScope>("local");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
@@ -214,7 +215,7 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
               {predicate && <PredicateBands full={predicate.full} trimmed={predicate.trimmed} />}
             </>
           )}
-          <CharacteristicsBar data={node.rel_characteristics} title="Cluster characteristics" />
+          <CharacteristicsBar data={node.rel_characteristics} title="Cluster characteristics" nonFeatureOnly={nonFeatureOnly} />
         </div>
 
         <div className="exploration__plot">

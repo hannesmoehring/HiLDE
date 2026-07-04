@@ -7,17 +7,18 @@ import { scaleLinear } from "d3";
 import { useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useResize } from "../hooks/useResize";
+import { theme } from "./theme";
 import type { PredicateRow } from "../types";
 import type { PredicateBandsProps } from "./props";
 
-// Dark theme + predicate palette (mirrors the Streamlit indigo/grey scheme).
-const BG = "#1e222b";
-const TEXT = "#e6e8ec";
-const MUTED = "#9aa2af";
-const INDIGO = "#5b53d6";
-const GREY = "#5a6070";
-const TRACK = "rgba(140, 140, 150, 0.14)";
-const GRID = "rgba(154, 162, 175, 0.18)";
+// Light theme + predicate palette (indigo clause / neutral non-clause).
+const BG = theme.surface;
+const TEXT = theme.textPrimary;
+const MUTED = theme.muted;
+const INDIGO = theme.indigo;
+const GREY = theme.neutral;
+const TRACK = "rgba(24, 32, 48, 0.06)";
+const GRID = theme.grid;
 
 // Layout constants.
 const LEFT = 140; // label gutter
@@ -198,14 +199,14 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
             left: tip.x + 14,
             top: tip.y + 14,
             pointerEvents: "none",
-            background: "#2a2f3a",
-            border: "1px solid rgba(154,162,175,0.35)",
+            background: theme.surface,
+            border: `1px solid ${theme.borderStrong}`,
             borderRadius: 6,
             padding: "6px 8px",
             color: TEXT,
             fontSize: 12,
             lineHeight: 1.4,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            boxShadow: "0 8px 20px -6px rgba(16,24,40,0.28)",
             whiteSpace: "nowrap",
             zIndex: 10,
           }}

@@ -25,6 +25,8 @@ class _NodeCtx:
     rel_position: tuple[float, float]
     rel_characteristics: pd.DataFrame
     row_indices: np.ndarray
+    X_nonfeat: np.ndarray  # raw values of numeric columns not selected as features
+    nonfeat_cols: list[str]
 
 
 class NodeScores(TypedDict):
@@ -96,6 +98,15 @@ def compute_analysis_tree(
         scaler = None
         X = df[feature_cols].to_numpy()
 
+    # Numeric columns the user did not pick as features — surfaced (in a distinct
+    # color) alongside feature characteristics so their cluster behaviour is visible.
+    nonfeat_cols = [
+        str(c)
+        for c in df.columns
+        if c not in feature_cols and c != "row_id" and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    X_nonfeat = df[nonfeat_cols].to_numpy() if nonfeat_cols else np.empty((len(df), 0))
+
     umap_n_comp = config["hclust_umap_n_components"]
     if umap_n_comp and umap_n_comp < X.shape[1]:
         config["hclust_umap_n_components"] = min(umap_n_comp, X.shape[1], len(X) - 1)
@@ -114,6 +125,8 @@ def compute_analysis_tree(
             rel_position=(0.0, 0.0),
             rel_characteristics=pd.DataFrame(),
             row_indices=np.arange(len(df)),
+            X_nonfeat=X_nonfeat,
+            nonfeat_cols=nonfeat_cols,
         ),
     )
     root["scaler"] = scaler  # fit once; reused by scoring and the global predicate scope
@@ -154,6 +167,10 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         mask = labels != -1
         X_orig_df = pd.DataFrame(ctx.X_orig, columns=ctx.feature_cols)
         X_orig_df["cluster"] = labels
+        # df carrying feature + raw non-feature columns for characteristic z-scores.
+        char_df = X_orig_df.copy()
+        for j, col in enumerate(ctx.nonfeat_cols):
+            char_df[col] = ctx.X_nonfeat[:, j]
         reduced_cols = [f"dim_{i}" for i in range(X.shape[1])]
         X_reduced_df = pd.DataFrame(X, columns=reduced_cols)
         X_reduced_df["cluster"] = labels
@@ -167,9 +184,10 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         rel_characteristics_dict: dict[int, pd.DataFrame] = {
             cluster_id: compute_cluster_characteristics(
                 cluster_id=cluster_id,
-                df=X_orig_df,
+                df=char_df,
                 X_scaled_df=X_orig_df,
                 feature_cols=ctx.feature_cols,
+                extra_cols=ctx.nonfeat_cols,
             )
             for cluster_id in valid_cluster_ids
         }
@@ -190,6 +208,8 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
                         rel_position=rel_positions[cluster_id],
                         rel_characteristics=rel_characteristics_dict[cluster_id],
                         row_indices=ctx.row_indices[temp_mask],
+                        X_nonfeat=ctx.X_nonfeat[temp_mask],
+                        nonfeat_cols=ctx.nonfeat_cols,
                     ),
                 ),
             )

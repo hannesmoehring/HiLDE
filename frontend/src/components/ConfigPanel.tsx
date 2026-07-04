@@ -91,16 +91,6 @@ export function ConfigPanel({ config, maxDims, onChange }: Props) {
           </select>
         </label>
 
-        {config.method === "PCA" && (
-          <NumberField
-            label="PCA components"
-            value={config.pca_components}
-            min={2}
-            max={maxDims}
-            onChange={(v) => onChange({ pca_components: v })}
-          />
-        )}
-
         {config.method === "t-SNE" && (
           <>
             <NumberField

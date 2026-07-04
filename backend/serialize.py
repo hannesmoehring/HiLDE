@@ -85,6 +85,7 @@ def _characteristics(rc: pd.DataFrame | list[Any] | None) -> list[dict[str, Any]
                 "z_mean": _finite(row.get("z_mean")),
                 "z_std": _finite(row.get("z_std")),
                 "raw_mean": _finite(row.get("raw_mean")),
+                "is_feature": bool(row.get("is_feature", True)),
             }
             for feature, row in rc.iterrows()
         ]

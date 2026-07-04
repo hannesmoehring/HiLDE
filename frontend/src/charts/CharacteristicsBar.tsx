@@ -5,15 +5,17 @@
 import { useState } from "react";
 import { scaleBand, scaleLinear, format } from "d3";
 import { useResize } from "../hooks/useResize";
+import { theme } from "./theme";
 import type { CharacteristicsBarProps } from "./props";
 
-const CRIMSON = "#d64550"; // negative z_mean
-const STEELBLUE = "#4682b4"; // positive (>= 0) z_mean
-const BG = "#1e222b";
-const TEXT = "#e6e8ec";
-const MUTED = "#9aa2af";
-const GRID = "rgba(154,162,175,0.15)";
-const ERR = "rgba(230,232,236,0.6)";
+const CRIMSON = theme.divNeg; // negative z_mean
+const STEELBLUE = theme.divPos; // positive (>= 0) z_mean
+const NONFEAT = theme.nonFeature; // columns not selected as a feature
+const BG = theme.surface;
+const TEXT = theme.textPrimary;
+const MUTED = theme.muted;
+const GRID = theme.grid;
+const ERR = "rgba(27,31,40,0.45)";
 
 const SVG_HEIGHT = 320;
 const MARGIN = { top: 12, right: 16, bottom: 78, left: 48 };
@@ -31,12 +33,13 @@ interface Hover {
   y: number;
 }
 
-export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
+export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: CharacteristicsBarProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const [hover, setHover] = useState<Hover | null>(null);
 
   const heading = title ?? "Cluster characteristics";
-  const n = data.length;
+  const shown = nonFeatureOnly ? data.filter((d) => d.is_feature === false) : data;
+  const n = shown.length;
 
   const shell = {
     position: "relative" as const,
@@ -61,18 +64,21 @@ export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
       <div ref={ref} style={shell}>
         <div style={titleStyle}>{heading}</div>
         <div style={{ color: MUTED, fontSize: 13, padding: "24px 8px" }}>
-          No characteristics to display.
+          {nonFeatureOnly ? "No non-feature columns to display." : "No characteristics to display."}
         </div>
       </div>
     );
   }
 
   // Null z_mean / z_std draw as 0.
-  const rows = data.map((d) => ({
+  const rows = shown.map((d) => ({
     feature: d.feature,
     zm: d.z_mean ?? 0,
     zs: d.z_std ?? 0,
+    isFeature: d.is_feature !== false,
   }));
+  // Legend only helps when both kinds of bar are on screen.
+  const showLegend = rows.some((r) => r.isFeature) && rows.some((r) => !r.isFeature);
 
   const scroll = n > SCROLL_THRESHOLD;
   const availW = Math.max(size.width, 320);
@@ -113,6 +119,20 @@ export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
   return (
     <div ref={ref} style={shell}>
       <div style={titleStyle}>{heading}</div>
+      {showLegend && (
+        <div
+          style={{
+            display: "flex",
+            gap: 14,
+            padding: "0 4px 6px",
+            fontSize: 11,
+            color: MUTED,
+          }}
+        >
+          <LegendSwatch color={STEELBLUE} label="Selected feature" />
+          <LegendSwatch color={NONFEAT} label="Not a feature" />
+        </div>
+      )}
       <div style={{ overflowX: scroll ? "auto" : "hidden", width: "100%" }}>
         <svg width={svgW} height={SVG_HEIGHT} style={{ display: "block" }}>
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
@@ -154,7 +174,7 @@ export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
               const cx = bx + bw / 2;
               const top = Math.min(y0, y(r.zm));
               const h = Math.abs(y(r.zm) - y0);
-              const color = r.zm < 0 ? CRIMSON : STEELBLUE;
+              const color = !r.isFeature ? NONFEAT : r.zm < 0 ? CRIMSON : STEELBLUE;
               const yHi = y(r.zm + r.zs);
               const yLo = y(r.zm - r.zs);
               const active = hover?.i === i;
@@ -220,8 +240,8 @@ export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
             position: "absolute",
             left: hover.x + 12,
             top: hover.y + 12,
-            background: "#2a2f3a",
-            border: "1px solid #3a4150",
+            background: theme.surface,
+            border: `1px solid ${theme.borderStrong}`,
             borderRadius: 4,
             padding: "6px 8px",
             fontSize: 12,
@@ -229,21 +249,35 @@ export function CharacteristicsBar({ data, title }: CharacteristicsBarProps) {
             pointerEvents: "none",
             whiteSpace: "nowrap",
             zIndex: 10,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+            boxShadow: "0 6px 18px -6px rgba(16,24,40,0.28)",
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>{data[hover.i].feature}</div>
-          <div style={{ color: MUTED }}>
-            z-mean: <span style={{ color: TEXT }}>{fmtNum(data[hover.i].z_mean)}</span>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>
+            {shown[hover.i].feature}
+            {shown[hover.i].is_feature === false && (
+              <span style={{ color: NONFEAT, fontWeight: 500 }}> · not a feature</span>
+            )}
           </div>
           <div style={{ color: MUTED }}>
-            z-std: <span style={{ color: TEXT }}>{fmtNum(data[hover.i].z_std)}</span>
+            z-mean: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].z_mean)}</span>
           </div>
           <div style={{ color: MUTED }}>
-            raw mean: <span style={{ color: TEXT }}>{fmtNum(data[hover.i].raw_mean)}</span>
+            z-std: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].z_std)}</span>
+          </div>
+          <div style={{ color: MUTED }}>
+            raw mean: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].raw_mean)}</span>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, background: color, display: "inline-block" }} />
+      {label}
+    </span>
   );
 }

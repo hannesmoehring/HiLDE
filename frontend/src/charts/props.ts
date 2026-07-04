@@ -21,6 +21,7 @@ export interface KdeTopographyProps {
 export interface CharacteristicsBarProps {
   data: Characteristic[];
   title?: string;
+  nonFeatureOnly?: boolean; // hide feature columns; show only non-feature (target) columns
 }
 
 // C — Projection scatter. Replaces make_scatter_fig.

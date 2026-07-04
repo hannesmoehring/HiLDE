@@ -60,7 +60,7 @@ def test_serialized_tree_is_json_safe_and_well_formed():
         if n["kde"] is not None:
             assert n["kde"]["resolution"] == len(n["kde"]["grid"])
         for rc in n["rel_characteristics"]:
-            assert set(rc.keys()) == {"feature", "z_mean", "z_std", "raw_mean"}
+            assert set(rc.keys()) == {"feature", "z_mean", "z_std", "raw_mean", "is_feature"}
         if n["is_leaf"]:
             assert n["children"] is None
             assert n["outlier_scores"] is None

@@ -1,17 +1,19 @@
 :root {
-  --bg: #0d0f14;
-  --panel: #161a22;
-  --panel-2: #1e232d;
-  --border: #29303c;
-  --border-strong: #38414f;
-  --text: #eceef2;
-  --muted: #98a1b0;
-  --accent: #6ea8fe;
-  --accent-ink: #0b0e14;
-  --pos: #d64550;
-  --neg: #4682b4;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --panel-2: #f2f5fa;
+  --border: #e4e8f0;
+  --border-strong: #d3d9e4;
+  --text: #1b1f28;
+  --muted: #5c6472;
+  --accent: #4f46e5;
+  --accent-2: #6366f1;
+  --accent-ink: #ffffff;
+  --accent-soft: #eef0fe;
+  --pos: #d03b3b;
+  --neg: #2a78d6;
   --radius: 12px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 28px -18px rgba(0, 0, 0, 0.7);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 14px 30px -20px rgba(16, 24, 40, 0.28);
   --sp: 8px;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -29,8 +31,10 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    radial-gradient(1100px 600px at 15% -10%, rgba(110, 168, 254, 0.08), transparent 60%),
+    radial-gradient(1100px 620px at 12% -12%, rgba(79, 70, 229, 0.09), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(27, 175, 122, 0.06), transparent 55%),
     var(--bg);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -54,7 +58,7 @@ header::before {
   width: 10px;
   height: 24px;
   border-radius: 3px;
-  background: linear-gradient(180deg, var(--accent), #3f6fd6);
+  background: linear-gradient(180deg, var(--accent-2), #a855f7);
 }
 
 header h1 {
@@ -123,7 +127,7 @@ header h1 {
 .field select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.18);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
 }
 
 .general-config {
@@ -194,7 +198,8 @@ button {
 
 button:hover {
   border-color: var(--accent);
-  background: #232936;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 button:active {
@@ -202,16 +207,17 @@ button:active {
 }
 
 button.primary {
-  background: linear-gradient(180deg, var(--accent), #4f83e6);
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
   border-color: transparent;
   color: var(--accent-ink);
   font-weight: 650;
   padding: 0.58rem 1.6rem;
-  box-shadow: 0 6px 18px -8px rgba(110, 168, 254, 0.7);
+  box-shadow: 0 8px 20px -8px rgba(79, 70, 229, 0.55);
 }
 
 button.primary:hover {
-  background: linear-gradient(180deg, #82b4ff, var(--accent));
+  background: linear-gradient(180deg, #7c74f5, var(--accent-2));
+  color: var(--accent-ink);
 }
 
 button:disabled {

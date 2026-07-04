@@ -5,6 +5,7 @@
 import { useState } from "react";
 import * as d3 from "d3";
 import { useResize } from "../hooks/useResize";
+import { theme } from "./theme";
 import type { PcaVarianceBarProps } from "./props";
 
 const HEIGHT = 150;
@@ -13,10 +14,10 @@ const BAR_Y = 30;
 const BAR_H = 58;
 const BAR_BOTTOM = BAR_Y + BAR_H;
 
-const BG = "#1e222b";
-const TEXT = "#e6e8ec";
-const MUTED = "#9aa2af";
-const UNEXPLAINED = "#3a3f4a";
+const BG = theme.surface;
+const TEXT = theme.textPrimary;
+const MUTED = theme.muted;
+const UNEXPLAINED = "#d7dde7"; // light neutral tail on the white surface
 
 interface Segment {
   key: string;
@@ -30,11 +31,12 @@ interface Segment {
   isUnexplained: boolean;
 }
 
-// Pick a readable label color for a given fill by its perceived luminance.
+// Pick a readable label color for a given fill by its perceived luminance:
+// dark ink on light segments, white on the darker (high-index) blue segments.
 function labelColor(fill: string): string {
   const c = d3.rgb(fill);
   const lum = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
-  return lum > 0.6 ? "#0f1115" : TEXT;
+  return lum > 0.6 ? theme.textPrimary : "#ffffff";
 }
 
 export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
@@ -80,7 +82,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
         x: PAD_X + x(total),
         w: x(1) - x(total),
         fill: UNEXPLAINED,
-        textFill: MUTED,
+        textFill: theme.textSecondary,
         isUnexplained: true,
       });
     }
@@ -196,8 +198,8 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
             left: active.x + active.w / 2,
             top: BAR_Y - 8,
             transform: "translate(-50%, -100%)",
-            background: "#12151c",
-            border: `1px solid ${UNEXPLAINED}`,
+            background: theme.surface,
+            border: `1px solid ${theme.borderStrong}`,
             borderRadius: 6,
             padding: "6px 8px",
             color: TEXT,
@@ -205,7 +207,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
             lineHeight: 1.3,
             whiteSpace: "nowrap",
             pointerEvents: "none",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.45)",
+            boxShadow: "0 8px 20px -6px rgba(16,24,40,0.28)",
             zIndex: 1,
           }}
         >
