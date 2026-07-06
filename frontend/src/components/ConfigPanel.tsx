@@ -91,6 +91,7 @@ export function ConfigPanel({ config, maxDims, onChange }: Props) {
             <option value="PCA">PCA</option>
             <option value="t-SNE">t-SNE</option>
             <option value="UMAP">UMAP</option>
+            <option value="MDS">MDS</option>
           </select>
         </label>
 
@@ -137,6 +138,35 @@ export function ConfigPanel({ config, maxDims, onChange }: Props) {
               value={config.umap_random_state}
               onChange={(v) => onChange({ umap_random_state: v })}
             />
+          </>
+        )}
+
+        {config.method === "MDS" && (
+          <>
+            <CheckField
+              label="Metric MDS (uncheck for non-metric)"
+              value={config.mds_metric}
+              onChange={(v) => onChange({ mds_metric: v })}
+            />
+            <NumberField
+              label="n_init (SMACOF restarts)"
+              value={config.mds_n_init}
+              min={1}
+              onChange={(v) => onChange({ mds_n_init: v })}
+            />
+            <NumberField
+              label="Max iterations"
+              value={config.mds_max_iter}
+              min={1}
+              step={50}
+              onChange={(v) => onChange({ mds_max_iter: v })}
+            />
+            <NumberField
+              label="Random state"
+              value={config.mds_random_state}
+              onChange={(v) => onChange({ mds_random_state: v })}
+            />
+            <p className="hint">MDS is O(n²) — expect slow builds on large selections.</p>
           </>
         )}
       </section>

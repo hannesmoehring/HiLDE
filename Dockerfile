@@ -36,6 +36,9 @@ COPY backend ./backend
 # Built frontend from stage 1 (served by FastAPI StaticFiles at "/")
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
+# Datasets
+COPY datasets/wine_quality ./datasets/wine_quality
+
 EXPOSE 8000
 # Datasets needing local files (wine CSVs, MNIST IDX) are mounted at runtime; the
 # sklearn-provided datasets (iris, digits, …) work with no mounts.

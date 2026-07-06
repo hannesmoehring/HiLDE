@@ -46,3 +46,7 @@ class Config(TypedDict):
     umap_n_neighbors: int
     umap_min_dist: float
     umap_random_state: int
+    mds_metric: bool  # True = metric MDS, False = non-metric (sklearn `metric_mds`)
+    mds_n_init: int
+    mds_max_iter: int
+    mds_random_state: int

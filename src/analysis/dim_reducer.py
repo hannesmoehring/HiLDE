@@ -54,12 +54,10 @@ def fit_dimensionality_reducer(
             return _mds(
                 X,
                 n_components=n_components,
-                n_init=8,
-                normalized_stress="auto",
-                metric="euclidean",
-                # n_init=kwargs["n_init"],
-                # normalized_stress=kwargs["normalized_stress"],
-                # dissimilarity=kwargs["dissimilarity"],
+                metric_mds=config["mds_metric"],
+                n_init=config["mds_n_init"],
+                max_iter=config["mds_max_iter"],
+                random_state=config["mds_random_state"],
             )
         case _:
             raise ValueError(f"Unknown dimensionality reduction method: {method}")
@@ -92,6 +90,6 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
 
 
 def _mds(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
-    mds = MDS(n_components=n_components, init="random", **kwargs)
+    mds = MDS(n_components=n_components, init="random", n_jobs=-1, **kwargs)
     embedding = mds.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=mds)

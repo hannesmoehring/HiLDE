@@ -104,7 +104,7 @@ export interface RowsResponse {
 }
 
 // ── Config knobs the frontend exposes (overlaid on backend defaults) ─────────
-export type DRMethod = "PCA" | "t-SNE" | "UMAP";
+export type DRMethod = "PCA" | "t-SNE" | "UMAP" | "MDS";
 
 export interface AnalysisConfig {
   // hierarchical clustering
@@ -123,4 +123,8 @@ export interface AnalysisConfig {
   umap_n_neighbors: number;
   umap_min_dist: number;
   umap_random_state: number;
+  mds_metric: boolean; // true = metric MDS, false = non-metric
+  mds_n_init: number;
+  mds_max_iter: number;
+  mds_random_state: number;
 }

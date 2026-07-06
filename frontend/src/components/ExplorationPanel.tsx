@@ -58,9 +58,16 @@ function toCsv(rows: RowsResponse): string {
   return `${header}\n${body}`;
 }
 
-export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel, nonFeatureOnly }: Props) {
+export function ExplorationPanel({
+  dataset,
+  featureCols,
+  config,
+  node,
+  pathLabel,
+  nonFeatureOnly,
+}: Props) {
   const [selected, setSelected] = useState<number[]>([]);
-  const [scope, setScope] = useState<PredicateScope>("local");
+  const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
   const [rows, setRows] = useState<RowsResponse | null>(null);
 
@@ -113,7 +120,11 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
   // In interactive mode the filter *is* the selection (drives the table).
   useEffect(() => {
     if (interactive && interactiveGroup) {
-      setSelected(interactiveGroup.flatMap((g, i) => (g === "Matches filters" ? [i] : [])));
+      setSelected(
+        interactiveGroup.flatMap((g, i) =>
+          g === "Matches filters" ? [i] : [],
+        ),
+      );
     }
   }, [interactive, interactiveGroup]);
 
@@ -139,7 +150,11 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
     } else {
       setPredicate(null);
     }
-    fetchRows(dataset, selected.map((i) => node.row_indices[i]), featureCols)
+    fetchRows(
+      dataset,
+      selected.map((i) => node.row_indices[i]),
+      featureCols,
+    )
       .then((r) => !cancelled && setRows(r))
       .catch(() => !cancelled && setRows(null));
     return () => {
@@ -166,7 +181,9 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
     <section className="exploration panel">
       <h2>Exploration — {pathLabel}</h2>
       <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
-      {config.method === "PCA" && variance.length > 0 && <PcaVarianceBar explainedVariance={variance} />}
+      {config.method === "PCA" && variance.length > 0 && (
+        <PcaVarianceBar explainedVariance={variance} />
+      )}
 
       <div className="exploration__cols">
         <div className="exploration__analysis">
@@ -189,22 +206,34 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
               matched={selected.length}
             />
           ) : selected.length === 0 ? (
-            <p className="hint">Use lasso or box selection in the plot to capture points.</p>
+            <p className="hint">
+              Use lasso or box selection in the plot to capture points.
+            </p>
           ) : (
             <>
               <div className="scope-toggle">
                 <label>
-                  <input type="radio" checked={scope === "local"} onChange={() => setScope("local")} />
-                  This cluster (local)
+                  <input
+                    type="radio"
+                    checked={scope === "global"}
+                    onChange={() => setScope("global")}
+                  />
+                  Whole dataset (global)
                 </label>
                 <label>
-                  <input type="radio" checked={scope === "global"} onChange={() => setScope("global")} />
-                  Whole dataset (global)
+                  <input
+                    type="radio"
+                    checked={scope === "local"}
+                    onChange={() => setScope("local")}
+                  />
+                  This cluster (local)
                 </label>
               </div>
               {predicate?.summary && (
                 <div className="predicate-summary">
-                  <span>Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}</span>
+                  <span>
+                    Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
+                  </span>
                   <span>
                     Features used: {predicate.summary.n_features_used} /{" "}
                     {predicate.summary.n_features_total}
@@ -212,10 +241,19 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
                   <span>Selected: {predicate.summary.n_selected}</span>
                 </div>
               )}
-              {predicate && <PredicateBands full={predicate.full} trimmed={predicate.trimmed} />}
+              {predicate && (
+                <PredicateBands
+                  full={predicate.full}
+                  trimmed={predicate.trimmed}
+                />
+              )}
             </>
           )}
-          <CharacteristicsBar data={node.rel_characteristics} title="Cluster characteristics" nonFeatureOnly={nonFeatureOnly} />
+          <CharacteristicsBar
+            data={node.rel_characteristics}
+            title="Cluster characteristics"
+            nonFeatureOnly={nonFeatureOnly}
+          />
         </div>
 
         <div className="exploration__plot">
@@ -238,7 +276,11 @@ export function ExplorationPanel({ dataset, featureCols, config, node, pathLabel
             <div className="table-scroll">
               <table>
                 <thead>
-                  <tr>{rows.columns.map((c) => <th key={c}>{c}</th>)}</tr>
+                  <tr>
+                    {rows.columns.map((c) => (
+                      <th key={c}>{c}</th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {rows.rows.slice(0, 50).map((r, i) => (
@@ -272,7 +314,8 @@ function InteractiveFilters(props: {
   return (
     <div className="interactive-filters">
       <p className="hint">
-        Standardized (z-score) ranges. Matching points are highlighted in the plot — {matched} match.
+        Standardized (z-score) ranges. Matching points are highlighted in the
+        plot — {matched} match.
       </p>
       <label className="field">
         <span>Features to filter</span>
@@ -280,7 +323,9 @@ function InteractiveFilters(props: {
           multiple
           value={features}
           size={Math.min(6, zData.cols.length)}
-          onChange={(e) => onFeatures(Array.from(e.target.selectedOptions, (o) => o.value))}
+          onChange={(e) =>
+            onFeatures(Array.from(e.target.selectedOptions, (o) => o.value))
+          }
         >
           {zData.cols.map((c) => (
             <option key={c} value={c}>
@@ -302,7 +347,9 @@ function InteractiveFilters(props: {
               max={bMax}
               step={(bMax - bMin) / 100 || 0.01}
               value={lo}
-              onChange={(e) => onRange(f, [Math.min(Number(e.target.value), hi), hi])}
+              onChange={(e) =>
+                onRange(f, [Math.min(Number(e.target.value), hi), hi])
+              }
             />
             <input
               type="range"
@@ -310,7 +357,9 @@ function InteractiveFilters(props: {
               max={bMax}
               step={(bMax - bMin) / 100 || 0.01}
               value={hi}
-              onChange={(e) => onRange(f, [lo, Math.max(Number(e.target.value), lo)])}
+              onChange={(e) =>
+                onRange(f, [lo, Math.max(Number(e.target.value), lo)])
+              }
             />
             <span className="range-row__vals">
               [{lo.toFixed(2)}, {hi.toFixed(2)}]
