@@ -8,6 +8,7 @@ from zadu.zadu import ZADU
 
 from src.analysis.analysis_routine import AnalysisObject, HierarchyObject, NodeScores, compute_analysis_tree
 from src.types import Config
+from src.util import console as clog
 
 if TYPE_CHECKING:
     from sklearn.preprocessing import StandardScaler
@@ -19,9 +20,24 @@ CADI_RANDOM_SEED = 42
 
 
 def start_evaluation(df: pd.DataFrame, feature_cols: list[str], config: Config) -> AnalysisObject:
+    clog.build_banner(config.get("dataset_choice", "?"), feature_cols, config)
     tree = compute_analysis_tree(df, feature_cols, config)
+    clog.phase("Evaluating embedding quality (ZADU)")
     _attach_scores(tree, df, feature_cols, tree.get("scaler"))
+    n_nodes, n_leaves = _count_tree(tree)
+    clog.success("Build complete", nodes=n_nodes, leaves=n_leaves)
     return tree
+
+
+def _count_tree(node: AnalysisObject) -> tuple[int, int]:
+    """(nodes, leaves) for the build-summary line."""
+    if "is_leaf" in node:
+        return 0, 1
+    nodes, leaves = 1, 0
+    for child in node["next_object_layer"] or []:
+        cn, cl = _count_tree(child)
+        nodes, leaves = nodes + cn, leaves + cl
+    return nodes, leaves
 
 
 def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[str], scaler: StandardScaler | None) -> None:

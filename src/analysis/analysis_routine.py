@@ -11,6 +11,7 @@ from src.analysis.characteristics import compute_cluster_characteristics, comput
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import fit_dimensionality_reducer, reduce_dimensionality
 from src.types import Config
+from src.util import console as clog
 
 _KDE_MIN_PTS = 3
 _MIN_CLUSTERS_FOR_HIERARCHY = 2
@@ -91,6 +92,7 @@ def compute_analysis_tree(
     feature_cols: list[str],
     config: Config,
 ) -> AnalysisObject:
+    clog.phase("Computing analysis tree")
     if config["normalize"]:
         scaler: StandardScaler | None = StandardScaler()
         X = scaler.fit_transform(df[feature_cols].to_numpy())
@@ -111,6 +113,7 @@ def compute_analysis_tree(
     if umap_n_comp and umap_n_comp < X.shape[1]:
         config["hclust_umap_n_components"] = min(umap_n_comp, X.shape[1], len(X) - 1)
         config["umap_n_neighbors"] = min(config["umap_n_neighbors"], len(X) - 1)
+        clog.substep(f"Pre-clustering UMAP: {X.shape[1]}D → {config['hclust_umap_n_components']}D  ({len(X)} points)")
         X_reduced = reduce_dimensionality("UMAP", X=X, n_components=config["hclust_umap_n_components"], config=config)
     else:
         X_reduced = X

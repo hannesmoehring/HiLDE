@@ -7,6 +7,7 @@ from sklearn.manifold import MDS, TSNE
 from sklearn.preprocessing import StandardScaler
 
 from src.types import Config, DRMethod
+from src.util import console as clog
 
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
 
@@ -43,6 +44,7 @@ def fit_dimensionality_reducer(
     #     scaler = StandardScaler()
     #     X = scaler.fit_transform(X)
 
+    clog.substep(f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D")
     match method.lower():
         case "pca":
             return _pca(X, n_components=n_components)

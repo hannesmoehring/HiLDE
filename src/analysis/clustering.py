@@ -4,9 +4,11 @@ from sklearn.cluster import DBSCAN, KMeans
 from sklearn.mixture import GaussianMixture
 
 from src.types import Config
+from src.util import console as clog
 
 
 def compute_clusters(X_scaled: np.ndarray, method: str, config: Config) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    clog.substep(f"Clustering: {method}  ({len(X_scaled)} points)")
     match method:
         case "KMeans":
             model = KMeans(n_clusters=config["cluster_n_clusters"], random_state=42)
