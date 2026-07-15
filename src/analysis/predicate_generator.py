@@ -8,14 +8,15 @@ def generate_predicate(
     X_scaled: np.ndarray,
     threshold: float = 0.9,
     selected_indices: list[int] | None = None,
+    tail_split: str = "severity",
 ) -> object:
     match method:
         case "hm":
-            return _predicate_hm(df, X_scaled, threshold=threshold)
+            return _predicate_hm(df, X_scaled, threshold=threshold, tail_split=tail_split)
         case "threshold":
-            return _predicate_threshold(df, X_scaled, threshold=threshold)
+            return _predicate_threshold(df, X_scaled, threshold=threshold, tail_split=tail_split)
         case "db":
-            return _predicate_db(df, X_scaled, threshold=threshold, selected_indices=selected_indices)
+            return _predicate_db(df, X_scaled, threshold=threshold, selected_indices=selected_indices, tail_split=tail_split)
         case _:
             raise ValueError(f"Unknown predicate generation method: {method}")
 
@@ -44,10 +45,16 @@ def _build_range_row(
     full_values: np.ndarray,
     feature: str,
     threshold: float,
+    tail_split: str = "severity",
 ) -> dict[str, object]:
     median = float(np.median(values))
     total_trim = 1.0 - threshold
-    left_share, right_share = _tail_removal_shares(values, median)
+    if tail_split == "severity":
+        left_share, right_share = _tail_removal_shares(values, median)
+    elif tail_split == "symmetric":
+        left_share, right_share = 0.5, 0.5
+    else:
+        raise ValueError(f"Unknown tail split: {tail_split}")
     left_trim = total_trim * left_share
     right_trim = total_trim * right_share
 
@@ -83,6 +90,7 @@ def _predicate_db(
     X_scaled_full: np.ndarray,
     threshold: float = 0.9,
     selected_indices: list[int] | None = None,
+    tail_split: str = "severity",
 ) -> list[dict[str, object]]:
     """DimBridge-style predicate induction.
 
@@ -104,6 +112,7 @@ def _predicate_db(
             full_values=X_scaled_full[:, j],
             feature=features[j],
             threshold=threshold,
+            tail_split=tail_split,
         )
         for j in range(selected.shape[1])
     ]
@@ -164,11 +173,13 @@ def _predicate_db(
     return rows
 
 
-def _predicate_hm(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9) -> list[dict[str, object]]:
-    return _predicate_threshold(df, X_scaled_full, threshold=threshold)
+def _predicate_hm(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9, tail_split: str = "severity") -> list[dict[str, object]]:
+    return _predicate_threshold(df, X_scaled_full, threshold=threshold, tail_split=tail_split)
 
 
-def _predicate_threshold(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9) -> list[dict[str, object]]:
+def _predicate_threshold(
+    df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9, tail_split: str = "severity"
+) -> list[dict[str, object]]:
     _validate_threshold(threshold)
     df = df.copy()
     X_scaled = df.to_numpy()
@@ -181,6 +192,7 @@ def _predicate_threshold(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold:
             full_values=X_scaled_full[:, i],
             feature=str(df.columns[i]),
             threshold=threshold,
+            tail_split=tail_split,
         )
         for i in range(X_scaled.shape[1])
     ]
