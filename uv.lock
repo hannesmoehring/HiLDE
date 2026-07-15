@@ -7,6 +7,12 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [
+    { name = "numpy", specifier = ">=2.4.4,<2.5" },
+    { name = "scipy", specifier = ">=1.17.1" },
+]
+
 [[package]]
 name = "alembic"
 version = "1.18.5"
@@ -580,6 +586,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/26/2d/ef58fed122b268c69c0aa099da20bc67657cdfb2e222688d5731bd5b971d/jupyterlab_widgets-3.0.16.tar.gz", hash = "sha256:423da05071d55cf27a9e602216d35a3a65a3e41cdf9c5d3b643b814ce38c19e0", size = 897423, upload-time = "2025-11-01T21:11:29.724Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/b5/36c712098e6191d1b4e349304ef73a8d06aed77e56ceaac8c0a306c7bda1/jupyterlab_widgets-3.0.16-py3-none-any.whl", hash = "sha256:45fa36d9c6422cf2559198e4db481aa243c7a32d9926b500781c830c80f7ecf8", size = 914926, upload-time = "2025-11-01T21:11:28.008Z" },
+]
+
+[[package]]
+name = "kdbcv"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/f7/fb4cd6b293b6f3cb61a2c800bfb89a8dc387dc79545e48a1de0ff6cf5313/kdbcv-1.0.0.tar.gz", hash = "sha256:3b0d66e103f935eb11008e90bb6d52b5d7e7a0bbed1f69a3e44f050d5144a3e2", size = 10975, upload-time = "2024-11-04T19:55:00.575Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/cc/f312b478ca3839a1847213e33818ffac57ebd8f992dbd7f840f57e66e8d9/kDBCV-1.0.0-py3-none-any.whl", hash = "sha256:3059216e871d9578e93ed19b8a97fd3cca263b9ae600b656030b27583122d2c0", size = 9572, upload-time = "2024-11-04T19:54:59.47Z" },
 ]
 
 [[package]]
@@ -1323,6 +1342,7 @@ dependencies = [
     { name = "hdbscan" },
     { name = "ipykernel" },
     { name = "ipywidgets" },
+    { name = "kdbcv" },
     { name = "matplotlib" },
     { name = "nbformat" },
     { name = "numba" },
@@ -1351,6 +1371,7 @@ requires-dist = [
     { name = "hdbscan", specifier = ">=0.8.43" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
+    { name = "kdbcv" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "nbformat", specifier = ">=5.10.4" },
     { name = "numba", specifier = ">=0.65.1" },
@@ -1366,7 +1387,7 @@ requires-dist = [
     { name = "tabulate", specifier = ">=0.10.0" },
     { name = "umap-learn", specifier = ">=0.5.11" },
     { name = "watchdog", specifier = ">=6.0.0" },
-    { name = "zadu", editable = "external/zadu" },
+    { name = "zadu", specifier = ">=0.4.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1662,7 +1683,7 @@ wheels = [
 [[package]]
 name = "zadu"
 version = "0.4.2"
-source = { editable = "external/zadu" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "faiss-cpu" },
     { name = "hdbscan" },
@@ -1672,14 +1693,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "faiss-cpu" },
-    { name = "hdbscan" },
-    { name = "matplotlib" },
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
+sdist = { url = "https://files.pythonhosted.org/packages/29/83/4d25b52d37096f017aefbff5930a7b37166a1e9d936a67da0175f7fe909c/zadu-0.4.2.tar.gz", hash = "sha256:106747eb59115f987804c96cfdf78f880b0acabf97ab689203a9dda7ca918b85", size = 32601, upload-time = "2026-05-13T06:58:08.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/56/0ac91227e6ca181477b4182b7b28761f5cc2b2bb32a2b23507b56abcb142/zadu-0.4.2-py3-none-any.whl", hash = "sha256:0fb97b132a6852c2fef82a6abd388617b2aac71f10a0061d892fc9086ff987b7", size = 38381, upload-time = "2026-05-13T06:58:06.744Z" },
 ]
