@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { datasetColumns, listDatasets, runAnalysis } from "./api";
 import { CharacteristicsBar } from "./charts/CharacteristicsBar";
-import { KdeTopography } from "./charts/KdeTopography";
+import { ClusterScatter } from "./charts/ClusterScatter";
 import { ScoreTiles } from "./charts/ScoreTiles";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
@@ -178,9 +178,9 @@ function Navigation(props: {
     const child = selectedChild != null ? node.children![selectedChild] : null;
     layerViews.push(
       <section className="panel layer" key={`layer-${L}`}>
-        <h2>{L === 1 ? "Cluster topography (root)" : `Sub-topography — layer ${L}`}</h2>
+        <h2>{L === 1 ? "Cluster projection (root)" : `Sub-projection — layer ${L}`}</h2>
         <div className="layer__cols">
-          <KdeTopography
+          <ClusterScatter
             node={node}
             selectedChild={selectedChild}
             onSelectCluster={(i) => setTreePath([...parentPath, i])}
@@ -208,7 +208,7 @@ function Navigation(props: {
   return (
     <>
       {layerViews}
-      {waiting && <p className="hint panel">Click a cluster in the topography above to drill in.</p>}
+      {waiting && <p className="hint panel">Click a cluster in the projection above to drill in.</p>}
       {explorationNode && (
         <ExplorationPanel
           dataset={dataset}

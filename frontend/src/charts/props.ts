@@ -5,10 +5,11 @@
 // Parity references point at the Streamlit source each chart replaces.
 import type { Characteristic, NodeScores, PredicateRow, TreeNode } from "../types";
 
-// A — KDE cluster topography. Replaces src/ui/visualization.py::cluster_gauss_kde.
-// Small-multiples of per-child 2D KDE density contours, positioned by each child's
-// MDS rel_position and size-scaled by n_points, with clickable centroids C0..Cn.
-export interface KdeTopographyProps {
+// A — Cluster projection scatter. Replaces the KDE topography (which ported
+// src/ui/visualization.py::cluster_gauss_kde): the parent node's 2D embedding
+// with points colored by child cluster, HDBSCAN noise as grey ×, and a clickable
+// legend. Clicking a point / legend chip / centroid label drills into that child.
+export interface ClusterScatterProps {
   node: TreeNode; // internal node whose children are drawn
   onSelectCluster: (childIndex: number) => void;
   selectedChild?: number | null;
