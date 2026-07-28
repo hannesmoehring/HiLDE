@@ -7,6 +7,7 @@ from sklearn.manifold import MDS, TSNE
 from sklearn.preprocessing import StandardScaler
 
 from src.types import Config, DRMethod
+from src.util import console as clog
 
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
 
@@ -43,6 +44,7 @@ def fit_dimensionality_reducer(
     #     scaler = StandardScaler()
     #     X = scaler.fit_transform(X)
 
+    clog.substep(f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D")
     match method.lower():
         case "pca":
             return _pca(X, n_components=n_components)
@@ -54,12 +56,10 @@ def fit_dimensionality_reducer(
             return _mds(
                 X,
                 n_components=n_components,
-                n_init=8,
-                normalized_stress="auto",
-                metric="euclidean",
-                # n_init=kwargs["n_init"],
-                # normalized_stress=kwargs["normalized_stress"],
-                # dissimilarity=kwargs["dissimilarity"],
+                metric_mds=config["mds_metric"],
+                n_init=config["mds_n_init"],
+                max_iter=config["mds_max_iter"],
+                random_state=config["mds_random_state"],
             )
         case _:
             raise ValueError(f"Unknown dimensionality reduction method: {method}")
@@ -76,6 +76,10 @@ def _pca(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
 
 
 def _tsne(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
+    # sklearn requires perplexity < n_samples; clamp so t-SNE works on small clusters
+    # (e.g. hierarchical sub-regions), not just the full dataset.
+    if "perplexity" in kwargs:
+        kwargs["perplexity"] = min(float(kwargs["perplexity"]), max(1.0, X.shape[0] - 1.0))
     tsne = TSNE(n_components=n_components, **kwargs)
     embedding = tsne.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=tsne)
@@ -88,6 +92,6 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
 
 
 def _mds(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
-    mds = MDS(n_components=n_components, **kwargs)
+    mds = MDS(n_components=n_components, init="random", n_jobs=-1, **kwargs)
     embedding = mds.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=mds)

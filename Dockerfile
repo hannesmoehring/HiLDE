@@ -1,28 +1,45 @@
-# uv + Python 3.13 preinstalled (mirrors prepare_env.sh's toolchain)
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+# Single-container image: FastAPI backend serves the built D3 frontend.
+# (Replaces the former Streamlit image.)
 
+# ---- Stage 1: build the D3 frontend -> frontend/dist ----
+FROM node:22-slim AS frontend
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: Python runtime ----
+FROM python:3.13-slim AS runtime
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PORT=8000 \
+    SCIKIT_LEARN_DATA=/app/.cache/sklearn
 
-ENV UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1
-
-
+# build-essential for any source builds (hdbscan/llvmlite fallbacks)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock ./
-#TODO: double check local zadu
-COPY external/zadu ./external/zadu 
+COPY backend/requirements.txt ./backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-RUN uv sync --locked --no-install-project
+# Local (patched) zadu — DR quality metrics
+COPY external/zadu ./external/zadu
+RUN pip install --no-cache-dir ./external/zadu
 
-COPY . .
+# Calc layer + backend
+COPY src ./src
+COPY backend ./backend
 
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH=/app
+# Built frontend from stage 1 (served by FastAPI StaticFiles at "/")
+COPY --from=frontend /app/frontend/dist ./frontend/dist
 
-EXPOSE 8501
+# Datasets
+COPY datasets/wine_quality ./datasets/wine_quality
 
-CMD ["streamlit", "run", "src/ui/app.py", \
-    "--server.port=8501", "--server.address=0.0.0.0"]
+EXPOSE 8000
+# Datasets needing local files (wine CSVs, MNIST IDX) are mounted at runtime; the
+# sklearn-provided datasets (iris, digits, …) work with no mounts.
+CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port ${PORT}"]

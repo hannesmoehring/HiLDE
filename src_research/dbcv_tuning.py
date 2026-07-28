@@ -1,6 +1,12 @@
 import numpy as np
 import optuna
 import pandas as pd
+
+# kDBCV's type hints reference np.float_, which NumPy 2.0 removed. Its actual
+# DBCV computation is NumPy-2/SciPy-1.18 compatible, so restore the alias to let
+# the import (evaluated at def time) succeed. See override-dependencies in pyproject.toml.
+if not hasattr(np, "float_"):
+    np.float_ = np.float64
 from kDBCV.DBCV import DBCV_score
 from sklearn.datasets import make_blobs, make_circles, make_moons
 from sklearn.preprocessing import StandardScaler
@@ -9,8 +15,8 @@ import src.analysis.analysis_routine as ar
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
 from src.types import Config
-from src.ui.data import load_dataset
-from src.ui.state import init_state
+from src.datasets import load_dataset
+from src.config_defaults import init_state
 
 df = load_dataset()
 

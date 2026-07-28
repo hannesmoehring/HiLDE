@@ -24,11 +24,16 @@ dependencies = [
     "tabulate>=0.10.0",
     "umap-learn>=0.5.11",
     "watchdog>=6.0.0",
-    "zadu",
+    "zadu>=0.4.2",
 ]
 
 [dependency-groups]
 dev = ["pyinstrument>=5.1.2"]
 
-[tool.uv.sources]
-zadu = { path = "external/zadu", editable = true }
+[tool.uv]
+# kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1, which is
+# incompatible with this project's modern numpy 2.4 / scipy 1.18 stack. Its DBCV
+# code only uses APIs that are stable across those versions (verified), so we
+# override the stale caps. The one import-time incompatibility (a removed
+# np.float_ alias in kdbcv's type hints) is shimmed in src_research/dbcv_tuning.py.
+override-dependencies = ["numpy>=2.4.4,<2.5", "scipy>=1.17.1"]

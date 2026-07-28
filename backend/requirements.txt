@@ -1,0 +1,14 @@
+# Runtime deps for the FastAPI backend + calc layer (production image).
+# Streamlit-free and free of research-only deps (plotly, optuna, kdbcv, …).
+# Mirrors the version constraints in pyproject.toml. zadu is installed separately
+# from the local ./external/zadu path (see Dockerfile).
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=2.4.4,<2.5
+pandas>=3.0.2
+scikit-learn>=1.8.0
+scipy>=1.17.1
+umap-learn>=0.5.11
+hdbscan>=0.8.43
+numba>=0.65.1
+rich>=15.0.0
