@@ -1,4 +1,7 @@
-# SHD Interactive Dimensionality Reduction
+# HiLDE — Hierarchical Local Decomposition and Explanation
+
+> Interactive dimensionality-reduction explorer. Formerly *SHD*; the repository
+> name and package identifiers keep the historical acronym.
 
 ## D3 frontend (new — FastAPI backend + React/D3)
 

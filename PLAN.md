@@ -1,6 +1,6 @@
 # Migration Plan — Streamlit → D3.js Frontend
 
-Migrate the SHD dimensionality-reduction explorer from a Streamlit + Plotly
+Migrate the HiLDE dimensionality-reduction explorer from a Streamlit + Plotly
 dashboard to a production D3.js frontend, **preserving the Python calculation
 layer (`src/analysis`, `src/evaluation`) unchanged**. The goal is parity with
 the current Streamlit views first, then visual improvement.

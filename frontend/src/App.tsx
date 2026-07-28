@@ -81,7 +81,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>SHD — Dimensionality Reduction Explorer</h1>
+        <h1>HiLDE — Hierarchical Local Decomposition and Explanation</h1>
       </header>
 
       <section className="panel">

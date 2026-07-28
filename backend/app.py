@@ -26,7 +26,7 @@ from backend.serialize import serialize_tree
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
-app = FastAPI(title="SHD API", version="0.1.0")
+app = FastAPI(title="HiLDE API", version="0.1.0")
 
 # Dev: Vite dev server (5173) calls the API cross-origin. Tightened in prod (single container).
 app.add_middleware(
