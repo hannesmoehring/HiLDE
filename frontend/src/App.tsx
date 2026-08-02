@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { datasetColumns, listDatasets, runAnalysis } from "./api";
+import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
 import { CharacteristicsBar } from "./charts/CharacteristicsBar";
 import { ClusterScatter } from "./charts/ClusterScatter";
 import { ScoreTiles } from "./charts/ScoreTiles";
@@ -7,7 +7,7 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { getNodeAtPath } from "./treeNav";
-import type { AnalysisConfig, AnalysisResponse, DatasetColumns, DatasetInfo } from "./types";
+import type { AnalysisConfig, AnalysisResponse, DatasetColumns, DatasetInfo, ModeInfo } from "./types";
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -21,6 +21,16 @@ export default function App() {
   const [treePath, setTreePath] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Hosting mode only: reuse stored runs, and say so when we do.
+  const [mode, setMode] = useState<ModeInfo | null>(null);
+  const [useCache, setUseCache] = useState(true);
+
+  useEffect(() => {
+    getMode()
+      .then(setMode)
+      .catch(() => setMode({ hosting: false, cache_dir: null }));
+  }, []);
 
   useEffect(() => {
     listDatasets()
@@ -69,7 +79,7 @@ export default function App() {
     setAnalysis(null);
     setTreePath([]);
     try {
-      const res = await runAnalysis(datasetKey, featureCols, config);
+      const res = await runAnalysis(datasetKey, featureCols, config, useCache);
       setAnalysis(res);
     } catch (e) {
       setError(String(e));
@@ -141,8 +151,25 @@ export default function App() {
           <button className="primary" onClick={build} disabled={loading || featureCols.length === 0}>
             {loading ? "Building…" : "Build & Apply"}
           </button>
+          {mode?.hosting && (
+            <label className="field--check" title={mode.cache_dir ?? undefined}>
+              <input
+                type="checkbox"
+                checked={useCache}
+                onChange={(e) => setUseCache(e.target.checked)}
+              />
+              <span>Use cached results</span>
+            </label>
+          )}
           {error && <span className="error">{error}</span>}
         </div>
+        {mode?.hosting && analysis?.cached && (
+          <div className="banner">
+            <strong>Cached results.</strong> This dataset and configuration were computed before,
+            so the stored run was reused — nothing was recomputed. Uncheck{" "}
+            <em>Use cached results</em> and rebuild to force a fresh run.
+          </div>
+        )}
       </section>
 
       {analysis && <Navigation analysis={analysis} treePath={treePath} setTreePath={setTreePath} dataset={datasetKey} featureCols={featureCols} config={config} charNonFeatureOnly={charNonFeatureOnly} />}

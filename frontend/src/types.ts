@@ -53,6 +53,13 @@ export interface AnalysisMeta {
 export interface AnalysisResponse {
   meta: AnalysisMeta;
   tree: TreeNode;
+  cached: boolean; // true = a stored run was reused instead of recomputing
+}
+
+// Server mode. The persistent run cache (and its banner/toggle) exist only when hosting.
+export interface ModeInfo {
+  hosting: boolean;
+  cache_dir: string | null;
 }
 
 export interface DatasetInfo {

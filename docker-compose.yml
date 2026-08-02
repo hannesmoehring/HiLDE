@@ -14,3 +14,5 @@ services:
       - ./datasets:/app/datasets:ro
       # Persist downloaded datasets across container restarts
       - ./.cache/sklearn:/app/.cache/sklearn
+      # Persist completed analysis runs (hosting-mode cache)
+      - ./.cache/hilde_runs:/app/.cache/hilde_runs

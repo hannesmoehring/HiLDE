@@ -4,6 +4,7 @@ import type {
   AnalysisResponse,
   DatasetColumns,
   DatasetInfo,
+  ModeInfo,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
@@ -28,6 +29,10 @@ async function get<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export function getMode(): Promise<ModeInfo> {
+  return get("/api/mode");
+}
+
 export function listDatasets(): Promise<DatasetInfo[]> {
   return get("/api/datasets");
 }
@@ -40,8 +45,9 @@ export function runAnalysis(
   dataset: string,
   feature_cols: string[],
   config: Partial<AnalysisConfig>,
+  use_cache = true,
 ): Promise<AnalysisResponse> {
-  return post("/api/analysis", { dataset, feature_cols, config });
+  return post("/api/analysis", { dataset, feature_cols, config, use_cache });
 }
 
 export function runPredicate(args: {

@@ -231,6 +231,18 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.banner {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #e8d08a;
+  border-left: 4px solid #d9a520;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #6b5312;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .hint {
   color: var(--muted);
   font-style: italic;

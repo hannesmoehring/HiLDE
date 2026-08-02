@@ -23,6 +23,31 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173. Backend tests: `PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize`.
 
+## Hosting mode (`uv run host.py`)
+
+One command builds the frontend (only if `frontend/dist` is missing or older than
+`frontend/src`) and serves the API + UI from a single uvicorn process:
+
+```bash
+uv run host.py                    # -> http://0.0.0.0:8000
+uv run host.py --port 9000 --host 127.0.0.1
+```
+
+Hosting mode is the *only* mode with a **persistent run cache**. A completed
+`/api/analysis` is written to `.cache/hilde_runs/` keyed by
+(dataset, feature_cols, config), so an identical request — including after a
+restart — reuses the stored run instead of recomputing UMAP/HDBSCAN/ZADU.
+
+Because the pipeline is not bit-reproducible across runs even at a fixed seed, a
+reused run is **not** what a fresh run would produce. The UI therefore shows a
+"Cached results" banner whenever it serves one, and a **Use cached results**
+checkbox next to *Build & Apply* turns the cache off; rebuilding with it
+unchecked recomputes and replaces the stored entry.
+
+The dev setup above is unaffected — `HILDE_HOSTING` is unset there, nothing is
+written to disk, and no banner or toggle appears. Set `HILDE_CACHE_DIR` to move
+the cache, or clear it with `rm -rf .cache/hilde_runs`.
+
 ## Production (single container)
 
 FastAPI serves the built frontend (`frontend/dist`) at `/` and the API at `/api/*`
@@ -37,6 +62,9 @@ PYTHONPATH=. .venv/bin/python -m uvicorn backend.app:app --host 0.0.0.0 --port 8
 # Or via Docker (multi-stage: builds the frontend, then a lean Python runtime):
 docker compose up --build     # -> http://localhost:8000
 ```
+
+The image sets `HILDE_HOSTING=1`, so the container runs in hosting mode too; its
+run cache is persisted to `./.cache/hilde_runs` via `docker-compose.yml`.
 
 Local datasets (wine CSVs, MNIST IDX files) are mounted read-only via
 `docker-compose.yml`; sklearn-provided datasets (iris, digits, …) need no mounts.

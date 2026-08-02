@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import datasets as ds
+from backend import run_cache
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
 from src.config_defaults import default_config
@@ -59,6 +60,7 @@ class AnalysisRequest(BaseModel):
     dataset: str
     feature_cols: list[str]
     config: dict[str, Any] = {}
+    use_cache: bool = True
 
 
 class PredicateRequest(BaseModel):
@@ -79,6 +81,13 @@ class RowsRequest(BaseModel):
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/mode")
+def mode() -> dict[str, Any]:
+    """Whether the server runs in hosting mode (persistent run cache + UI banner)."""
+    hosting = run_cache.is_hosting()
+    return {"hosting": hosting, "cache_dir": str(run_cache.cache_dir()) if hosting else None}
 
 
 @app.get("/api/datasets")
@@ -110,22 +119,36 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
 
     key = _cache_key(req.dataset, req.feature_cols, req.config)
-    if key not in _tree_cache:
-        config = _merge_config(req.config)
-        try:
-            tree = start_evaluation(df, req.feature_cols, config)  # type: ignore[arg-type]
-        except Exception as exc:  # surface calc-layer failures as 400s
-            raise HTTPException(status_code=400, detail=f"Analysis failed: {exc}") from exc
-        _tree_cache[key] = {
-            "meta": {
-                "dataset": req.dataset,
-                "feature_cols": req.feature_cols,
-                "config": req.config,
-                "n_total": int(len(df)),
-            },
-            "tree": serialize_tree(tree),  # type: ignore[arg-type]
-        }
-    return _tree_cache[key]
+    hosting = run_cache.is_hosting()
+
+    # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
+    if req.use_cache:
+        payload = _tree_cache.get(key)
+        if payload is None and hosting:
+            payload = run_cache.load(key)
+            if payload is not None:
+                _tree_cache[key] = payload
+        if payload is not None:
+            return {**payload, "cached": True}
+
+    config = _merge_config(req.config)
+    try:
+        tree = start_evaluation(df, req.feature_cols, config)  # type: ignore[arg-type]
+    except Exception as exc:  # surface calc-layer failures as 400s
+        raise HTTPException(status_code=400, detail=f"Analysis failed: {exc}") from exc
+    payload = {
+        "meta": {
+            "dataset": req.dataset,
+            "feature_cols": req.feature_cols,
+            "config": req.config,
+            "n_total": int(len(df)),
+        },
+        "tree": serialize_tree(tree),  # type: ignore[arg-type]
+    }
+    _tree_cache[key] = payload
+    if hosting:
+        run_cache.store(key, payload)  # a forced rerun replaces the stored entry
+    return {**payload, "cached": False}
 
 
 @app.post("/api/predicate")
