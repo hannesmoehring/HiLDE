@@ -133,27 +133,25 @@ console = Console()
 def prepare_dataset(display_name: str) -> tuple[pd.DataFrame, list[str], np.ndarray | None]:
     """Load a registry dataset; return (df, feature_cols, y).
 
-    Label conventions (mirrors the tuning harness ``prepare_dataset``):
-      * one-hot ``target_*`` columns -> y = argmax, features = the rest;
-      * wine quality (``is_red``)    -> y = is_red (binary), drop quality/is_red from features;
-      * swiss roll (``manifold_position``) -> continuous, y = None.
+    Every label column in the registry is named ``target_*``, so features are always
+    "everything but row_id and target_*". Only the y convention varies:
+      * wine quality (``target_is_red``) -> y = is_red (binary), not a one-hot block;
+      * swiss roll (``target_manifold_position``) -> continuous, y = None;
+      * one-hot ``target_*`` block -> y = argmax.
     Seeded subsample to ``SUBSAMPLE_CAP`` on the df; the index is reset so a node's
     ``row_indices`` (positional 0..n-1 into this df) line up with the standardised matrix.
     """
     df = DATASETS[display_name]()
     target_cols = [c for c in df.columns if c.startswith("target_")]
+    feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
 
-    if target_cols:
-        feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
-        y = df[target_cols].to_numpy().argmax(axis=1)
-    elif "is_red" in df.columns:  # wine quality
-        feature_cols = [c for c in df.columns if c not in {"row_id", "is_red", "quality"}]
-        y = df["is_red"].to_numpy().astype(int)
-    elif "manifold_position" in df.columns:  # swiss roll - continuous, no classes
-        feature_cols = [c for c in df.columns if c not in {"row_id", "manifold_position"}]
+    if "target_is_red" in df.columns:  # wine quality
+        y = df["target_is_red"].to_numpy().astype(int)
+    elif "target_manifold_position" in df.columns:  # swiss roll - continuous, no classes
         y = None
+    elif target_cols:
+        y = df[target_cols].to_numpy().argmax(axis=1)
     else:
-        feature_cols = [c for c in df.columns if c != "row_id"]
         y = None
 
     if len(df) > SUBSAMPLE_CAP:

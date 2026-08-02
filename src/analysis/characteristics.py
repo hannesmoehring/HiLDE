@@ -1,30 +1,5 @@
-import numpy as np
 import pandas as pd
-from scipy.stats import gaussian_kde
 from sklearn.tree import DecisionTreeClassifier, export_text
-
-from src.analysis.dim_reducer import reduce_dimensionality
-from src.types import Config
-
-
-def compute_cluster_kde(
-    pts: np.ndarray,
-    config: Config,
-) -> np.ndarray:
-    pts_2d = reduce_dimensionality(method=config["method"], X=pts, n_components=2, config=config)  # type: ignore[arg-type]
-
-    kde = gaussian_kde(pts_2d.T, bw_method="scott")
-    pad = 0.5 * pts_2d.std(axis=0).max()
-    lx_min, lx_max = pts_2d[:, 0].min() - pad, pts_2d[:, 0].max() + pad
-    ly_min, ly_max = pts_2d[:, 1].min() - pad, pts_2d[:, 1].max() + pad
-
-    # Normalised grid [-0.5, 0.5] so callers can scale/position using rel_position + cluster size
-    lx_norm = np.linspace(-0.5, 0.5, 60)
-    ly_norm = np.linspace(-0.5, 0.5, 60)
-    lx_actual = lx_norm * (lx_max - lx_min) + (lx_min + lx_max) / 2
-    ly_actual = ly_norm * (ly_max - ly_min) + (ly_min + ly_max) / 2
-    LX, LY = np.meshgrid(lx_actual, ly_actual)
-    return kde(np.vstack([LX.ravel(), LY.ravel()])).reshape(LX.shape)
 
 
 def compute_cluster_characteristics(

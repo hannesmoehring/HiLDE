@@ -18,7 +18,7 @@ from src.evaluation.evaluate import start_evaluation
 _NODE_KEYS = {
     "id", "is_leaf", "depth", "n_points", "row_indices",
     "embedding_original", "embedding_original_variance", "rel_position",
-    "kde", "rel_characteristics", "outlier_scores", "scores", "children",
+    "rel_characteristics", "outlier_scores", "scores", "children",
 }
 
 
@@ -57,8 +57,6 @@ def test_serialized_tree_is_json_safe_and_well_formed():
         # embedding is Nx2 or empty
         for xy in n["embedding_original"]:
             assert len(xy) == 2
-        if n["kde"] is not None:
-            assert n["kde"]["resolution"] == len(n["kde"]["grid"])
         for rc in n["rel_characteristics"]:
             assert set(rc.keys()) == {"feature", "z_mean", "z_std", "raw_mean", "is_feature"}
         if n["is_leaf"]:

@@ -7,13 +7,12 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.characteristics import compute_cluster_characteristics, compute_cluster_kde, fit_cluster_decision_tree
+from src.analysis.characteristics import compute_cluster_characteristics, fit_cluster_decision_tree
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import fit_dimensionality_reducer, reduce_dimensionality
 from src.types import Config
 from src.util import console as clog
 
-_KDE_MIN_PTS = 3
 _MIN_CLUSTERS_FOR_HIERARCHY = 2
 _MIN_EMBED_DIMS = 2
 
@@ -26,6 +25,7 @@ class _NodeCtx:
     rel_position: tuple[float, float]
     rel_characteristics: pd.DataFrame
     row_indices: np.ndarray
+    X_feat_raw: np.ndarray  # unscaled values of the feature columns (X_orig is scaled)
     X_nonfeat: np.ndarray  # raw values of numeric columns not selected as features
     nonfeat_cols: list[str]
 
@@ -44,7 +44,6 @@ class NodeScores(TypedDict):
 class HierarchyObject(TypedDict):
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
-    kde: np.ndarray | None
     cluster_points: np.ndarray
     embedding_original: np.ndarray
     embedding_original_variance: np.ndarray | None
@@ -58,7 +57,6 @@ class HierarchyObject(TypedDict):
 class ExplorationObject(TypedDict):  # add embedded points
     is_leaf: Literal[True]
     depth: int
-    kde: np.ndarray | None
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     exploration_points: np.ndarray
@@ -128,6 +126,7 @@ def compute_analysis_tree(
             rel_position=(0.0, 0.0),
             rel_characteristics=pd.DataFrame(),
             row_indices=np.arange(len(df)),
+            X_feat_raw=df[feature_cols].to_numpy(),
             X_nonfeat=X_nonfeat,
             nonfeat_cols=nonfeat_cols,
         ),
@@ -142,7 +141,6 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         return ExplorationObject(
             is_leaf=True,
             depth=ctx.depth,
-            kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
             exploration_points=X,
@@ -158,7 +156,6 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
             return ExplorationObject(
                 is_leaf=True,
                 depth=ctx.depth,
-                kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
                 rel_characteristics=ctx.rel_characteristics,
                 rel_position=ctx.rel_position,
                 exploration_points=X,
@@ -170,8 +167,10 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         mask = labels != -1
         X_orig_df = pd.DataFrame(ctx.X_orig, columns=ctx.feature_cols)
         X_orig_df["cluster"] = labels
-        # df carrying feature + raw non-feature columns for characteristic z-scores.
-        char_df = X_orig_df.copy()
+        # df carrying the *raw* feature + non-feature columns, so `raw_mean` reports
+        # original units. z-scores come from X_orig_df (the scaled frame).
+        char_df = pd.DataFrame(ctx.X_feat_raw, columns=ctx.feature_cols)
+        char_df["cluster"] = labels
         for j, col in enumerate(ctx.nonfeat_cols):
             char_df[col] = ctx.X_nonfeat[:, j]
         reduced_cols = [f"dim_{i}" for i in range(X.shape[1])]
@@ -211,6 +210,7 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
                         rel_position=rel_positions[cluster_id],
                         rel_characteristics=rel_characteristics_dict[cluster_id],
                         row_indices=ctx.row_indices[temp_mask],
+                        X_feat_raw=ctx.X_feat_raw[temp_mask],
                         X_nonfeat=ctx.X_nonfeat[temp_mask],
                         nonfeat_cols=ctx.nonfeat_cols,
                     ),
@@ -220,7 +220,6 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         return HierarchyObject(
             rel_characteristics=ctx.rel_characteristics,
             rel_position=ctx.rel_position,
-            kde=compute_cluster_kde(X, config) if len(X) >= _KDE_MIN_PTS else None,
             cluster_points=X,
             row_indices=ctx.row_indices,
             embedding_original=emb_orig,
@@ -239,10 +238,9 @@ def print_tree(node: AnalysisObject, prefix: str = "", *, is_last: bool = True) 
         pts = leaf["exploration_points"].shape[0]
         pos = leaf["rel_position"]
         pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
-        kde_str = "kde=yes" if leaf["kde"] is not None else "kde=no"
         rc = leaf["rel_characteristics"]
         char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
-        print(f"{prefix}{connector}[LEAF] depth={leaf['depth']}  pts={pts}  pos={pos_str}  {kde_str}  {char_str}")
+        print(f"{prefix}{connector}[LEAF] depth={leaf['depth']}  pts={pts}  pos={pos_str}  {char_str}")
     else:
         hier: HierarchyObject = node  # type: ignore[assignment]
         children = hier["next_object_layer"] or []
@@ -251,9 +249,8 @@ def print_tree(node: AnalysisObject, prefix: str = "", *, is_last: bool = True) 
         pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
         scores = hier["outlier_scores"]
         outlier_str = f"  outlier_mean={scores.mean():.3f}" if scores is not None else ""
-        kde_str = "kde=yes" if hier["kde"] is not None else "kde=no"
         rc = hier["rel_characteristics"]
         char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
-        print(f"{prefix}{connector}[NODE] pts={pts}  children={len(children)}  pos={pos_str}{outlier_str}  {kde_str}  {char_str}")
+        print(f"{prefix}{connector}[NODE] pts={pts}  children={len(children)}  pos={pos_str}{outlier_str}  {char_str}")
         for i, child in enumerate(children):
             print_tree(child, prefix=child_prefix, is_last=(i == len(children) - 1))

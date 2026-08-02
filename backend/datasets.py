@@ -25,5 +25,11 @@ def load(key: str) -> "pd.DataFrame":
 
 
 def default_feature_cols(df: "pd.DataFrame") -> list[str]:
-    """Match the Streamlit default: every column except `row_id`."""
-    return [c for c in df.columns if c != "row_id"]
+    """Every column except `row_id` and the `target_*` label columns.
+
+    Labels must stay out of the feature space: clustering, the per-node projection,
+    the DR quality scores and the induced predicates would otherwise all run on a
+    space containing the ground truth. They remain in the frame and surface as
+    non-feature characteristics.
+    """
+    return [c for c in df.columns if c != "row_id" and not str(c).startswith("target_")]

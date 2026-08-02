@@ -88,12 +88,20 @@ as M4 and which A5 only partly closes. Decision taken and to be kept: report the
 report `noise_frac` beside every ARI, and do **not** invent a post-hoc metric that could flip
 the verdict.
 
-## 4. Findings about the app itself (independent of presets, nothing changed yet)
+## 4. Findings about the app itself (independent of presets)
 
-1. `backend/datasets.py:27` `default_feature_cols` returns every column except `row_id`, so the
+> Status 2026-08-02: findings 1 and 4 have since been fixed in the app; 2 and 3 stand.
+> The findings are kept as written because they are what the experiment design responds to.
+
+1. ~~`backend/datasets.py:27` `default_feature_cols` returns every column except `row_id`, so the
    shipped default passes `target_*`, `is_red`, `quality` into the clustering — the demo
-   datasets are clustered partly on their own labels. This experiment therefore pinned a
+   datasets are clustered partly on their own labels.~~ This experiment therefore pinned a
    label-free feature set, and any preset must ship with its feature list.
+   **Fixed 2026-08-02:** `default_feature_cols` now excludes `target_*`, and wine's `is_red` /
+   `quality` and swiss roll's `manifold_position` were renamed to `target_*` so one rule covers
+   the registry. The shipped default now agrees with the pinned label-free sets below. Keep
+   shipping the feature list with a preset anyway — reproducibility should not depend on the
+   app default.
 2. `App.tsx` overwrites `hclust_umap_n_components` with the feature count, skipping UMAP
    pre-reduction (`analysis_routine.py:113`). Measured: breast cancer -> 1 leaf (no hierarchy),
    wine -> 2 leaves, iris -> 2. `config_defaults.py` ships 2, which gives 3 leaves on breast
@@ -104,9 +112,14 @@ the verdict.
    never threaded into `_umap` / `_tsne` (`mds_random_state` *is*), so those controls do
    nothing and every build is stochastic. `hclust_normalize` is never read anywhere;
    `compute_analysis_tree` reads `normalize`.
-4. `compute_cluster_kde` is not wrapped in the `try/except` that guards `_embed_original`, so a
+4. ~~`compute_cluster_kde` is not wrapped in the `try/except` that guards `_embed_original`, so a
    small cluster can kill an entire build with `TypeError` from `umap/spectral.py`. Stochastic,
-   therefore intermittent in the UI.
+   therefore intermittent in the UI.~~
+   **Fixed 2026-08-02:** `compute_cluster_kde` was removed outright — no frontend chart ever
+   consumed its grid, and it was running a second full DR fit per node purely to produce it.
+   That removes this crash source and roughly halves the DR work per build. Note the two
+   remaining unguarded reductions (pre-clustering UMAP, MDS over centroids) can still raise, so
+   the "any exception → worst value" scoring rule in §5 of the design still earns its keep.
 
 ## 5. Open decisions for the next session
 

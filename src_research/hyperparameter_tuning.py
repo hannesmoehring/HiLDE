@@ -182,27 +182,24 @@ class Dataset:
 def prepare_dataset(display_name: str) -> Dataset:
     """Load a dataset from the project registry and split it into features / labels.
 
-    The registry returns DataFrames in several formats, handled here:
-      * one-hot ``target_*`` columns  -> labels = argmax, features = the rest;
-      * wine quality (no target_*)    -> features = physicochemical columns,
-                                         labels = ``is_red`` (binary ground truth);
-      * swiss roll                    -> continuous manifold, no discrete labels.
+    Every label column in the registry is named ``target_*``, so features are always
+    "everything but row_id and target_*". Only the label convention varies:
+      * wine quality (``target_is_red``) -> labels = is_red (binary ground truth);
+      * swiss roll (``target_manifold_position``) -> continuous, no discrete labels;
+      * one-hot ``target_*`` block -> labels = argmax.
     Features are standardised; large datasets are subsampled to ``SUBSAMPLE_CAP``.
     """
     df = DATASETS[display_name]()
     target_cols = [c for c in df.columns if c.startswith("target_")]
+    feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
 
-    if target_cols:
-        feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
-        y = df[target_cols].to_numpy().argmax(axis=1)
-    elif "is_red" in df.columns:  # wine quality
-        feature_cols = [c for c in df.columns if c not in {"row_id", "is_red", "quality"}]
-        y = df["is_red"].to_numpy().astype(int)
-    elif "manifold_position" in df.columns:  # swiss roll - continuous, no classes
-        feature_cols = [c for c in df.columns if c not in {"row_id", "manifold_position"}]
+    if "target_is_red" in df.columns:  # wine quality
+        y = df["target_is_red"].to_numpy().astype(int)
+    elif "target_manifold_position" in df.columns:  # swiss roll - continuous, no classes
         y = None
+    elif target_cols:
+        y = df[target_cols].to_numpy().argmax(axis=1)
     else:
-        feature_cols = [c for c in df.columns if c != "row_id"]
         y = None
 
     X = df[feature_cols].to_numpy(dtype=np.float64)

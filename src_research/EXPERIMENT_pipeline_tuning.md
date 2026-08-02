@@ -34,15 +34,20 @@ shipped as UI presets:
 Scope: the "light" tier. MNIST / Fashion-MNIST / Olivetti are excluded by decision — they are
 not interactively buildable, so a preset for them would be untestable under A3.
 
-**Feature columns.** `backend/datasets.py::default_feature_cols` returns *every* column except
-`row_id`, so the shipped default passes the label columns (`target_*`, `is_red`, `quality`)
-into the clustering. Tuning under that selection would tune the pipeline to cluster on the
-answer. This experiment therefore pins a **label-free feature set**, enumerated literally, and
-a preset ships *with* its feature list:
+**Feature columns.** At design time `backend/datasets.py::default_feature_cols` returned *every*
+column except `row_id`, so the shipped default passed the label columns (`target_*`, and wine's
+then-unprefixed `is_red` / `quality`) into the clustering. Tuning under that selection would tune
+the pipeline to cluster on the answer. This experiment therefore pins a **label-free feature
+set**, enumerated literally, and a preset ships *with* its feature list:
+
+> Fixed 2026-08-02: the default now excludes `target_*`, and the unprefixed label columns were
+> renamed (`target_is_red`, `target_quality`, `target_manifold_position`), so the app default and
+> the pinned sets below now coincide. The pinning stays — the feature space a preset was tuned on
+> should be reproducible without depending on the app default of the day.
 
 | Dataset | n | d | features | labels (reporting only) |
 |---|---|---|---|---|
-| Wine quality (Low) | 6497 | 11 | the 11 physicochemical columns (excl. `quality`, `is_red`) | `is_red` |
+| Wine quality (Low) | 6497 | 11 | the 11 physicochemical columns (excl. `target_quality`, `target_is_red`) | `target_is_red` |
 | Digits (Low) | 1797 | 64 | `px_0..px_63` | 10 classes |
 | Breast cancer (Low) | 569 | 30 | the 30 sklearn features | 2 classes |
 | Concentric rings (Low) | 1800 | 2 | `x`, `y` | 3 rings |
@@ -126,10 +131,14 @@ can emit is large enough to be scored, so O2 is always measured on the views the
 actually creates.
 
 **Degeneracy → worst value `(-1.0, 0.0)`:** fewer than 2 leaves; `noise_frac >= 0.5`;
-`scored_coverage < 0.8`; any exception (recorded in an `exception` column — the deployed path
-raises `TypeError` from `umap/spectral.py` on very small clusters via the unguarded
-`compute_cluster_kde`, and this is stochastic, so it must be a first-class outcome, not a
-crash); or a build exceeding the time guard.
+`scored_coverage < 0.8`; any exception (recorded in an `exception` column — when these runs were
+performed the deployed path raised `TypeError` from `umap/spectral.py` on very small clusters via
+the unguarded `compute_cluster_kde`, and this is stochastic, so it must be a first-class outcome,
+not a crash); or a build exceeding the time guard.
+
+> 2026-08-02: `compute_cluster_kde` has been removed, so that specific crash source is gone. The
+> pre-clustering UMAP and the MDS over centroids are still unguarded, so the rule stands as
+> written; expect a lower exception rate on any re-run than the recorded trials show.
 
 **Time guard.** Hard abort at **180 s** wall clock per build, implemented as a spawned
 subprocess that is terminated on timeout — a post-hoc measurement would still pay the cost.
@@ -188,8 +197,9 @@ run id, feature list, and the A1–A6 margins), `verdicts.md`, `reference_dbcv.c
 ## 8. Limitations stated in advance
 
 - **L1 — coupled knobs.** `umap_n_neighbors`/`umap_min_dist` are read by the pre-clustering
-  UMAP, the UMAP view, *and* `compute_cluster_kde`. A preset cannot set them independently.
-  Property of the config schema; reported, not worked around.
+  UMAP and the UMAP view. A preset cannot set them independently. Property of the config
+  schema; reported, not worked around. (These runs had a third consumer, `compute_cluster_kde`,
+  removed 2026-08-02; the coupling itself is unaffected.)
 - **L2 — dead seeds.** `_umap()`/`_tsne()` never receive `umap_random_state`/
   `tsne_random_state`, so those UI controls do nothing and every build is stochastic
   (`mds_random_state` *is* threaded). The validation stage measures the spread instead.

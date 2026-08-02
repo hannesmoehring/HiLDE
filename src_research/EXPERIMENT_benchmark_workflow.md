@@ -116,12 +116,12 @@ Verified against `src/analysis/analysis_routine.py`, `src/evaluation/evaluate.py
 ## 3. Data
 
 The three real datasets of the placeholder table, prepared exactly as in the RQ1 harness
-(`prepare_dataset`: seeded 1000-row subsample, seed 42, index reset; labels: `is_red`,
+(`prepare_dataset`: seeded 1000-row subsample, seed 42, index reset; labels: `target_is_red`,
 one-hot `target_*` argmax):
 
 | Dataset | $d$ | labels | role |
 |---|---|---|---|
-| Wine quality (Low) | 11 | 2 (is_red) | anchor: overlaps RQ2's wine arm → C4 directly comparable |
+| Wine quality (Low) | 11 | 2 (`target_is_red`) | anchor: overlaps RQ2's wine arm → C4 directly comparable |
 | Breast cancer (Low) | 30 | 2 | C1 extension point between wine (11) and synthetic (27→30) |
 | Digits (Low) | 64 | 10 | C1 stress point; 10-class purity makes D4 non-trivial |
 

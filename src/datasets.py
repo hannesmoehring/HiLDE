@@ -37,9 +37,10 @@ MNIST_RAW_DIR = Path("datasets/MNIST/raw")
 def load_dataset() -> pd.DataFrame:
     df_red = pd.read_csv(DATASET_PATH_RED, sep=";")
     df_white = pd.read_csv(DATASET_PATH_WHITE, sep=";")
-    df_red["is_red"] = True
-    df_white["is_red"] = False
+    df_red["target_is_red"] = True
+    df_white["target_is_red"] = False
     df = pd.concat([df_red, df_white], ignore_index=True)
+    df = df.rename(columns={"quality": "target_quality"})
     df = df.reset_index(drop=True)
     df["row_id"] = df.index
     return df
@@ -131,7 +132,7 @@ def load_concentric_dataframe() -> pd.DataFrame:
 def load_swiss_roll_dataframe() -> pd.DataFrame:
     coords, position = make_swiss_roll(n_samples=1500, noise=0.05, random_state=0)
     df = pd.DataFrame(coords, columns=["x", "y", "z"])
-    df["manifold_position"] = position  # continuous non-feature target (position along the roll)
+    df["target_manifold_position"] = position  # continuous non-feature target (position along the roll)
     df["row_id"] = df.index
     return df
 

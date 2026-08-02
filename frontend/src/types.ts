@@ -12,12 +12,6 @@ export interface NodeScores {
   cadi: number | null;
 }
 
-export interface Kde {
-  grid: (number | null)[][]; // resolution x resolution density
-  resolution: number; // 60
-  extent: [number, number]; // normalized grid bounds, [-0.5, 0.5]
-}
-
 export interface Characteristic {
   feature: string;
   z_mean: number | null;
@@ -36,7 +30,6 @@ export interface TreeNode {
   embedding_original: [number | null, number | null][]; // Nx2 projection
   embedding_original_variance: (number | null)[] | null; // PCA only
   rel_position: [number | null, number | null] | null; // MDS centroid in sibling layout
-  kde: Kde | null;
   rel_characteristics: Characteristic[];
   outlier_scores: (number | null)[] | null; // internal nodes only (GLOSH)
   scores: NodeScores | null;

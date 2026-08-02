@@ -100,7 +100,9 @@ export default function App() {
         <div className="general-config">
           <label className="field">
             <span>Dataset</span>
-            <select value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)}>
+            {/* Locked during a build: swapping datasets mid-run would apply the
+                in-flight tree under the new dataset's key. */}
+            <select value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)} disabled={loading}>
               {datasets.map((d) => (
                 <option key={d.key} value={d.key}>
                   {d.label}

@@ -15,9 +15,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-KDE_RESOLUTION = 60
-KDE_EXTENT = [-0.5, 0.5]
-
 
 def _finite(value: Any) -> float | None:
     """Coerce a scalar to a JSON-safe float; non-finite (NaN/Inf) -> None.
@@ -55,17 +52,6 @@ def _pair(pos: tuple[float, float] | None) -> list[float | None] | None:
     if pos is None:
         return None
     return [_finite(pos[0]), _finite(pos[1])]
-
-
-def _kde(grid: np.ndarray | None) -> dict[str, Any] | None:
-    if grid is None:
-        return None
-    a = np.asarray(grid, dtype=float)
-    return {
-        "grid": [[_finite(x) for x in row] for row in a],
-        "resolution": int(a.shape[0]),
-        "extent": KDE_EXTENT,
-    }
 
 
 def _characteristics(rc: pd.DataFrame | list[Any] | None) -> list[dict[str, Any]]:
@@ -124,7 +110,6 @@ def serialize_node(node: dict[str, Any], node_id: str, depth: int) -> dict[str, 
         "embedding_original": _xy_list(node["embedding_original"]),
         "embedding_original_variance": _float_list(node.get("embedding_original_variance")),
         "rel_position": _pair(node["rel_position"]),
-        "kde": _kde(node["kde"]),
         "rel_characteristics": _characteristics(node["rel_characteristics"]),
         "scores": _scores(node.get("scores")),
     }

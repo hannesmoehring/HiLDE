@@ -155,8 +155,8 @@ to keep t-SNE/UMAP and the O(n²) measures tractable — matching the tuning exp
 
 | Dataset            | Ground truth?         | Used for     | Why |
 |--------------------|-----------------------|--------------|-----|
-| Concentric rings   | yes (`ring_*`)        | H1a + H1b    | non-convex nested density; the case the hierarchy *should* win |
-| Wine quality       | yes (`is_red`)        | H1a + H1b    | interpretable, low-dim tabular |
+| Concentric rings   | yes (`target_ring_*`) | H1a + H1b    | non-convex nested density; the case the hierarchy *should* win |
+| Wine quality       | yes (`target_is_red`) | H1a + H1b    | interpretable, low-dim tabular |
 | Breast cancer      | yes (2 classes)       | H1a + H1b    | moderate dim |
 | Digits             | yes (10 classes)      | H1a + H1b    | manifold structure, higher dim |
 | Swiss roll         | no discrete classes   | H1a only     | continuous manifold; H1b not meaningful |

@@ -73,10 +73,9 @@ DATASETS_TO_RUN = [
     "Wine quality (Low)",
 ]
 
-# Label-bearing / bookkeeping columns that must never be clustering features.
-# (backend/datasets.py::default_feature_cols returns *every* column but row_id,
-# which feeds these into the clustering; see design section 2.)
-_NON_FEATURE_COLS = {"row_id", "is_red", "quality", "manifold_position"}
+# Bookkeeping columns that must never be clustering features. Every label column in
+# the registry is named `target_*` and is excluded below.
+_NON_FEATURE_COLS = {"row_id"}
 
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
@@ -84,11 +83,15 @@ def feature_columns(df: pd.DataFrame) -> list[str]:
 
 
 def ground_truth_labels(df: pd.DataFrame) -> np.ndarray | None:
+    # Wine and swiss roll carry a single `target_*` column that is not a one-hot
+    # block, so they must be matched before the argmax path.
+    if "target_is_red" in df.columns:
+        return df["target_is_red"].to_numpy().astype(int)
+    if "target_manifold_position" in df.columns:  # continuous, no classes
+        return None
     target_cols = [c for c in df.columns if str(c).startswith("target_")]
     if target_cols:
         return df[target_cols].to_numpy().argmax(axis=1)
-    if "is_red" in df.columns:
-        return df["is_red"].to_numpy().astype(int)
     return None
 
 
