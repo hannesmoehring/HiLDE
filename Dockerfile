@@ -26,10 +26,6 @@ RUN apt-get update \
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Local (patched) zadu — DR quality metrics
-COPY external/zadu ./external/zadu
-RUN pip install --no-cache-dir ./external/zadu
-
 # Calc layer + backend
 COPY src ./src
 COPY backend ./backend
