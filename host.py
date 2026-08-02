@@ -21,7 +21,13 @@ FRONTEND = ROOT / "frontend"
 DIST = FRONTEND / "dist"
 
 # Touching any of these invalidates a previous build.
-SOURCES = [FRONTEND / "src", FRONTEND / "index.html", FRONTEND / "package.json", FRONTEND / "vite.config.ts"]
+SOURCES = [
+    FRONTEND / "src",
+    FRONTEND / "public",
+    FRONTEND / "index.html",
+    FRONTEND / "package.json",
+    FRONTEND / "vite.config.ts",
+]
 
 
 def _say(message: str) -> None:

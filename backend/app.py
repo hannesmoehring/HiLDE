@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import datasets as ds
-from backend import run_cache
+from backend import jobs, run_cache
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
 from src.config_defaults import default_config
@@ -111,31 +111,22 @@ def dataset_columns(key: str) -> dict[str, Any]:
     }
 
 
-@app.post("/api/analysis")
-def analysis(req: AnalysisRequest) -> dict[str, Any]:
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
-
-    key = _cache_key(req.dataset, req.feature_cols, req.config)
-    hosting = run_cache.is_hosting()
-
-    # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
-    if req.use_cache:
-        payload = _tree_cache.get(key)
-        if payload is None and hosting:
-            payload = run_cache.load(key)
-            if payload is not None:
-                _tree_cache[key] = payload
+def _cached_payload(key: str) -> dict[str, Any] | None:
+    payload = _tree_cache.get(key)
+    if payload is None and run_cache.is_hosting():
+        payload = run_cache.load(key)
         if payload is not None:
-            return {**payload, "cached": True}
+            _tree_cache[key] = payload
+    return payload
 
+
+def _build(req: AnalysisRequest, df: Any, key: str) -> None:
+    """The expensive part, run on a job thread (see backend/jobs.py)."""
     config = _merge_config(req.config)
     try:
         tree = start_evaluation(df, req.feature_cols, config)  # type: ignore[arg-type]
-    except Exception as exc:  # surface calc-layer failures as 400s
-        raise HTTPException(status_code=400, detail=f"Analysis failed: {exc}") from exc
+    except Exception as exc:  # reaches the client as the job's error detail
+        raise RuntimeError(f"Analysis failed: {exc}") from exc
     payload = {
         "meta": {
             "dataset": req.dataset,
@@ -146,9 +137,50 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
     _tree_cache[key] = payload
-    if hosting:
+    if run_cache.is_hosting():
         run_cache.store(key, payload)  # a forced rerun replaces the stored entry
-    return {**payload, "cached": False}
+
+
+def _job_payload(job: jobs.Job) -> dict[str, Any]:
+    if job.status == "running":
+        return {"status": "running", "job_id": job.id}
+    if job.status == "error":
+        return {"status": "error", "job_id": job.id, "detail": job.detail}
+    payload = _tree_cache.get(job.key)
+    if payload is None:  # only if the entry was evicted between finishing and polling
+        return {"status": "error", "job_id": job.id, "detail": "Result no longer available — rerun."}
+    return {"status": "done", "job_id": job.id, **payload, "cached": False}
+
+
+@app.post("/api/analysis")
+def analysis(req: AnalysisRequest) -> dict[str, Any]:
+    """Starts a build and returns a job id; the client polls /api/analysis/jobs/{id}.
+
+    A cache hit still answers inline — only the runs that would outlast a proxy's
+    response timeout go through the job path.
+    """
+    try:
+        df = ds.load(req.dataset)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+
+    key = _cache_key(req.dataset, req.feature_cols, req.config)
+
+    # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
+    if req.use_cache:
+        payload = _cached_payload(key)
+        if payload is not None:
+            return {"status": "done", **payload, "cached": True}
+
+    return _job_payload(jobs.submit(key, lambda: _build(req, df, key)))
+
+
+@app.get("/api/analysis/jobs/{job_id}")
+def analysis_job(job_id: str) -> dict[str, Any]:
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return _job_payload(job)
 
 
 @app.post("/api/predicate")

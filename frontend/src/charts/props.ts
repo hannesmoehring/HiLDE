@@ -14,6 +14,7 @@ export interface ClusterScatterProps {
   onSelectCluster: (childIndex: number) => void;
   selectedChild?: number | null;
   title?: string;
+  highlightRow?: number | null; // row id to ring (a point picked in the GLOSH outlier table)
 }
 
 // B — Cluster characteristics bar. Replaces cluster_characteristics_fig.

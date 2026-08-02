@@ -5,6 +5,7 @@ import { ClusterScatter } from "./charts/ClusterScatter";
 import { ScoreTiles } from "./charts/ScoreTiles";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
+import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { getNodeAtPath } from "./treeNav";
 import type { AnalysisConfig, AnalysisResponse, DatasetColumns, DatasetInfo, ModeInfo } from "./types";
@@ -190,6 +191,14 @@ function Navigation(props: {
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
 
+  // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
+  // One at a time across layers, cleared whenever we drill in or out.
+  const [outlierPick, setOutlierPick] = useState<{ layer: number; rowId: number } | null>(null);
+  const pathKey = treePath.join(",");
+  useEffect(() => {
+    setOutlierPick(null);
+  }, [pathKey, root]);
+
   const layerViews: ReactElement[] = [];
   let explorationPath: number[] | null = null;
   let waiting = false;
@@ -211,6 +220,7 @@ function Navigation(props: {
             node={node}
             selectedChild={selectedChild}
             onSelectCluster={(i) => setTreePath([...parentPath, i])}
+            highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
           />
           {child && (
             <div className="layer__side">
@@ -219,6 +229,12 @@ function Navigation(props: {
             </div>
           )}
         </div>
+        <OutlierPanel
+          node={node}
+          dataset={dataset}
+          selectedRow={outlierPick?.layer === L ? outlierPick.rowId : null}
+          onSelectRow={(rowId) => setOutlierPick(rowId == null ? null : { layer: L, rowId })}
+        />
       </section>,
     );
     if (treePath.length < L) {

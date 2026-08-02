@@ -248,6 +248,187 @@ button:disabled {
   font-style: italic;
 }
 
+/* ── GLOSH outlier scores (collapsed by default) ───────────────────────────── */
+.outliers {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.outliers > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.82rem;
+  border-radius: 8px;
+}
+
+.outliers > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Disclosure triangle, rotating on open. */
+.outliers > summary::before {
+  content: "▶";
+  color: var(--muted);
+  font-size: 0.6rem;
+  width: 0.7rem;
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+
+.outliers[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.outliers > summary:hover {
+  color: var(--accent);
+}
+
+.outliers__title {
+  font-weight: 600;
+}
+
+.outliers__teaser {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.outliers__body {
+  padding: 0 0.75rem 0.75rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+}
+
+.outliers__note {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.78rem;
+}
+
+.outliers__caption {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.outliers__table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Hug the content: the top scores sit in a narrow band, so a full-width bar
+   column would be a lot of ink saying very little. */
+.outliers__table {
+  width: auto;
+  min-width: 380px;
+}
+
+.outliers__table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.outliers__table .num {
+  text-align: right;
+}
+
+.outliers__table tbody tr {
+  cursor: pointer;
+}
+
+.outliers__table tbody tr:hover {
+  background: var(--accent-soft);
+}
+
+.outliers__table tbody tr.is-active {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.outliers__rank {
+  color: var(--muted);
+  width: 2.5rem;
+}
+
+/* Score bar: length carries the magnitude, so a single hue (no value ramp). */
+.outliers__track {
+  display: block;
+  width: 150px;
+  height: 7px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.outliers__fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.outliers__detail {
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.outliers__detail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.outliers__detail-head .hint {
+  font-size: 0.75rem;
+}
+
+.outliers__detail-head button {
+  margin-left: auto;
+}
+
+.outliers__kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.35rem 1.4rem;
+  margin: 0;
+}
+
+.outliers__kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.2rem;
+}
+
+.outliers__kv dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outliers__kv dd {
+  margin: 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .layer__cols {
   display: grid;
   grid-template-columns: 1.5fr 1fr;

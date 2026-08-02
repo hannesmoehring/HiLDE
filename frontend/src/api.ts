@@ -1,6 +1,7 @@
 // Typed client for the FastAPI backend. In dev, Vite proxies /api -> uvicorn.
 import type {
   AnalysisConfig,
+  AnalysisJob,
   AnalysisResponse,
   DatasetColumns,
   DatasetInfo,
@@ -41,13 +42,31 @@ export function datasetColumns(key: string): Promise<DatasetColumns> {
   return get(`/api/datasets/${encodeURIComponent(key)}/columns`);
 }
 
-export function runAnalysis(
+const POLL_INTERVAL_MS = 2000;
+const POLL_RETRIES = 3; // a hiccup on one poll must not throw away a run in flight
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Starts a build and waits for it, polling the job until it finishes. */
+export async function runAnalysis(
   dataset: string,
   feature_cols: string[],
   config: Partial<AnalysisConfig>,
   use_cache = true,
 ): Promise<AnalysisResponse> {
-  return post("/api/analysis", { dataset, feature_cols, config, use_cache });
+  let job = await post<AnalysisJob>("/api/analysis", { dataset, feature_cols, config, use_cache });
+  let failures = 0;
+  while (job.status === "running") {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      job = await get<AnalysisJob>(`/api/analysis/jobs/${job.job_id}`);
+      failures = 0;
+    } catch (e) {
+      if (++failures > POLL_RETRIES) throw e;
+    }
+  }
+  if (job.status === "error") throw new Error(job.detail);
+  return job;
 }
 
 export function runPredicate(args: {

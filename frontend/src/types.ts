@@ -56,6 +56,14 @@ export interface AnalysisResponse {
   cached: boolean; // true = a stored run was reused instead of recomputing
 }
 
+// A build that misses the cache runs as a background job: POST starts it, GET
+// polls it. Keeping a long run off a single request is what avoids the 100s
+// response timeout a proxy (Cloudflare) enforces.
+export type AnalysisJob =
+  | { status: "running"; job_id: string }
+  | { status: "error"; job_id: string; detail: string }
+  | ({ status: "done"; job_id: string } & AnalysisResponse);
+
 // Server mode. The persistent run cache (and its banner/toggle) exist only when hosting.
 export interface ModeInfo {
   hosting: boolean;

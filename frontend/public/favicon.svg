@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="HiLDE">
+  <title>HiLDE</title>
+  <defs>
+    <linearGradient id="hilde-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+  <!-- Full data space -->
+  <rect width="64" height="64" rx="14" fill="url(#hilde-accent)"/>
+  <!-- Successively refined subspaces -->
+  <g fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round">
+    <rect x="9" y="9" width="46" height="46" rx="7" opacity=".5"/>
+    <rect x="20.5" y="20.5" width="23" height="23" rx="4.5" opacity=".9"/>
+  </g>
+  <!-- Leaf -->
+  <rect x="28.5" y="28.5" width="7" height="7" rx="2" fill="#ffffff"/>
+</svg>

@@ -24,9 +24,10 @@ interface PlottedPoint {
   px: number;
   py: number;
   child: number; // index into node.children; -1 = noise (in no child cluster)
+  row: number; // source dataframe row id, for the outlier-table highlight ring
 }
 
-export function ClusterScatter({ node, onSelectCluster, selectedChild, title }: ClusterScatterProps) {
+export function ClusterScatter({ node, onSelectCluster, selectedChild, title, highlightRow }: ClusterScatterProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const children: TreeNode[] = node.children ?? [];
   const width = size.width;
@@ -45,10 +46,10 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title }: 
     const membership = node.row_indices.map((r) => byRow.get(r) ?? -1);
     const outlierCount = membership.filter((m) => m === -1).length;
 
-    const valid: { x: number; y: number; child: number }[] = [];
+    const valid: { x: number; y: number; child: number; row: number }[] = [];
     (node.embedding_original ?? []).forEach(([x, y], i) => {
       if (x == null || y == null) return;
-      valid.push({ x, y, child: membership[i] ?? -1 });
+      valid.push({ x, y, child: membership[i] ?? -1, row: node.row_indices[i] });
     });
     if (valid.length === 0 || width <= 0) {
       return { plotted: [] as PlottedPoint[], centroids: [], outlierCount };
@@ -76,6 +77,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title }: 
       px: x0 + (p.x - cx) * k,
       py: y0 - (p.y - cy) * k,
       child: p.child,
+      row: p.row,
     }));
 
     const centroids = children.flatMap((_, ci) => {
@@ -140,6 +142,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title }: 
   }, [plotted, R, selectedChild]);
 
   const hasChart = plotted.length > 0;
+  const highlighted = highlightRow == null ? null : plotted.find((p) => p.row === highlightRow);
 
   // Zoom/pan (same interaction as the old topography): scroll/pinch to zoom,
   // drag to pan. Marks scale geometrically; centroid labels stay constant size.
@@ -296,6 +299,29 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title }: 
           style={{ display: "block", cursor: "grab", touchAction: "none" }}
         >
           <g transform={transform.toString()}>{pointsLayer}</g>
+
+          {/* Ring on the point picked in the GLOSH outlier table. Constant screen
+              size, and a surface halo underneath so it reads over dense marks. */}
+          {highlighted && (
+            <g pointerEvents="none">
+              <circle
+                cx={transform.applyX(highlighted.px).toFixed(1)}
+                cy={transform.applyY(highlighted.py).toFixed(1)}
+                r={9}
+                fill="none"
+                stroke={BG}
+                strokeWidth={4}
+              />
+              <circle
+                cx={transform.applyX(highlighted.px).toFixed(1)}
+                cy={transform.applyY(highlighted.py).toFixed(1)}
+                r={9}
+                fill="none"
+                stroke={TEXT}
+                strokeWidth={2}
+              />
+            </g>
+          )}
 
           {/* Centroid labels: constant screen size, clickable like the points. */}
           {centroids.map((c) => {
