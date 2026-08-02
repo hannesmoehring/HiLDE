@@ -80,7 +80,6 @@ export function OutlierHistogram({ scores }: OutlierHistogramProps) {
                   y={b.py}
                   width={b.pw}
                   height={b.ph}
-                  rx={Math.min(3, b.pw / 2)}
                   fill={BAR}
                   opacity={active && active !== b ? 0.55 : 1}
                 />
@@ -98,11 +97,11 @@ export function OutlierHistogram({ scores }: OutlierHistogramProps) {
           />
 
           {ticks.map((t) => (
-            <text key={t} x={tickX(t)} y={PLOT_BOTTOM + 15} textAnchor="middle" fontSize={10} fill={MUTED}>
+            <text key={t} x={tickX(t)} y={PLOT_BOTTOM + 15} textAnchor="middle" fontSize={11} fill={MUTED}>
               {t}
             </text>
           ))}
-          <text x={Math.max(PAD_X, width - PAD_X)} y={PLOT_TOP + 9} textAnchor="end" fontSize={10} fill={MUTED}>
+          <text x={Math.max(PAD_X, width - PAD_X)} y={PLOT_TOP + 9} textAnchor="end" fontSize={11} fill={MUTED}>
             peak {maxCount} pts
           </text>
         </svg>
@@ -116,15 +115,14 @@ export function OutlierHistogram({ scores }: OutlierHistogramProps) {
             top: Math.max(0, active.py - 8),
             transform: "translate(-50%, -100%)",
             background: theme.surface,
-            border: `1px solid ${theme.borderStrong}`,
-            borderRadius: 6,
+            border: `1px solid ${theme.textPrimary}`,
+            borderRadius: 0,
             padding: "5px 8px",
             color: theme.textPrimary,
-            fontSize: 12,
+            fontSize: 13,
             lineHeight: 1.3,
             whiteSpace: "nowrap",
             pointerEvents: "none",
-            boxShadow: "0 8px 20px -6px rgba(16,24,40,0.28)",
             zIndex: 1,
           }}
         >

@@ -179,11 +179,16 @@ export function ExplorationPanel({
 
   return (
     <section className="exploration panel">
-      <h2>Exploration — {pathLabel}</h2>
-      <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
-      {config.method === "PCA" && variance.length > 0 && (
-        <PcaVarianceBar explainedVariance={variance} />
-      )}
+      <h2>
+        <span className="kicker">Exploration</span>
+        <span className="panel__title">{pathLabel}</span>
+      </h2>
+      <div className="exploration__summary">
+        <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
+        {config.method === "PCA" && variance.length > 0 && (
+          <PcaVarianceBar explainedVariance={variance} />
+        )}
+      </div>
 
       <div className="exploration__cols">
         <div className="exploration__analysis">

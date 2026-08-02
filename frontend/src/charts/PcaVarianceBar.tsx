@@ -17,7 +17,12 @@ const BAR_BOTTOM = BAR_Y + BAR_H;
 const BG = theme.surface;
 const TEXT = theme.textPrimary;
 const MUTED = theme.muted;
-const UNEXPLAINED = "#d7dde7"; // light neutral tail on the white surface
+// The tail is an ABSENCE, so it stays near-surface — a full-bar outline (drawn
+// below, outside the clip) is what makes it legible; without one it is
+// indistinguishable from the white card and 62%-explained reads as 100%.
+const UNEXPLAINED = theme.track;
+// Components are ordinal, not categorical — an ink ramp, no hue.
+const pcRamp = d3.interpolateLab("#2a2925", "#c9c6be");
 
 interface Segment {
   key: string;
@@ -58,7 +63,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
     segments = explainedVariance.map((ratio, i) => {
       const start = cum;
       cum += ratio;
-      const fill = d3.interpolateBlues(n > 1 ? 0.4 + 0.5 * (i / (n - 1)) : 0.7);
+      const fill = pcRamp(n > 1 ? i / (n - 1) : 0.25);
       return {
         key: `pc${i}`,
         label: `PC${i + 1}`,
@@ -101,7 +106,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
         <svg width={width} height={HEIGHT} role="img" aria-label="PCA explained variance">
           <defs>
             <clipPath id="pca-variance-clip">
-              <rect x={PAD_X} y={BAR_Y} width={innerWidth} height={BAR_H} rx={6} />
+              <rect x={PAD_X} y={BAR_Y} width={innerWidth} height={BAR_H} />
             </clipPath>
           </defs>
 
@@ -131,10 +136,10 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
                     fill={s.textFill}
                     style={{ pointerEvents: "none" }}
                   >
-                    <tspan x={s.x + s.w / 2} dy="-0.2em" fontSize={11} fontWeight={600}>
+                    <tspan x={s.x + s.w / 2} dy="-0.2em" fontSize={12} fontWeight={600}>
                       {s.label}
                     </tspan>
-                    <tspan x={s.x + s.w / 2} dy="1.3em" fontSize={10}>
+                    <tspan x={s.x + s.w / 2} dy="1.3em" fontSize={11}>
                       {s.pct.toFixed(1)}%
                     </tspan>
                   </text>
@@ -144,7 +149,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
                     y={BAR_Y + BAR_H / 2}
                     dy="0.32em"
                     textAnchor="middle"
-                    fontSize={10}
+                    fontSize={11}
                     fontWeight={600}
                     fill={s.textFill}
                     style={{ pointerEvents: "none" }}
@@ -155,6 +160,18 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
               </g>
             ))}
           </g>
+
+          {/* Bar outline — bounds the 0–100% extent so an unexplained tail reads
+              as "missing variance" rather than as blank card. */}
+          <rect
+            x={PAD_X + 0.5}
+            y={BAR_Y + 0.5}
+            width={Math.max(0, innerWidth - 1)}
+            height={BAR_H - 1}
+            fill="none"
+            stroke={theme.borderStrong}
+            strokeWidth={1}
+          />
 
           {/* 0–100% axis tick row */}
           {ticks.map((t) => (
@@ -171,7 +188,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
                 x={tickX(t)}
                 y={BAR_BOTTOM + 19}
                 textAnchor="middle"
-                fontSize={10}
+                fontSize={11}
                 fill={MUTED}
               >
                 {t}%
@@ -183,7 +200,7 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
             x={PAD_X + innerWidth / 2}
             y={HEIGHT - 6}
             textAnchor="middle"
-            fontSize={11}
+            fontSize={12}
             fill={MUTED}
           >
             Share of total variance (%)
@@ -199,15 +216,14 @@ export function PcaVarianceBar({ explainedVariance }: PcaVarianceBarProps) {
             top: BAR_Y - 8,
             transform: "translate(-50%, -100%)",
             background: theme.surface,
-            border: `1px solid ${theme.borderStrong}`,
-            borderRadius: 6,
-            padding: "6px 8px",
+            border: `1px solid ${theme.textPrimary}`,
+            borderRadius: 0,
+            padding: "5px 8px",
             color: TEXT,
-            fontSize: 12,
+            fontSize: 13,
             lineHeight: 1.3,
             whiteSpace: "nowrap",
             pointerEvents: "none",
-            boxShadow: "0 8px 20px -6px rgba(16,24,40,0.28)",
             zIndex: 1,
           }}
         >

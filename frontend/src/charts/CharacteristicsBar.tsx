@@ -18,14 +18,24 @@ const GRID = theme.grid;
 const ERR = "rgba(27,31,40,0.45)";
 
 const SVG_HEIGHT = 320;
-const MARGIN = { top: 12, right: 16, bottom: 78, left: 48 };
+const MARGIN = { top: 12, right: 16, bottom: 92, left: 48 };
 const SCROLL_THRESHOLD = 60; // beyond this, scroll instead of cramming
 const SCROLL_BAND = 24; // fixed px per feature in scroll mode
-const MAX_LABEL = 14; // chars before truncating a tick label
+const TICK_FONT = 11;
+const LABEL_OFFSET = 12; // gap between the axis and the start of a tick label
 
 const fmt3 = format(".3~g"); // ~3 significant digits, trailing zeros trimmed
 const fmtNum = (v: number | null): string => (v == null ? "—" : fmt3(v));
-const truncate = (s: string) => (s.length > MAX_LABEL ? s.slice(0, MAX_LABEL - 1) + "…" : s);
+
+// A rotated label runs `sin(rot)` of its length downwards, so how many characters
+// fit is a function of the rotation and the bottom margin — derive it rather than
+// hard-coding a budget, or the vertical (-90°) case overflows the fixed SVG height.
+function maxLabelChars(rot: number): number {
+  const drop = MARGIN.bottom - LABEL_OFFSET - 4; // px of vertical room for the label
+  const usable = drop / Math.abs(Math.sin((rot * Math.PI) / 180));
+  return Math.max(4, Math.floor(usable / (TICK_FONT * 0.58))); // 0.58em ≈ mean advance
+}
+const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
 
 interface Hover {
   i: number;
@@ -46,13 +56,12 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
     width: "100%",
     background: BG,
     color: TEXT,
-    borderRadius: 6,
+    borderRadius: 0,
     padding: 8,
     boxSizing: "border-box" as const,
-    fontFamily: "system-ui, sans-serif",
   };
   const titleStyle = {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     color: TEXT,
     padding: "2px 4px 6px",
@@ -63,7 +72,7 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
     return (
       <div ref={ref} style={shell}>
         <div style={titleStyle}>{heading}</div>
-        <div style={{ color: MUTED, fontSize: 13, padding: "24px 8px" }}>
+        <div style={{ color: MUTED, fontSize: 14, padding: "24px 8px" }}>
           {nonFeatureOnly ? "No non-feature columns to display." : "No characteristics to display."}
         </div>
       </div>
@@ -106,6 +115,10 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
   const y = scaleLinear().domain([lo - pad, hi + pad]).range([innerH, 0]).nice();
 
   const bw = x.bandwidth();
+  // Tick labels go vertical once the bands are too narrow for a 40° slant.
+  const step = x.step();
+  const rot = step < 28 ? -90 : -40;
+  const labelChars = maxLabelChars(rot);
   const cap = Math.min(bw * 0.4, 6); // error-bar cap half-width
   const y0 = y(0);
   const yTicks = y.ticks(5);
@@ -125,7 +138,7 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
             display: "flex",
             gap: 14,
             padding: "0 4px 6px",
-            fontSize: 11,
+            fontSize: 12,
             color: MUTED,
           }}
         >
@@ -140,7 +153,7 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
             {yTicks.map((t) => (
               <g key={t} transform={`translate(0,${y(t)})`}>
                 {t !== 0 && <line x1={0} x2={innerW} stroke={GRID} />}
-                <text x={-8} dy="0.32em" textAnchor="end" fontSize={10} fill={MUTED}>
+                <text x={-8} dy="0.32em" textAnchor="end" fontSize={11} fill={MUTED}>
                   {fmt3(t)}
                 </text>
               </g>
@@ -162,7 +175,7 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
             <text
               transform={`translate(${-MARGIN.left + 12},${innerH / 2}) rotate(-90)`}
               textAnchor="middle"
-              fontSize={11}
+              fontSize={12}
               fill={MUTED}
             >
               z-score
@@ -212,20 +225,21 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
             })}
 
             {/* rotated x tick labels */}
-            {rows.map((r) => {
+            {rows.map((r, i) => {
+              if (step < 14 && i % 2 === 1) return null;
               const lx = x(r.feature)! + bw / 2;
-              const ly = innerH + 12;
+              const ly = innerH + LABEL_OFFSET;
               return (
                 <text
                   key={r.feature}
                   x={lx}
                   y={ly}
-                  transform={`rotate(-40,${lx},${ly})`}
+                  transform={`rotate(${rot},${lx},${ly})`}
                   textAnchor="end"
-                  fontSize={10}
+                  fontSize={TICK_FONT}
                   fill={MUTED}
                 >
-                  {truncate(r.feature)}
+                  {truncate(r.feature, labelChars)}
                   <title>{r.feature}</title>
                 </text>
               );
@@ -241,15 +255,14 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
             left: hover.x + 12,
             top: hover.y + 12,
             background: theme.surface,
-            border: `1px solid ${theme.borderStrong}`,
-            borderRadius: 4,
-            padding: "6px 8px",
-            fontSize: 12,
+            border: `1px solid ${theme.textPrimary}`,
+            borderRadius: 0,
+            padding: "5px 8px",
+            fontSize: 13,
             color: TEXT,
             pointerEvents: "none",
             whiteSpace: "nowrap",
             zIndex: 10,
-            boxShadow: "0 6px 18px -6px rgba(16,24,40,0.28)",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 2 }}>
@@ -276,7 +289,7 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
 function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-      <span style={{ width: 10, height: 10, borderRadius: 2, background: color, display: "inline-block" }} />
+      <span style={{ width: 8, height: 8, background: color, display: "inline-block" }} />
       {label}
     </span>
   );

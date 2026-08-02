@@ -3,67 +3,82 @@ import type { ScoreTilesProps } from "./props";
 import { qualityColor, theme } from "./theme";
 
 // F — DR-quality score tiles. Replaces src/ui/components/scores.py::render_node_scores.
-// Tiles for Trustworthiness / Continuity / Stress / CADI + an MRRE/context caption.
+// Square, hairline-separated tiles: the value stays ink, a thin bar underneath
+// carries the quality reading so the number itself never has to be colored.
+//
+// The bar is a QUALITY reading, not the raw value: longer and cooler is better on
+// every tile, so the row scans as one encoding. Trustworthiness and continuity are
+// higher-is-better and map straight through; stress and CADI are distortion
+// measures (lower is better) and are inverted before they reach a bar.
 
 const fmt = (value: number | null | undefined): string =>
   value == null ? "—" : value.toFixed(3);
 
 const cardStyle: CSSProperties = {
-  background: theme.surface,
-  border: `1px solid ${theme.border}`,
-  borderRadius: 10,
-  padding: 14,
   color: theme.textPrimary,
+  marginBottom: 12,
+};
+
+const headStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: 8,
+  marginBottom: 8,
 };
 
 const titleStyle: CSSProperties = {
-  fontSize: 13,
+  fontSize: 12.5,
   fontWeight: 600,
-  color: theme.textPrimary,
-  marginBottom: 10,
-};
-
-const gridStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-};
-
-const tileStyle: CSSProperties = {
-  flex: "1 1 120px",
-  minWidth: 120,
-  background: theme.surfaceInset,
-  border: `1px solid ${theme.border}`,
-  borderRadius: 8,
-  padding: "10px 12px",
-};
-
-const labelStyle: CSSProperties = {
-  fontSize: 11,
-  color: theme.textSecondary,
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-  marginBottom: 4,
-};
-
-const valueStyle: CSSProperties = {
-  fontSize: 22,
-  fontWeight: 600,
-  lineHeight: 1.1,
-  fontVariantNumeric: "tabular-nums",
 };
 
 const captionStyle: CSSProperties = {
-  fontSize: 11,
-  color: theme.muted,
-  marginTop: 10,
+  marginLeft: "auto",
+  fontSize: 11.5,
+  color: theme.faint,
 };
 
-function Tile({ label, value, color }: { label: string; value: number | null; color?: string }) {
+const gridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+  gap: 1,
+  background: theme.border,
+  border: `1px solid ${theme.border}`,
+};
+
+const tileStyle: CSSProperties = {
+  background: theme.surface,
+  padding: "7px 9px 8px",
+  minWidth: 0,
+};
+
+const barTitle = "Quality — longer is better";
+
+const labelStyle: CSSProperties = {
+  fontSize: 10.5,
+  letterSpacing: 0.9,
+  textTransform: "uppercase",
+  color: theme.muted,
+};
+
+const valueStyle: CSSProperties = {
+  fontSize: 18,
+  fontWeight: 500,
+  lineHeight: 1.25,
+  fontVariantNumeric: "tabular-nums",
+};
+
+// `quality` is 0..1 with 1 = best, whichever direction the raw metric runs.
+function Tile({ label, value, quality }: { label: string; value: number | null; quality: number | null }) {
+  // A scored-but-terrible metric keeps a visible stub: an empty track would read
+  // as "no score", which is what the null case (an em-dash value) already means.
+  const t = quality == null ? 0 : Math.max(0.03, Math.min(1, quality));
   return (
     <div style={tileStyle}>
       <div style={labelStyle}>{label}</div>
-      <div style={{ ...valueStyle, color: color ?? theme.textPrimary }}>{fmt(value)}</div>
+      <div style={valueStyle}>{fmt(value)}</div>
+      <div style={{ height: 3, background: theme.grid, marginTop: 3 }} title={barTitle}>
+        <div style={{ height: 3, width: `${t * 100}%`, background: qualityColor(quality) ?? "transparent" }} />
+      </div>
     </div>
   );
 }
@@ -77,16 +92,24 @@ export function ScoreTiles({ scores, title }: ScoreTilesProps) {
   captionParts.push(`n=${scores.n_points}`);
   if (scores.k != null) captionParts.push(`k=${scores.k}`);
 
+  // Stress is lower-is-better and unbounded in practice; 0.4 reads as "poor".
+  // CADI (ZADU's Class Angular Distortion Index) is a distortion in [0, 1] —
+  // also lower-is-better. Both become "1 = best" before they reach a bar.
+  const stressQuality = scores.stress == null ? null : 1 - Math.min(1, scores.stress / 0.4);
+  const cadiQuality = scores.cadi == null ? null : 1 - Math.max(0, Math.min(1, scores.cadi));
+
   return (
     <div style={cardStyle}>
-      <div style={titleStyle}>{title ?? "DR quality"}</div>
-      <div style={gridStyle}>
-        <Tile label="Trustworthiness" value={scores.trustworthiness} color={qualityColor(scores.trustworthiness)} />
-        <Tile label="Continuity" value={scores.continuity} color={qualityColor(scores.continuity)} />
-        <Tile label="Stress" value={scores.stress} color={qualityColor(scores.stress, true)} />
-        <Tile label="CADI" value={scores.cadi} />
+      <div style={headStyle}>
+        <span style={titleStyle}>{title ?? "DR quality"}</span>
+        <span style={captionStyle}>{captionParts.join(" · ")}</span>
       </div>
-      <div style={captionStyle}>{captionParts.join(" · ")}</div>
+      <div style={gridStyle}>
+        <Tile label="Trustworth." value={scores.trustworthiness} quality={scores.trustworthiness} />
+        <Tile label="Continuity" value={scores.continuity} quality={scores.continuity} />
+        <Tile label="Stress" value={scores.stress} quality={stressQuality} />
+        <Tile label="CADI" value={scores.cadi} quality={cadiQuality} />
+      </div>
     </div>
   );
 }

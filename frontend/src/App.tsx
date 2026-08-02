@@ -23,6 +23,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The config rail collapses to a 38px strip so the analysis canvas can widen.
+  const [configOpen, setConfigOpen] = useState(true);
+
   // Hosting mode only: reuse stored runs, and say so when we do.
   const [mode, setMode] = useState<ModeInfo | null>(null);
   const [useCache, setUseCache] = useState(true);
@@ -89,93 +92,165 @@ export default function App() {
     }
   }
 
+  const runMeta = [datasetKey || "no dataset", `${featureCols.length} features`, config.method]
+    .filter(Boolean)
+    .join(", ");
+  const cfgSummary = [
+    config.method,
+    `${config.hierarchical_layers} layers`,
+    `mcs ${config.hclust_min_cluster_size}`,
+  ].join(", ");
+
   return (
     <div className="app">
-      <header>
-        <h1>HiLDE — Hierarchical Local Decomposition and Explanation</h1>
+      <header className="topbar">
+        <span className="topbar__brand">HiLDE</span>
+        <span className="topbar__sub">
+          <b>Hi</b>erarchical <b>L</b>ocal <b>D</b>ecomposition &amp; <b>E</b>xplanation
+        </span>
+        <span className="topbar__meta">{runMeta}</span>
       </header>
 
-      <section className="panel">
-        <h2>General configuration</h2>
-        <div className="general-config">
-          <label className="field">
-            <span>Dataset</span>
-            {/* Locked during a build: swapping datasets mid-run would apply the
-                in-flight tree under the new dataset's key. */}
-            <select value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)} disabled={loading}>
-              {datasets.map((d) => (
-                <option key={d.key} value={d.key}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {columns && (
-            <div className="feature-picker">
-              <div className="feature-picker__head">
-                <span>
-                  Feature columns ({featureCols.length}/{columns.columns.length - 1})
-                </span>
-                <button onClick={() => setFeatureCols(columns.default_feature_cols)}>Reset</button>
-                <button onClick={() => setFeatureCols([])}>None</button>
+      <div className={configOpen ? "shell" : "shell shell--collapsed"}>
+        <aside className="rail">
+          {configOpen ? (
+            <>
+              <div className="rail__head">
+                <span className="kicker">Configuration</span>
+                <span className="rail__summary">{cfgSummary}</span>
+                <button onClick={() => setConfigOpen(false)}>Hide</button>
               </div>
-              <div className="feature-picker__list">
-                {columns.columns
-                  .filter((c) => c !== "row_id")
-                  .map((c) => (
-                    <label key={c}>
+
+              <div className="cfg">
+                <section className="cfg__block">
+                  <h3>Dataset</h3>
+                  <label className="field">
+                    <span>Source</span>
+                    {/* Locked during a build: swapping datasets mid-run would apply the
+                        in-flight tree under the new dataset's key. */}
+                    <select value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)} disabled={loading}>
+                      {datasets.map((d) => (
+                        <option key={d.key} value={d.key}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {columns && (
+                    <div className="cfg__meta">
+                      <span>{columns.columns.length} columns</span>
+                      <span>{featureCols.length} selected</span>
+                    </div>
+                  )}
+                </section>
+
+                {columns && (
+                  <section className="cfg__block">
+                    <div className="cfg__head">
+                      <h3>Feature columns</h3>
+                      <span className="cfg__count">
+                        {featureCols.length}/{columns.columns.length - 1}
+                      </span>
+                      <div className="cfg__actions">
+                        <button onClick={() => setFeatureCols(columns.default_feature_cols)}>Reset</button>
+                        <button onClick={() => setFeatureCols([])}>None</button>
+                      </div>
+                    </div>
+                    <div className="feature-picker__list">
+                      {columns.columns
+                        .filter((c) => c !== "row_id")
+                        .map((c) => (
+                          <label key={c} className={featureCols.includes(c) ? undefined : "is-off"}>
+                            <input
+                              type="checkbox"
+                              checked={featureCols.includes(c)}
+                              onChange={() => toggleFeature(c)}
+                            />
+                            {c}
+                          </label>
+                        ))}
+                    </div>
+                    <label className="field--check" style={{ marginTop: "0.6rem", marginBottom: 0 }}>
                       <input
                         type="checkbox"
-                        checked={featureCols.includes(c)}
-                        onChange={() => toggleFeature(c)}
+                        checked={charNonFeatureOnly}
+                        onChange={(e) => setCharNonFeatureOnly(e.target.checked)}
                       />
-                      {c}
+                      <span>Characteristics: non-feature columns only</span>
                     </label>
-                  ))}
+                  </section>
+                )}
+
+                <ConfigPanel config={config} maxDims={maxDims} onChange={patchConfig} />
               </div>
-              <label className="field--check" style={{ marginTop: "0.5rem" }}>
-                <input
-                  type="checkbox"
-                  checked={charNonFeatureOnly}
-                  onChange={(e) => setCharNonFeatureOnly(e.target.checked)}
-                />
-                <span>Only show non-feature columns in characteristics</span>
-              </label>
+
+              <div className="cfg__build">
+                <button className="primary" onClick={build} disabled={loading || featureCols.length === 0}>
+                  {loading ? "Building…" : "Build & Apply"}
+                </button>
+                {mode?.hosting && (
+                  <label className="field--check" style={{ marginBottom: 0 }} title={mode.cache_dir ?? undefined}>
+                    <input
+                      type="checkbox"
+                      checked={useCache}
+                      onChange={(e) => setUseCache(e.target.checked)}
+                    />
+                    <span>Use cached results</span>
+                  </label>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="rail__strip">
+              <button onClick={() => setConfigOpen(true)} title="Show configuration">
+                ›
+              </button>
+              <span className="rail__vert">Configuration</span>
+              <span className="rail__vert rail__vert--faint">{cfgSummary}</span>
             </div>
           )}
-        </div>
-      </section>
+        </aside>
 
-      <section className="panel">
-        <h2>Analysis configuration</h2>
-        <ConfigPanel config={config} maxDims={maxDims} onChange={patchConfig} />
-        <div className="build-row">
-          <button className="primary" onClick={build} disabled={loading || featureCols.length === 0}>
-            {loading ? "Building…" : "Build & Apply"}
-          </button>
-          {mode?.hosting && (
-            <label className="field--check" title={mode.cache_dir ?? undefined}>
-              <input
-                type="checkbox"
-                checked={useCache}
-                onChange={(e) => setUseCache(e.target.checked)}
-              />
-              <span>Use cached results</span>
-            </label>
+        <main className="canvas">
+          {/* Failures report on the canvas, not in the rail: the rail collapses to a
+              38px strip and would otherwise swallow the only sign anything went wrong. */}
+          {error && (
+            <div className="banner banner--error" role="alert">
+              <strong>Error</strong>
+              <span>{error}</span>
+              {!configOpen && <button onClick={() => setConfigOpen(true)}>Show configuration</button>}
+            </div>
           )}
-          {error && <span className="error">{error}</span>}
-        </div>
-        {mode?.hosting && analysis?.cached && (
-          <div className="banner">
-            <strong>Cached results.</strong> This dataset and configuration were computed before,
-            so the stored run was reused — nothing was recomputed. Uncheck{" "}
-            <em>Use cached results</em> and rebuild to force a fresh run.
-          </div>
-        )}
-      </section>
 
-      {analysis && <Navigation analysis={analysis} treePath={treePath} setTreePath={setTreePath} dataset={datasetKey} featureCols={featureCols} config={config} charNonFeatureOnly={charNonFeatureOnly} />}
+          {mode?.hosting && analysis?.cached && (
+            <div className="banner">
+              <strong>Cached</strong>
+              <span>
+                This dataset and configuration were computed before, so the stored run was reused —
+                nothing was recomputed. Uncheck <em>Use cached results</em> and rebuild to force a fresh run.
+              </span>
+            </div>
+          )}
+
+          {loading && <div className="empty">Reducing, clustering and scoring …</div>}
+
+          {analysis && (
+            <Navigation
+              analysis={analysis}
+              treePath={treePath}
+              setTreePath={setTreePath}
+              dataset={datasetKey}
+              featureCols={featureCols}
+              config={config}
+              charNonFeatureOnly={charNonFeatureOnly}
+            />
+          )}
+
+          {!analysis && !loading && (
+            <div className="empty">Pick features and press Build &amp; Apply to compute a run.</div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
@@ -216,20 +291,38 @@ function Navigation(props: {
     const child = selectedChild != null ? node.children![selectedChild] : null;
     layerViews.push(
       <section className="panel layer" key={`layer-${L}`}>
-        <h2>{L === 1 ? "Cluster projection (root)" : `Sub-projection — layer ${L}`}</h2>
+        <div className="panel__head">
+          <span className="kicker">Layer {L}</span>
+          <span className="panel__title">
+            {L === 1 ? "Cluster projection — root" : `Sub-projection — layer ${L}`}
+          </span>
+          <span className="panel__meta">
+            {node.row_indices.length} points, {node.children?.length ?? 0} clusters
+          </span>
+        </div>
         <div className="layer__cols">
-          <ClusterScatter
-            node={node}
-            selectedChild={selectedChild}
-            onSelectCluster={(i) => setTreePath([...parentPath, i])}
-            highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
-          />
-          {child && (
-            <div className="layer__side">
-              <ScoreTiles scores={child.scores} title={`C${selectedChild} — DR quality`} />
-              <CharacteristicsBar data={child.rel_characteristics} title={`C${selectedChild} characteristics`} nonFeatureOnly={charNonFeatureOnly} />
-            </div>
-          )}
+          <div>
+            <ClusterScatter
+              node={node}
+              selectedChild={selectedChild}
+              onSelectCluster={(i) => setTreePath([...parentPath, i])}
+              highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
+            />
+          </div>
+          <div className="layer__side">
+            {child ? (
+              <>
+                <ScoreTiles scores={child.scores} title={`C${selectedChild} — DR quality`} />
+                <CharacteristicsBar
+                  data={child.rel_characteristics}
+                  title={`C${selectedChild} characteristics`}
+                  nonFeatureOnly={charNonFeatureOnly}
+                />
+              </>
+            ) : (
+              <p className="hint">Select a cluster to see its DR quality and characteristics.</p>
+            )}
+          </div>
         </div>
         <OutlierPanel
           node={node}
@@ -253,7 +346,7 @@ function Navigation(props: {
   return (
     <>
       {layerViews}
-      {waiting && <p className="hint panel">Click a cluster in the projection above to drill in.</p>}
+      {waiting && <div className="empty">Click a cluster in the projection above to drill in.</div>}
       {explorationNode && (
         <ExplorationPanel
           dataset={dataset}

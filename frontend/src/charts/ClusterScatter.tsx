@@ -186,10 +186,10 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
     background: "transparent",
     color: TEXT,
     border: `1px solid ${theme.borderStrong}`,
-    borderRadius: 6,
+    borderRadius: 0,
     padding: "2px 9px",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 1.2,
   };
   const zoomed = transform.k !== 1 || transform.x !== 0 || transform.y !== 0;
@@ -202,7 +202,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
         boxSizing: "border-box",
         background: BG,
         color: TEXT,
-        borderRadius: 8,
+        borderRadius: 0,
         padding: 12,
       }}
     >
@@ -244,27 +244,27 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
-                  background: sel ? theme.accentSoft : "transparent",
+                  background: sel ? ACCENT : theme.surface,
                   border: `1px solid ${sel ? ACCENT : theme.borderStrong}`,
-                  borderRadius: 999,
-                  padding: "2px 10px 2px 7px",
-                  color: TEXT,
-                  fontSize: 12,
+                  borderRadius: 0,
+                  padding: "1px 9px 1px 6px",
+                  color: sel ? theme.accentInk : TEXT,
+                  fontSize: 13,
                   lineHeight: 1.6,
                   cursor: "pointer",
                 }}
               >
                 <span
                   style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
+                    width: 8,
+                    height: 8,
+                    borderRadius: 0,
                     background: clusterColor(ci),
                     flex: "0 0 auto",
                   }}
                 />
                 <span style={{ fontWeight: sel ? 600 : 500 }}>C{ci}</span>
-                <span style={{ color: theme.textSecondary }}>{c.n_points}</span>
+                <span style={{ color: sel ? theme.borderStrong : theme.muted }}>{c.n_points}</span>
               </button>
             );
           })}
@@ -275,7 +275,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
                 alignItems: "center",
                 gap: 6,
                 padding: "2px 10px 2px 7px",
-                fontSize: 12,
+                fontSize: 13,
                 lineHeight: 1.6,
                 color: theme.textSecondary,
               }}
@@ -290,13 +290,13 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
       )}
 
       {children.length === 0 ? (
-        <div style={{ color: MUTED, fontSize: 13, padding: "24px 0" }}>No child clusters.</div>
+        <div style={{ color: MUTED, fontSize: 14, padding: "24px 0" }}>No child clusters.</div>
       ) : width > 0 ? (
         <svg
           ref={svgRef}
           width={width}
           height={PLOT_HEIGHT}
-          style={{ display: "block", cursor: "grab", touchAction: "none" }}
+          style={{ display: "block", cursor: "grab", touchAction: "none", border: `1px solid ${theme.border}` }}
         >
           <g transform={transform.toString()}>{pointsLayer}</g>
 
@@ -333,9 +333,9 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
                 y={transform.applyY(c.by).toFixed(1)}
                 dy="0.35em"
                 textAnchor="middle"
-                fontSize={12}
+                fontSize={13}
                 fontWeight={700}
-                fill={sel ? ACCENT : TEXT}
+                fill={sel ? theme.textPrimary : theme.textSecondary}
                 stroke={BG}
                 strokeWidth={3.5}
                 strokeLinejoin="round"

@@ -38,7 +38,7 @@ function colorFor(
   if (interactiveGroup) {
     return (i) => (interactiveGroup[i] === "Matches filters" ? ACCENT : OTHER);
   }
-  return () => ACCENT;
+  return () => theme.textSecondary;
 }
 
 export function ProjectionScatter({
@@ -191,10 +191,10 @@ export function ProjectionScatter({
     background: mode === m ? ACCENT : "transparent",
     color: mode === m ? theme.accentInk : TEXT,
     border: `1px solid ${mode === m ? ACCENT : theme.borderStrong}`,
-    borderRadius: 6,
-    padding: "4px 12px",
+    borderRadius: 0,
+    padding: "3px 12px",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: 13,
   });
 
   return (
@@ -208,7 +208,7 @@ export function ProjectionScatter({
         </button>
       </div>
 
-      <svg width={size.width} height={HEIGHT} style={{ background: BG, borderRadius: 8, display: "block" }}>
+      <svg width={size.width} height={HEIGHT} style={{ background: BG, border: `1px solid ${theme.border}`, display: "block" }}>
         <g ref={gRef} transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {geom && (
             <>
@@ -218,7 +218,7 @@ export function ProjectionScatter({
               {geom.xScale.ticks(6).map((t) => (
                 <g key={`x${t}`} transform={`translate(${geom.xScale(t)},${H})`}>
                   <line y2={5} stroke={MUTED} />
-                  <text y={18} textAnchor="middle" fill={MUTED} fontSize={10}>
+                  <text y={18} textAnchor="middle" fill={MUTED} fontSize={11}>
                     {geom.xScale.tickFormat(6)(t)}
                   </text>
                 </g>
@@ -226,37 +226,40 @@ export function ProjectionScatter({
               {geom.yScale.ticks(6).map((t) => (
                 <g key={`y${t}`} transform={`translate(0,${geom.yScale(t)})`}>
                   <line x2={-5} stroke={MUTED} />
-                  <text x={-8} dy="0.32em" textAnchor="end" fill={MUTED} fontSize={10}>
+                  <text x={-8} dy="0.32em" textAnchor="end" fill={MUTED} fontSize={11}>
                     {geom.yScale.tickFormat(6)(t)}
                   </text>
                 </g>
               ))}
-              <text x={W / 2} y={H + 34} textAnchor="middle" fill={TEXT} fontSize={12}>
+              <text x={W / 2} y={H + 34} textAnchor="middle" fill={TEXT} fontSize={13}>
                 {xLabel}
               </text>
               <text
                 transform={`translate(${-36},${H / 2}) rotate(-90)`}
                 textAnchor="middle"
                 fill={TEXT}
-                fontSize={12}
+                fontSize={13}
               >
                 {yLabel}
               </text>
 
-              {/* points */}
+              {/* points — selected ones carry a surface halo under the ink ring so
+                  the selection reads whatever the fill is, including near-black */}
               {geom.plotted.map((p) => {
                 const sel = selectedSet.has(p.li);
                 return (
-                  <circle
-                    key={p.li}
-                    cx={p.px}
-                    cy={p.py}
-                    r={sel ? 6 : 4}
-                    fill={p.color}
-                    fillOpacity={0.85}
-                    stroke={sel ? TEXT : "none"}
-                    strokeWidth={sel ? 1.5 : 0}
-                  />
+                  <g key={p.li}>
+                    {sel && <circle cx={p.px} cy={p.py} r={6} fill="none" stroke={BG} strokeWidth={4} />}
+                    <circle
+                      cx={p.px}
+                      cy={p.py}
+                      r={sel ? 6 : 4}
+                      fill={p.color}
+                      fillOpacity={0.85}
+                      stroke={sel ? TEXT : "none"}
+                      strokeWidth={sel ? 1.5 : 0}
+                    />
+                  </g>
                 );
               })}
 
@@ -276,9 +279,9 @@ export function ProjectionScatter({
                   />
                   <path
                     ref={lassoPathRef}
-                    fill="rgba(79,70,229,0.12)"
+                    fill="rgba(22,22,20,0.07)"
                     stroke={ACCENT}
-                    strokeWidth={1.5}
+                    strokeWidth={1}
                     style={{ pointerEvents: "none" }}
                   />
                 </>

@@ -17,16 +17,16 @@ const TEXT = theme.textPrimary;
 const MUTED = theme.muted;
 const INDIGO = theme.indigo;
 const GREY = theme.neutral;
-const TRACK = "rgba(24, 32, 48, 0.06)";
+const TRACK = theme.track;
 const GRID = theme.grid;
 
 // Layout constants.
-const LEFT = 140; // label gutter
+const LEFT = 129; // label gutter — scales with the tick font, or long names clip
 const RIGHT = 24;
 const TOP = 8;
 const BOTTOM = 26; // x-axis (0% / 50% / 100%)
-const PITCH = 34; // vertical distance between rows
-const BAND_H = 18;
+const PITCH = 22; // vertical distance between rows
+const BAND_H = 13;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const fmt = (v: number) => v.toFixed(2);
@@ -69,7 +69,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         background: BG,
         color: TEXT,
         fontFamily: "inherit",
-        fontSize: 12,
+        fontSize: 13,
       }}
     >
       {/* Legend */}
@@ -83,7 +83,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         }}
       >
         <LegendItem swatch={<Swatch fill={TRACK} border />} label="Global range" />
-        <LegendItem swatch={<Swatch fill={INDIGO} opacity={0.3} />} label="Full range (RCM 1.0)" />
+        <LegendItem swatch={<Swatch fill={INDIGO} opacity={0.22} />} label="Full range (RCM 1.0)" />
         <LegendItem swatch={<Swatch fill={INDIGO} opacity={0.95} />} label="Core range (RCM 0.9)" />
         <span style={{ marginLeft: "auto", color: MUTED }}>
           Position within each feature&apos;s global range
@@ -122,16 +122,15 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
             return (
               <g key={row.feature}>
                 {/* Faint global track */}
-                <rect x={0} y={bandTop} width={trackWidth} height={BAND_H} rx={3} fill={TRACK} />
+                <rect x={0} y={bandTop} width={trackWidth} height={BAND_H} fill={TRACK} />
                 {/* Full range (RCM 1.0) */}
                 <rect
                   x={fullLo}
                   y={bandTop}
                   width={Math.max(fullHi - fullLo, 0)}
                   height={BAND_H}
-                  rx={3}
                   fill={color}
-                  opacity={row.in_predicate ? 0.3 : 0.2}
+                  opacity={row.in_predicate ? 0.22 : 0.14}
                 />
                 {/* Core range (RCM 0.9) — omitted when the feature has no trimmed match */}
                 {core && (
@@ -140,9 +139,8 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
                     y={bandTop}
                     width={Math.max(coreHi - coreLo, 0)}
                     height={BAND_H}
-                    rx={3}
                     fill={color}
-                    opacity={row.in_predicate ? 0.95 : 0.6}
+                    opacity={row.in_predicate ? 1 : 0.45}
                   />
                 )}
                 {/* Transparent hover target across the full row */}
@@ -168,7 +166,8 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
             y={TOP + i * PITCH + PITCH / 2}
             textAnchor="end"
             dominantBaseline="central"
-            fill={TEXT}
+            fontSize={11.5}
+            fill={row.in_predicate ? TEXT : MUTED}
             fontWeight={row.in_predicate ? 600 : 400}
           >
             {row.feature}
@@ -200,13 +199,12 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
             top: tip.y + 14,
             pointerEvents: "none",
             background: theme.surface,
-            border: `1px solid ${theme.borderStrong}`,
-            borderRadius: 6,
-            padding: "6px 8px",
+            border: `1px solid ${theme.textPrimary}`,
+            borderRadius: 0,
+            padding: "5px 8px",
             color: TEXT,
-            fontSize: 12,
+            fontSize: 13,
             lineHeight: 1.4,
-            boxShadow: "0 8px 20px -6px rgba(16,24,40,0.28)",
             whiteSpace: "nowrap",
             zIndex: 10,
           }}
@@ -244,10 +242,10 @@ function Swatch({ fill, opacity = 1, border = false }: { fill: string; opacity?:
         display: "inline-block",
         width: 16,
         height: 12,
-        borderRadius: 2,
+        borderRadius: 0,
         background: fill,
         opacity,
-        border: border ? "1px solid rgba(154,162,175,0.35)" : "none",
+        border: border ? `1px solid ${theme.border}` : "none",
       }}
     />
   );
