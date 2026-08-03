@@ -7,6 +7,7 @@ import pandas as pd
 from zadu.zadu import ZADU
 
 from src.analysis.analysis_routine import AnalysisObject, HierarchyObject, NodeScores, compute_analysis_tree
+from src.evaluation import metrics
 from src.types import Config
 from src.util import console as clog
 
@@ -76,28 +77,25 @@ def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
 
     n = X.shape[0]
 
-    # Build a single spec list so stress + tnc + mrre share one ZADU instance:
-    # the orig/emb distance matrix and knn-ranking are then computed once, not ~2x.
-    specs = [{"id": "stress"}]
+    # stress + tnc + mrre come from `metrics`, not ZADU: ZADU holds three n x n
+    # arrays per space, which a full-size node cannot fit. Same values, computed
+    # in row blocks. CADI below stays on ZADU — it samples triplets, so it is O(n).
     k = None
     if n >= MIN_PTS_FOR_NEIGHBORS:
         k = min(EVAL_K, (n - 1) // 2)
         if k >= 1:
             scores["k"] = k
-            specs.append({"id": "tnc", "params": {"k": k}})
-            specs.append({"id": "mrre", "params": {"k": k}})
         else:
             k = None
 
     try:
-        results = ZADU(specs, orig=X).measure(emb)
-        scores["stress"] = float(results[0]["stress"])
+        results = metrics.node_scores(X, emb, k)
+        scores["stress"] = results["stress"]
         if k is not None:
-            tnc, mrre = results[1], results[2]
-            scores["trustworthiness"] = float(tnc["trustworthiness"])
-            scores["continuity"] = float(tnc["continuity"])
-            scores["mrre_false"] = float(mrre["mrre_false"])
-            scores["mrre_missing"] = float(mrre["mrre_missing"])
+            scores["trustworthiness"] = results["trustworthiness"]
+            scores["continuity"] = results["continuity"]
+            scores["mrre_false"] = results["mrre_false"]
+            scores["mrre_missing"] = results["mrre_missing"]
     except Exception:
         pass
 
