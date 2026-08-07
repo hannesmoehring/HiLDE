@@ -8,7 +8,7 @@ export const DEFAULT_CONFIG: AnalysisConfig = {
   hclust_min_samples: 5,
   hclust_min_cluster_size: 25,
   normalize: true,
-  method: "UMAP",
+  method: "PCA",
   pca_components: 4,
   tsne_perplexity: 30,
   tsne_learning_rate: 200,

@@ -106,6 +106,24 @@ export interface PredicateResponse {
 
 export type PredicateScope = "local" | "global";
 
+// ── Target columns (the `target_*` labels, kept out of the feature space) ────
+// Reported for a selection alongside the predicate, never as part of it.
+export interface TargetStat {
+  feature: string;
+  is_boolean: boolean; // one-hot label column — its mean is a class share, not a magnitude
+  sel_min: number | null;
+  sel_max: number | null;
+  sel_mean: number | null;
+  global_min: number | null;
+  global_max: number | null;
+  global_mean: number | null;
+}
+
+export interface TargetsResponse {
+  n_selected: number;
+  targets: TargetStat[];
+}
+
 export interface RowsResponse {
   columns: string[];
   rows: Record<string, unknown>[];

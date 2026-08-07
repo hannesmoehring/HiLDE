@@ -2,27 +2,28 @@
 // plus an interactive feature-range filter mode.
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
 import { useEffect, useMemo, useState } from "react";
-import { fetchRows, runPredicate } from "../api";
-import { CharacteristicsBar } from "../charts/CharacteristicsBar";
+import { fetchRows, fetchTargets, runPredicate } from "../api";
 import { PcaVarianceBar } from "../charts/PcaVarianceBar";
 import { PredicateBands } from "../charts/PredicateBands";
 import { ProjectionScatter } from "../charts/ProjectionScatter";
 import { ScoreTiles } from "../charts/ScoreTiles";
+import { TargetBands } from "../charts/TargetBands";
 import type {
   AnalysisConfig,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
+  TargetsResponse,
   TreeNode,
 } from "../types";
 
 interface Props {
   dataset: string;
   featureCols: string[];
+  targetCols: string[]; // `target_*` label columns — reported, never predicated on
   config: AnalysisConfig;
   node: TreeNode;
   pathLabel: string;
-  nonFeatureOnly: boolean;
 }
 
 // Per-feature standardized (z-score) matrix for the node's rows, computed in the
@@ -50,6 +51,13 @@ function standardize(cols: string[], rows: Record<string, unknown>[]): ZData {
   return { cols, Z, bounds };
 }
 
+// Target columns sit at the right of the selected-points table, fenced off from
+// the feature columns so nobody reads a label as something the predicate used.
+function cellClass(col: string, targets: Set<string>, first: string | undefined): string | undefined {
+  if (!targets.has(col)) return undefined;
+  return col === first ? "is-target is-target-first" : "is-target";
+}
+
 function toCsv(rows: RowsResponse): string {
   const header = rows.columns.join(",");
   const body = rows.rows
@@ -61,14 +69,15 @@ function toCsv(rows: RowsResponse): string {
 export function ExplorationPanel({
   dataset,
   featureCols,
+  targetCols,
   config,
   node,
   pathLabel,
-  nonFeatureOnly,
 }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
+  const [targets, setTargets] = useState<TargetsResponse | null>(null);
   const [rows, setRows] = useState<RowsResponse | null>(null);
 
   // Interactive feature-range filter mode.
@@ -81,6 +90,7 @@ export function ExplorationPanel({
   useEffect(() => {
     setSelected([]);
     setPredicate(null);
+    setTargets(null);
     setRows(null);
     setZData(null);
     setFilterFeatures([]);
@@ -128,10 +138,17 @@ export function ExplorationPanel({
     }
   }, [interactive, interactiveGroup]);
 
-  // Selection -> predicate (skipped in interactive mode) + selected-rows table.
+  // The table shows the features the predicate speaks about, then the labels it
+  // deliberately ignores — same order the header/CSV are marked up in.
+  const tableCols = useMemo(() => [...featureCols, ...targetCols], [featureCols, targetCols]);
+  const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
+  const firstTarget = targetCols[0];
+
+  // Selection -> predicate (skipped in interactive mode) + target values + rows table.
   useEffect(() => {
     if (selected.length === 0) {
       setPredicate(null);
+      setTargets(null);
       setRows(null);
       return;
     }
@@ -150,17 +167,27 @@ export function ExplorationPanel({
     } else {
       setPredicate(null);
     }
+    if (targetCols.length > 0) {
+      fetchTargets({
+        dataset,
+        target_cols: targetCols,
+        row_indices: node.row_indices,
+        selected_local_indices: selected,
+      })
+        .then((t) => !cancelled && setTargets(t))
+        .catch(() => !cancelled && setTargets(null));
+    }
     fetchRows(
       dataset,
       selected.map((i) => node.row_indices[i]),
-      featureCols,
+      tableCols,
     )
       .then((r) => !cancelled && setRows(r))
       .catch(() => !cancelled && setRows(null));
     return () => {
       cancelled = true;
     };
-  }, [selected, scope, interactive, node.id, dataset, featureCols, config]);
+  }, [selected, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
@@ -254,11 +281,12 @@ export function ExplorationPanel({
               )}
             </>
           )}
-          <CharacteristicsBar
-            data={node.rel_characteristics}
-            title="Cluster characteristics"
-            nonFeatureOnly={nonFeatureOnly}
-          />
+          {targets && targets.targets.length > 0 && selected.length > 0 && (
+            <div className="target-values">
+              <h4>Target values — selection</h4>
+              <TargetBands targets={targets.targets} nSelected={targets.n_selected} />
+            </div>
+          )}
         </div>
 
         <div className="exploration__plot">
@@ -283,7 +311,9 @@ export function ExplorationPanel({
                 <thead>
                   <tr>
                     {rows.columns.map((c) => (
-                      <th key={c}>{c}</th>
+                      <th key={c} className={cellClass(c, targetSet, firstTarget)}>
+                        {c}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -291,7 +321,9 @@ export function ExplorationPanel({
                   {rows.rows.slice(0, 50).map((r, i) => (
                     <tr key={i}>
                       {rows.columns.map((c) => (
-                        <td key={c}>{String(r[c])}</td>
+                        <td key={c} className={cellClass(c, targetSet, firstTarget)}>
+                          {String(r[c])}
+                        </td>
                       ))}
                     </tr>
                   ))}

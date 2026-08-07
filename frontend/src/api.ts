@@ -9,6 +9,7 @@ import type {
   PredicateResponse,
   PredicateScope,
   RowsResponse,
+  TargetsResponse,
 } from "./types";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -78,6 +79,15 @@ export function runPredicate(args: {
   scope: PredicateScope;
 }): Promise<PredicateResponse> {
   return post("/api/predicate", args);
+}
+
+export function fetchTargets(args: {
+  dataset: string;
+  target_cols: string[];
+  row_indices: number[];
+  selected_local_indices: number[];
+}): Promise<TargetsResponse> {
+  return post("/api/targets", args);
 }
 
 export function fetchRows(

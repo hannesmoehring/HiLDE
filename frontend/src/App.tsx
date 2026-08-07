@@ -68,6 +68,14 @@ export default function App() {
 
   const maxDims = useMemo(() => Math.max(2, featureCols.length), [featureCols]);
 
+  // Label columns held out of the feature space (see backend default_feature_cols).
+  // A `target_*` column the user checked in as a feature is not one: it is in the
+  // predicate now, and reporting it twice would say otherwise.
+  const targetCols = useMemo(
+    () => (columns?.columns ?? []).filter((c) => c.startsWith("target_") && !featureCols.includes(c)),
+    [columns, featureCols],
+  );
+
   function patchConfig(patch: Partial<AnalysisConfig>) {
     setConfig((c) => ({ ...c, ...patch }));
   }
@@ -241,6 +249,7 @@ export default function App() {
               setTreePath={setTreePath}
               dataset={datasetKey}
               featureCols={featureCols}
+              targetCols={targetCols}
               config={config}
               charNonFeatureOnly={charNonFeatureOnly}
             />
@@ -261,10 +270,11 @@ function Navigation(props: {
   setTreePath: (p: number[]) => void;
   dataset: string;
   featureCols: string[];
+  targetCols: string[];
   config: AnalysisConfig;
   charNonFeatureOnly: boolean;
 }) {
-  const { analysis, treePath, setTreePath, dataset, featureCols, config, charNonFeatureOnly } = props;
+  const { analysis, treePath, setTreePath, dataset, featureCols, targetCols, config, charNonFeatureOnly } = props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
 
@@ -351,10 +361,10 @@ function Navigation(props: {
         <ExplorationPanel
           dataset={dataset}
           featureCols={featureCols}
+          targetCols={targetCols}
           config={config}
           node={explorationNode}
           pathLabel={pathLabel}
-          nonFeatureOnly={charNonFeatureOnly}
         />
       )}
     </>

@@ -24,6 +24,12 @@ export const theme = {
   accent: "#161614",
   accentInk: "#ffffff",
 
+  // Lasso/box selection in the exploration scatter. The one exception to
+  // "chrome carries no hue": that plot is monochrome ink, so a bigger ink dot
+  // does not read as picked among its neighbours — only a hue shift does.
+  // 5.2:1 on white, and the only warm mark in the plot.
+  selection: "#c2410c",
+
   // Diverging pair for z-score characteristics (cool positive / warm negative),
   // plus the neutral used for the binary "column is not a feature" flag. The
   // three co-occur in one chart, so they are validated as a set: worst pair
@@ -36,6 +42,12 @@ export const theme = {
   indigo: "#161614", // in-predicate clause
   neutral: "#a9a69e", // not in predicate
   track: "#f3f1ec", // faint global range track
+
+  // Target (`target_*` label) bands. Deliberately the one hue in the exploration
+  // panel that is neither ink (predicate clause membership) nor the diverging
+  // pair (z-score polarity) — targets are outside the predicate, and the color
+  // says so. 6.4:1 on white.
+  target: "#0f6b63",
 
   // Recessive "other" for scatter non-matches
   other: "#c9c6be",

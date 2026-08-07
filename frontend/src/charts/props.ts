@@ -3,7 +3,7 @@
 // against these same types, so components drop in without merge conflicts.
 //
 // Parity references point at the Streamlit source each chart replaces.
-import type { Characteristic, NodeScores, PredicateRow, TreeNode } from "../types";
+import type { Characteristic, NodeScores, PredicateRow, TargetStat, TreeNode } from "../types";
 
 // A — Cluster projection scatter. Replaces the KDE topography (which ported
 // src/ui/visualization.py::cluster_gauss_kde): the parent node's 2D embedding
@@ -51,6 +51,14 @@ export interface PcaVarianceBarProps {
 export interface PredicateBandsProps {
   full: PredicateRow[]; // RCM 1.0
   trimmed: PredicateRow[]; // RCM 0.9
+}
+
+// E2 — Target-value bands. Same band geometry as E, for the `target_*` label
+// columns that are deliberately excluded from the predicate. Rendered in the
+// target hue so it never reads as a predicate clause.
+export interface TargetBandsProps {
+  targets: TargetStat[];
+  nSelected: number;
 }
 
 // F — DR-quality score tiles. Replaces src/ui/components/scores.py::render_node_scores.

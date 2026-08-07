@@ -24,6 +24,7 @@ from backend import datasets as ds
 from backend import jobs, run_cache
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
+from backend.targets import compute_targets
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
@@ -70,6 +71,13 @@ class PredicateRequest(BaseModel):
     row_indices: list[int]
     selected_local_indices: list[int]
     scope: str = "local"
+
+
+class TargetsRequest(BaseModel):
+    dataset: str
+    target_cols: list[str]
+    row_indices: list[int]
+    selected_local_indices: list[int]
 
 
 class RowsRequest(BaseModel):
@@ -201,6 +209,19 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Predicate failed: {exc}") from exc
+
+
+@app.post("/api/targets")
+def targets(req: TargetsRequest) -> dict[str, Any]:
+    """Label values for a selection — reported alongside, never inside, the predicate."""
+    try:
+        df = ds.load(req.dataset)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+    try:
+        return compute_targets(df, req.target_cols, req.row_indices, req.selected_local_indices)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Targets failed: {exc}") from exc
 
 
 @app.post("/api/rows")

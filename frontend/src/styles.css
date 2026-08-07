@@ -13,6 +13,7 @@
   --hair: #f1efea;
   --pos: #1f6699;
   --neg: #a8431f;
+  --target: #0f6b63; /* target_* label columns — see theme.ts */
   font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
@@ -354,6 +355,14 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   font-size: 12.5px;
 }
 
+.target-values { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.target-values h4 {
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--target);
+}
+
 .interactive-filters select[multiple] { min-height: 90px; width: 100%; }
 
 .range-row {
@@ -472,6 +481,12 @@ th {
   color: var(--muted);
   border-bottom: 1px solid var(--border-strong);
 }
+
+/* Target (label) columns: tinted block at the right of the table, fenced off from
+   the feature columns the predicate is induced from. */
+th.is-target { color: var(--target); }
+td.is-target { color: var(--target); background: rgba(15, 107, 99, 0.045); }
+th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 
 /* Exploration: plot leads, predicate reads to its right (source order is reversed). */
 .exploration__summary { padding: 11px 20px 0; }
