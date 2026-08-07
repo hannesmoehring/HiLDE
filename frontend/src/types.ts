@@ -73,6 +73,17 @@ export interface DatasetColumns {
   n_rows: number;
   columns: string[];
   default_feature_cols: string[];
+  image: ImageSpec | null; // non-null = every row is an image of these dimensions
+}
+
+// Datasets whose rows are images (Digits, Olivetti faces, MNIST, Fashion-MNIST).
+export interface ImageSpec {
+  width: number;
+  height: number;
+}
+
+export interface ImagePixels extends ImageSpec {
+  pixels: number[]; // 0..255 greyscale, row-major
 }
 
 // ── Predicate (selection-time) ──────────────────────────────────────────────

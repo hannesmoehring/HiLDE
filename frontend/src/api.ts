@@ -5,6 +5,7 @@ import type {
   AnalysisResponse,
   DatasetColumns,
   DatasetInfo,
+  ImagePixels,
   ModeInfo,
   PredicateResponse,
   PredicateScope,
@@ -41,6 +42,11 @@ export function listDatasets(): Promise<DatasetInfo[]> {
 
 export function datasetColumns(key: string): Promise<DatasetColumns> {
   return get(`/api/datasets/${encodeURIComponent(key)}/columns`);
+}
+
+/** Pixels of one row — only for datasets whose `image` spec is non-null. */
+export function fetchPointImage(key: string, rowId: number): Promise<ImagePixels> {
+  return get(`/api/datasets/${encodeURIComponent(key)}/image/${rowId}`);
 }
 
 const POLL_INTERVAL_MS = 2000;

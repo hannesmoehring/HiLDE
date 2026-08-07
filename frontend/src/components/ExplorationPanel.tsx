@@ -10,12 +10,14 @@ import { ScoreTiles } from "../charts/ScoreTiles";
 import { TargetBands } from "../charts/TargetBands";
 import type {
   AnalysisConfig,
+  ImageSpec,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
   TargetsResponse,
   TreeNode,
 } from "../types";
+import { PointImage } from "./PointImage";
 
 interface Props {
   dataset: string;
@@ -24,6 +26,7 @@ interface Props {
   config: AnalysisConfig;
   node: TreeNode;
   pathLabel: string;
+  imageSpec: ImageSpec | null; // non-null = table rows can be opened as images
 }
 
 // Per-feature standardized (z-score) matrix for the node's rows, computed in the
@@ -73,12 +76,14 @@ export function ExplorationPanel({
   config,
   node,
   pathLabel,
+  imageSpec,
 }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
   const [targets, setTargets] = useState<TargetsResponse | null>(null);
   const [rows, setRows] = useState<RowsResponse | null>(null);
+  const [imageRow, setImageRow] = useState<number | null>(null); // dataframe row id, not a table position
 
   // Interactive feature-range filter mode.
   const [interactive, setInteractive] = useState(false);
@@ -96,6 +101,11 @@ export function ExplorationPanel({
     setFilterFeatures([]);
     setRanges({});
   }, [node.id]);
+
+  // A new selection rebuilds the table, so the row the image was opened from is gone.
+  useEffect(() => {
+    setImageRow(null);
+  }, [selected]);
 
   // Fetch + standardize the node's feature values when interactive mode is on.
   useEffect(() => {
@@ -306,29 +316,51 @@ export function ExplorationPanel({
         {rows && rows.rows.length > 0 && (
           <>
             <button onClick={exportCsv}>Export selected points to CSV</button>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {rows.columns.map((c) => (
-                      <th key={c} className={cellClass(c, targetSet, firstTarget)}>
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.rows.slice(0, 50).map((r, i) => (
-                    <tr key={i}>
+            {imageSpec && (
+              <p className="hint">Click a row to see the image behind that point.</p>
+            )}
+            <div className="exploration__rows">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
                       {rows.columns.map((c) => (
-                        <td key={c} className={cellClass(c, targetSet, firstTarget)}>
-                          {String(r[c])}
-                        </td>
+                        <th key={c} className={cellClass(c, targetSet, firstTarget)}>
+                          {c}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {/* Row i of the table is selected[i] of the node, i.e. dataframe row
+                        node.row_indices[selected[i]] — the id /api/rows was asked for. */}
+                    {rows.rows.slice(0, 50).map((r, i) => {
+                      const rowId = node.row_indices[selected[i]];
+                      const active = imageSpec != null && imageRow === rowId;
+                      return (
+                        <tr
+                          key={i}
+                          className={imageSpec ? (active ? "is-pickable is-active" : "is-pickable") : undefined}
+                          onClick={imageSpec ? () => setImageRow(active ? null : rowId) : undefined}
+                        >
+                          {rows.columns.map((c) => (
+                            <td key={c} className={cellClass(c, targetSet, firstTarget)}>
+                              {String(r[c])}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {imageSpec && imageRow != null && (
+                <PointImage
+                  dataset={dataset}
+                  rowId={imageRow}
+                  onClose={() => setImageRow(null)}
+                />
+              )}
             </div>
           </>
         )}

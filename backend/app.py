@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import datasets as ds
+from backend import images as ds_images
 from backend import jobs, run_cache
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
@@ -116,7 +117,22 @@ def dataset_columns(key: str) -> dict[str, Any]:
         "n_rows": int(len(df)),
         "columns": [str(c) for c in df.columns],
         "default_feature_cols": ds.default_feature_cols(df),
+        "image": ds_images.spec(key),  # non-null = rows can be rendered as images
     }
+
+
+@app.get("/api/datasets/{key}/image/{row_id}")
+def dataset_image(key: str, row_id: int) -> dict[str, Any]:
+    """Greyscale pixels of a single row, for the image-valued datasets."""
+    if ds_images.spec(key) is None:
+        raise HTTPException(status_code=404, detail=f"Dataset has no image form: {key}")
+    try:
+        df = ds.load(key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {key}") from exc
+    if not 0 <= row_id < len(df):
+        raise HTTPException(status_code=404, detail=f"Row out of range: {row_id}")
+    return ds_images.pixels(df, key, row_id)
 
 
 def _cached_payload(key: str) -> dict[str, Any] | None:

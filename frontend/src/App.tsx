@@ -8,7 +8,14 @@ import { ExplorationPanel } from "./components/ExplorationPanel";
 import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { getNodeAtPath } from "./treeNav";
-import type { AnalysisConfig, AnalysisResponse, DatasetColumns, DatasetInfo, ModeInfo } from "./types";
+import type {
+  AnalysisConfig,
+  AnalysisResponse,
+  DatasetColumns,
+  DatasetInfo,
+  ImageSpec,
+  ModeInfo,
+} from "./types";
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -252,6 +259,7 @@ export default function App() {
               targetCols={targetCols}
               config={config}
               charNonFeatureOnly={charNonFeatureOnly}
+              imageSpec={columns?.image ?? null}
             />
           )}
 
@@ -273,8 +281,10 @@ function Navigation(props: {
   targetCols: string[];
   config: AnalysisConfig;
   charNonFeatureOnly: boolean;
+  imageSpec: ImageSpec | null;
 }) {
-  const { analysis, treePath, setTreePath, dataset, featureCols, targetCols, config, charNonFeatureOnly } = props;
+  const { analysis, treePath, setTreePath, dataset, featureCols, targetCols, config, charNonFeatureOnly, imageSpec } =
+    props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
 
@@ -365,6 +375,7 @@ function Navigation(props: {
           config={config}
           node={explorationNode}
           pathLabel={pathLabel}
+          imageSpec={imageSpec}
         />
       )}
     </>
