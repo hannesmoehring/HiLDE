@@ -98,7 +98,11 @@ def _tsne(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
 
 
 def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
-    umap_reducer = umap.UMAP(n_components=n_components, **kwargs)
+    # `random_state` alone does not make UMAP reproducible: with the default
+    # init="spectral" a disconnected fuzzy graph falls into `multi_component_layout`,
+    # which places the components outside the seeded path. A PCA init is deterministic
+    # whatever the graph structure.
+    umap_reducer = umap.UMAP(n_components=n_components, init="pca", **kwargs)
     embedding = umap_reducer.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=umap_reducer)
 
