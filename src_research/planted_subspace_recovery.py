@@ -371,6 +371,9 @@ def run_cell(rho: float, nesting: str, seed: int) -> tuple[list[dict], list[dict
 
     faith: list[dict] = []
     if RUN_FAITHFULNESS:
+        # `_embed_original` returns None for a region it could not project (it used to
+        # fabricate an all-zeros embedding, whose kNN agreement is meaningless but finite).
+        # An unprojected arm is recorded as None and flagged, never scored and never fatal.
         e_global, _ = _embed_original(x_all, cfg)
         for g in np.unique(y_coarse):
             idx = np.where(y_coarse == g)[0]
@@ -381,8 +384,9 @@ def run_cell(rho: float, nesting: str, seed: int) -> tuple[list[dict], list[dict
                     "nesting": nesting,
                     "seed": seed,
                     "region": int(g),
-                    "local": label_knn_agreement(e_local, y_fine[idx]),
-                    "global": label_knn_agreement(e_global[idx], y_fine[idx]),
+                    "local": label_knn_agreement(e_local, y_fine[idx]) if e_local is not None else None,
+                    "global": label_knn_agreement(e_global[idx], y_fine[idx]) if e_global is not None else None,
+                    "unprojected": bool(e_local is None or e_global is None),
                 }
             )
     return rec, faith
@@ -584,6 +588,9 @@ def main() -> None:
     )
 
     rec, faith = run_experiment()
+    n_unprojected = int(faith["unprojected"].sum()) if not faith.empty and "unprojected" in faith else 0
+    if n_unprojected:
+        console.print(f"[bold yellow]Unprojected faithfulness regions: {n_unprojected}[/] of {len(faith)} — reported as null, see subspace_faithfulness.csv")
     summary = summarise(rec)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")

@@ -207,14 +207,22 @@ def _build_and_score(dataset: str, overrides: dict[str, Any]) -> dict[str, Any]:
     # O2 at fixed k, over nodes whose embedding actually exists.
     tnc_vals: list[float] = []
     zero_embed = 0
+    unembedded = 0
     scored_rows = 0
     for node in _iter_nodes(tree):
         emb = node["embedding_original"]
         idx = node["row_indices"]
+        # `_embed_original` now returns None for a node it could not project. Counted and
+        # reported, never scored: such a node contributes no T&C and its rows stay out of
+        # `scored_rows`, so `scored_coverage` falls and the pre-registered coverage guard
+        # (MIN_SCORED_COVERAGE) sees the loss instead of a fabricated ~0.55.
+        if emb is None:
+            unembedded += 1
+            continue
         if emb.shape[0] < MIN_NODE_PTS_FOR_SCORE or emb.shape[1] < 2:
             continue
-        # _embed_original swallows reducer failures and returns zeros; ZADU would
-        # happily score that constant embedding at ~0.55 (design section 9, m2).
+        # Belt and braces for a tree built before that change: an all-zeros embedding with
+        # no variance is a failed projection, and ZADU scores it ~0.55 (design section 9, m2).
         if node.get("embedding_original_variance") is None and not np.any(emb):
             zero_embed += 1
             continue
@@ -234,6 +242,7 @@ def _build_and_score(dataset: str, overrides: dict[str, Any]) -> dict[str, Any]:
         "n_scored_nodes": len(tnc_vals),
         "scored_coverage": (scored_rows / leaf_rows) if leaf_rows else 0.0,
         "zero_embed_nodes": zero_embed,
+        "unembedded_nodes": unembedded,
         "n_leaves": len(leaf_sizes),
         "median_leaf_size": float(np.median(leaf_sizes)) if leaf_sizes else 0.0,
         "min_leaf_size": min(leaf_sizes) if leaf_sizes else 0,
@@ -363,6 +372,13 @@ def _log(msg: str) -> None:
     print(f"[{datetime.now(UTC).strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def _skip_note(m: dict[str, Any]) -> str:
+    """Nodes this build could not project, made visible on the build's own log line -
+    a silent skip is indistinguishable from a tree that had nothing to skip."""
+    parts = [f"{k}={m[k]}" for k in ("unembedded_nodes", "zero_embed_nodes") if m.get(k)]
+    return f" SKIPPED[{' '.join(parts)}]" if parts else ""
+
+
 def reference_dbcv(dataset: str) -> dict[str, Any]:
     """DBCV of the ground-truth partition, same space as O1 (design section 3)."""
     from sklearn.preprocessing import StandardScaler
@@ -393,7 +409,7 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
         m = build(dataset, {})
         m |= {"dataset": dataset, "arm": "baseline", "build_index": i, "split": "select" if i < 5 else "test"}
         run.baseline.append(m)
-        _log(f"  baseline {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s")
+        _log(f"  baseline {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
 
     tnc_select = [b["tnc_mean"] for b in run.baseline if b["split"] == "select" and b.get("tnc_mean") is not None]
     tnc_floor = (float(np.mean(tnc_select)) - 0.01) if tnc_select else -np.inf
@@ -410,7 +426,7 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
         run.trials.append(m)
         pd.DataFrame(run.trials).to_csv(out_dir / f"trials_{_slug(dataset)}.csv", index=False)
         o = objectives(m)
-        _log(f"  trial {trial.number:2d}: {cfg['method']:5s} L{cfg['hierarchical_layers']} mcs={cfg['hclust_min_cluster_size']:4d} -> dbcv={o[0]:+.4f} tnc={o[1]:.4f} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{' DEGEN' if m.get('degenerate') else ''}{' ' + str(m.get('exception')) if m.get('exception') else ''}")
+        _log(f"  trial {trial.number:2d}: {cfg['method']:5s} L{cfg['hierarchical_layers']} mcs={cfg['hclust_min_cluster_size']:4d} -> dbcv={o[0]:+.4f} tnc={o[1]:.4f} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{' DEGEN' if m.get('degenerate') else ''}{_skip_note(m)}{' ' + str(m.get('exception')) if m.get('exception') else ''}")
         return o
 
     study.optimize(objective, n_trials=n_trials, catch=())
@@ -437,7 +453,7 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
         m = build(dataset, cfg)
         m |= {"dataset": dataset, "arm": "preset", "build_index": i}
         run.validation.append(m)
-        _log(f"  preset {i + 1}/{N_VALIDATION_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s")
+        _log(f"  preset {i + 1}/{N_VALIDATION_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
 
     run.verdict = judge(dataset, run, cfg, fcols)
     return run
@@ -496,6 +512,10 @@ def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) 
         "preset_seconds_median": float(np.median(p_sec)) if p_sec else None,
         "baseline_leaves": [b.get("n_leaves") for b in test],
         "preset_leaves": [m.get("n_leaves") for m in pre],
+        # Nodes dropped from O2 because they could not be projected: the coverage guard
+        # already reacts to them, but the verdict must say how many there were.
+        "baseline_unembedded_nodes": int(sum(m.get("unembedded_nodes") or 0 for m in test)),
+        "preset_unembedded_nodes": int(sum(m.get("unembedded_nodes") or 0 for m in pre)),
         "config": cfg,
         "feature_cols": fcols,
     }

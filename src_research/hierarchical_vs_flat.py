@@ -266,9 +266,15 @@ def run_cell(
     dr_method: str,
     seed: int,
     layers: int,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Build the hierarchy + the flat global embedding once, then run H1a (paired regions)
-    and H1b (structure recovery). Returns (h1a_rows, h1b_rows).
+    and H1b (structure recovery). Returns (h1a_rows, h1b_rows, skip_rows).
+
+    ``_embed_original`` returns ``None`` for a region it could not project (it used to
+    fabricate an all-zeros embedding, which scored ~0.55 and was published as a real
+    result). An unprojectable region has no hierarchical arm, so it cannot enter a paired
+    test - it is dropped from H1a and recorded in ``skip_rows``, which the driver counts
+    and writes out. Never silently, and never by killing the whole grid.
 
     ``data`` is the preloaded ``(df, feature_cols, y)`` for this dataset (prepared once in
     the driver, not per cell) so workers neither reload nor re-subsample it."""
@@ -293,18 +299,31 @@ def run_cell(
     E_global, _ = _embed_original(X_all, cfg)
 
     h1a: list[dict] = []
+    skips: list[dict] = []
 
-    # H1a primary: hierarchy-leaf regions (paired, same points, same k).
-    for i, leaf in enumerate(leaves):
-        idx = leaf["row_indices"]
-        h1a.extend(_region_rows(cell, f"leaf{i}", "hier_leaf", len(idx), X_all[idx], leaf["embedding_original"], E_global[idx]))
+    if E_global is None:
+        # No flat arm at all, so no region in this cell is pairable. H1b does not use the
+        # embedding, so it still runs.
+        skips.append({**cell, "region": "*", "region_def": "*", "n": len(X_all), "reason": "flat_global_embedding_failed"})
+    else:
+        # H1a primary: hierarchy-leaf regions (paired, same points, same k).
+        for i, leaf in enumerate(leaves):
+            idx = leaf["row_indices"]
+            emb_h = leaf["embedding_original"]
+            if emb_h is None:
+                skips.append({**cell, "region": f"leaf{i}", "region_def": "hier_leaf", "n": len(idx), "reason": "leaf_not_projected"})
+                continue
+            h1a.extend(_region_rows(cell, f"leaf{i}", "hier_leaf", len(idx), X_all[idx], emb_h, E_global[idx]))
 
-    # H1a robustness: method-neutral regions = ground-truth classes (SS8.1).
-    if RUN_NEUTRAL_REGIONS and y is not None:
-        for cls in np.unique(y):
-            idx = np.where(y == cls)[0]
-            emb_h, _ = _embed_original(X_all[idx], cfg)  # local re-embed of the class
-            h1a.extend(_region_rows(cell, f"class{cls}", "gt_class", len(idx), X_all[idx], emb_h, E_global[idx]))
+        # H1a robustness: method-neutral regions = ground-truth classes (SS8.1).
+        if RUN_NEUTRAL_REGIONS and y is not None:
+            for cls in np.unique(y):
+                idx = np.where(y == cls)[0]
+                emb_h, _ = _embed_original(X_all[idx], cfg)  # local re-embed of the class
+                if emb_h is None:
+                    skips.append({**cell, "region": f"class{cls}", "region_def": "gt_class", "n": len(idx), "reason": "class_reembedding_failed"})
+                    continue
+                h1a.extend(_region_rows(cell, f"class{cls}", "gt_class", len(idx), X_all[idx], emb_h, E_global[idx]))
 
     # ---- H1b: structure recovery (needs labels) ----
     h1b: list[dict] = []
@@ -332,7 +351,7 @@ def run_cell(
             }
         )
 
-    return h1a, h1b
+    return h1a, h1b, skips
 
 
 # --------------------------------------------------------------------------- #
@@ -345,8 +364,8 @@ def build_cells() -> list[tuple[str, str, int, int]]:
     return [(ds, dr, seed, layers) for ds in DATASETS_TO_RUN for dr in DR_METHODS for seed in SEEDS for layers in HIER_LAYERS]
 
 
-def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Run the full grid, returning (h1a_df, h1b_df)."""
+def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Run the full grid, returning (h1a_df, h1b_df, skipped_df)."""
     cells = build_cells()
     # Prepare each dataset once (load + seeded subsample), not per cell: avoids redundant
     # reloads and concentrates the streamlit cache warnings in the driver process.
@@ -356,6 +375,7 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
         console.print(f"  loaded [bold]{name}[/]: {len(df)} rows, {note}")
     h1a_rows: list[dict] = []
     h1b_rows: list[dict] = []
+    skip_rows: list[dict] = []
     progress = Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -368,21 +388,23 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
         if PARALLEL_JOBS == 1:
             for ds, dr, seed, layers in cells:
                 progress.update(task, description=f"{ds} / {dr} / s{seed} / L{layers}"[:48])
-                a, b = run_cell(ds, datasets[ds], dr, seed, layers)
+                a, b, s = run_cell(ds, datasets[ds], dr, seed, layers)
                 h1a_rows.extend(a)
                 h1b_rows.extend(b)
+                skip_rows.extend(s)
                 progress.advance(task)
         else:
             # Cells are independent -> worker processes. inner_max_num_threads=1 stops each
             # worker's UMAP/BLAS pools oversubscribing the cores. Generator keeps the bar live.
             jobs = (delayed(run_cell)(ds, datasets[ds], dr, seed, layers) for ds, dr, seed, layers in cells)
             with parallel_config(backend="loky", inner_max_num_threads=1):
-                for a, b in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(jobs):
+                for a, b, s in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(jobs):
                     h1a_rows.extend(a)
                     h1b_rows.extend(b)
+                    skip_rows.extend(s)
                     progress.advance(task)
 
-    return pd.DataFrame(h1a_rows), pd.DataFrame(h1b_rows)
+    return pd.DataFrame(h1a_rows), pd.DataFrame(h1b_rows), pd.DataFrame(skip_rows)
 
 
 # --------------------------------------------------------------------------- #
@@ -439,11 +461,13 @@ def h1a_summary(h1a: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 
 
-def save_outputs(h1a: pd.DataFrame, h1b: pd.DataFrame, summary: pd.DataFrame, out_dir: Path) -> None:
+def save_outputs(h1a: pd.DataFrame, h1b: pd.DataFrame, summary: pd.DataFrame, skipped: pd.DataFrame, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     h1a.to_csv(out_dir / "h1a_regions.csv", index=False)
     summary.to_csv(out_dir / "h1a_summary.csv", index=False)
     h1b.to_csv(out_dir / "h1b_recovery.csv", index=False)
+    # Always written, even empty: "no file" and "no skips" must not look the same.
+    skipped.to_csv(out_dir / "h1a_skipped_regions.csv", index=False)
 
 
 def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
@@ -481,6 +505,22 @@ def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
         plt.close(g.figure)
 
 
+def print_skips(skipped: pd.DataFrame) -> None:
+    """Regions dropped from H1a because a projection failed. Loud by design: a shrinking
+    denominator is not a neutral event, and the old all-zeros fallback used to hide it."""
+    if skipped.empty:
+        console.print("[dim]Skipped regions: 0 (every region was projectable).[/]")
+        return
+    console.print(f"[bold yellow]Skipped regions: {len(skipped)}[/] — dropped from H1a, see h1a_skipped_regions.csv")
+    table = Table(title="Unprojectable regions (excluded from every paired test)")
+    for col in ["dataset", "method", "seed", "region_def", "reason", "count"]:
+        table.add_column(col, justify="right" if col == "count" else "left")
+    grouped = skipped.groupby(["dataset", "method", "seed", "region_def", "reason"]).size().reset_index(name="count")
+    for _, r in grouped.iterrows():
+        table.add_row(str(r["dataset"]), str(r["method"]), str(r["seed"]), str(r["region_def"]), str(r["reason"]), str(r["count"]))
+    console.print(table)
+
+
 def print_summary(summary: pd.DataFrame, h1b: pd.DataFrame) -> None:
     """Render the primary H1a summary (T&C) and the H1b recovery means."""
     prim = summary[summary["primary"]] if not summary.empty else summary
@@ -514,15 +554,16 @@ def main() -> None:
         f"datasets={len(DATASETS_TO_RUN)}  DR={DR_METHODS}  seeds={len(SEEDS)}  layers={HIER_LAYERS}  neutral_regions={RUN_NEUTRAL_REGIONS}\n"
     )
 
-    h1a, h1b = run_experiment()
+    h1a, h1b, skipped = run_experiment()
     summary = h1a_summary(h1a)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     out_dir = OUTPUT_ROOT / timestamp
-    save_outputs(h1a, h1b, summary, out_dir)
+    save_outputs(h1a, h1b, summary, skipped, out_dir)
     make_plots(h1a, h1b, out_dir)
 
     console.print()
+    print_skips(skipped)
     print_summary(summary, h1b)
     console.print(f"\n[bold green]Done.[/] Results + plots in [underline]{out_dir}[/]")
 
