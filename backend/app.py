@@ -287,7 +287,18 @@ def rows(req: RowsRequest) -> dict[str, Any]:
             status_code=400,
             detail=f"Row ids out of range for {req.dataset} ({len(df)} rows)",
         )
-    cols = req.columns or [str(c) for c in df.columns]
+    # `None` = every column; `[]` is a request for no columns, not for all of them.
+    if req.columns is None:
+        cols = [str(c) for c in df.columns]
+    else:
+        known = {str(c) for c in df.columns}
+        unknown = [c for c in req.columns if c not in known]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown columns for {req.dataset}: {unknown[:5]}",
+            )
+        cols = req.columns
     sub = df.iloc[req.ids][cols]
     records = json.loads(sub.to_json(orient="records"))  # to_json coerces NaN->null, np types->native
     return {"columns": cols, "rows": records}
