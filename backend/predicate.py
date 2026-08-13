@@ -14,7 +14,18 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+from backend.serialize import _finite
 from src.analysis.predicate_generator import generate_predicate
+
+
+def _sanitized(row: dict[str, Any]) -> dict[str, Any]:
+    """NaN/Inf -> None, as every other payload module does.
+
+    Starlette encodes with allow_nan=False, and the failure happens while the
+    response is serialized — outside this module's caller's try — so an all-NaN
+    feature answered 500 instead of a payload.
+    """
+    return {k: (_finite(v) if isinstance(v, float) else v) for k, v in row.items()}
 
 
 def compute_predicate(
@@ -58,9 +69,11 @@ def compute_predicate(
     full = generate_predicate("db", selected_scaled_df, background, threshold=1.0, selected_indices=sel_idx)
     trimmed = generate_predicate("db", selected_scaled_df, background, threshold=0.9, selected_indices=sel_idx)
 
-    full_rows: list[dict[str, Any]] = list(full)  # type: ignore[arg-type]
-    trimmed_rows: list[dict[str, Any]] = list(trimmed)  # type: ignore[arg-type]
+    full_rows: list[dict[str, Any]] = [_sanitized(r) for r in full]  # type: ignore[union-attr]
+    trimmed_rows: list[dict[str, Any]] = [_sanitized(r) for r in trimmed]  # type: ignore[union-attr]
 
+    # Not sanitized: `_f1` returns 0.0 for every degenerate denominator, so this is
+    # always finite — and the client formats it with .toFixed, which a null breaks.
     predicate_f1 = float(full_rows[0]["predicate_f1"]) if full_rows else 0.0
     n_clauses = sum(1 for r in full_rows if r.get("in_predicate"))
     summary = {
