@@ -170,9 +170,15 @@ export function ExplorationPanel({
   const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
   const firstTarget = targetCols[0];
 
+  // A selection indexes into the node it was made in. On the render that swaps the
+  // node, the reset effect above has not been applied yet, so `selected` still holds
+  // the previous node's positions — mapping those through the new node's row_indices
+  // yields rows nobody asked for. Sit the round out; the reset lands next render.
+  const staleSelection = selected.some((i) => i >= node.row_indices.length);
+
   // Selection -> predicate (skipped in interactive mode) + target values + rows table.
   useEffect(() => {
-    if (selected.length === 0) {
+    if (selected.length === 0 || staleSelection) {
       setPredicate(null);
       setTargets(null);
       setRows(null);
@@ -213,7 +219,7 @@ export function ExplorationPanel({
     return () => {
       cancelled = true;
     };
-  }, [selected, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
+  }, [selected, staleSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
 
   // Selection -> characteristics, on its own so the cost is only paid while the tab
   // is open. Unlike the predicate this holds in interactive mode too: the filtered
@@ -222,7 +228,7 @@ export function ExplorationPanel({
   useEffect(() => {
     setCharSel(null);
     setCharFailed(false);
-    if (view !== "characteristics" || selected.length === 0) return;
+    if (view !== "characteristics" || selected.length === 0 || staleSelection) return;
     let cancelled = false;
     fetchSelectionCharacteristics({
       dataset,
@@ -235,7 +241,7 @@ export function ExplorationPanel({
     return () => {
       cancelled = true;
     };
-  }, [view, selected, node.id, dataset, featureCols]);
+  }, [view, selected, staleSelection, node.id, dataset, featureCols]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,

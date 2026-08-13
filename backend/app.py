@@ -275,6 +275,15 @@ def rows(req: RowsRequest) -> dict[str, Any]:
         df = ds.load(req.dataset)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+    # Ids are positions into *this* dataset's frame. A client holding a tree built on
+    # another dataset sends ids that are perfectly valid integers and simply too large,
+    # which pandas raises on — a bad request, not a server fault. Every sibling
+    # endpoint already answers 400 here; this one used to surface a 500 traceback.
+    if req.ids and (max(req.ids) >= len(df) or min(req.ids) < 0):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Row ids out of range for {req.dataset} ({len(df)} rows)",
+        )
     cols = req.columns or [str(c) for c in df.columns]
     sub = df.iloc[req.ids][cols]
     records = json.loads(sub.to_json(orient="records"))  # to_json coerces NaN->null, np types->native

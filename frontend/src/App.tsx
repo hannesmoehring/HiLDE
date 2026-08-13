@@ -106,6 +106,12 @@ export default function App() {
     }
   }
 
+  // Picking a new dataset clears `analysis`, but only in an effect — so one render
+  // pairs the new dataset key with the previous dataset's tree. The panels below key
+  // their requests off both, and row indices from a 6497-row tree sent against a
+  // 150-row dataset are a 500, not an empty result. Never hand them a mismatched pair.
+  const shownAnalysis = analysis && analysis.meta.dataset === datasetKey ? analysis : null;
+
   const runMeta = [datasetKey || "no dataset", `${featureCols.length} features`, config.method]
     .filter(Boolean)
     .join(", ");
@@ -236,7 +242,7 @@ export default function App() {
             </div>
           )}
 
-          {mode?.hosting && analysis?.cached && (
+          {mode?.hosting && shownAnalysis?.cached && (
             <div className="banner">
               <strong>Cached</strong>
               <span>
@@ -248,9 +254,9 @@ export default function App() {
 
           {loading && <div className="empty">Reducing, clustering and scoring …</div>}
 
-          {analysis && (
+          {shownAnalysis && (
             <Navigation
-              analysis={analysis}
+              analysis={shownAnalysis}
               treePath={treePath}
               setTreePath={setTreePath}
               dataset={datasetKey}
@@ -262,7 +268,7 @@ export default function App() {
             />
           )}
 
-          {!analysis && !loading && (
+          {!shownAnalysis && !loading && (
             <div className="empty">Pick features and press Build &amp; Apply to compute a run.</div>
           )}
         </main>
