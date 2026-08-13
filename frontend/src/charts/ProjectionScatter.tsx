@@ -49,6 +49,7 @@ export function ProjectionScatter({
   interactiveGroup,
   onSelect,
   selected,
+  toolbarExtra,
 }: ProjectionScatterProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const [mode, setMode] = useState<Mode>("lasso");
@@ -200,13 +201,22 @@ export function ProjectionScatter({
 
   return (
     <div ref={ref} style={{ width: "100%", color: TEXT }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
         <button type="button" style={btn("lasso")} onClick={() => setMode("lasso")}>
           Lasso
         </button>
         <button type="button" style={btn("box")} onClick={() => setMode("box")}>
           Box
         </button>
+        {toolbarExtra}
       </div>
 
       <svg width={size.width} height={HEIGHT} style={{ background: BG, border: `1px solid ${theme.border}`, display: "block" }}>

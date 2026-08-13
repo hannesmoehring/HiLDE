@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.request import urlretrieve
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,11 @@ if TYPE_CHECKING:
 DATASET_PATH_RED = Path("datasets/wine_quality/wine+quality/winequality-red.csv")
 DATASET_PATH_WHITE = Path("datasets/wine_quality/wine+quality/winequality-white.csv")
 MNIST_RAW_DIR = Path("datasets/MNIST/raw")
+
+QM9_CSV = Path("datasets/QM9/qm9.csv")
+QM9_URL = "https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/qm9.csv"
+QM9_SUBSAMPLE = 30_000
+QM9_ID_COLS = ["mol_id", "smiles"]  # everything else in the CSV is a DFT-computed property
 
 
 @cache
@@ -122,6 +128,34 @@ def load_olivetti_faces_dataframe() -> pd.DataFrame:
     return _one_hot_df(data.data, data.target, [f"px_{i}" for i in range(data.data.shape[1])], [str(i) for i in range(40)])
 
 
+def _qm9_csv() -> Path:
+    """Path to the QM9 CSV, downloading it (~30 MB) into `datasets/` on first use."""
+    if not QM9_CSV.exists():
+        QM9_CSV.parent.mkdir(parents=True, exist_ok=True)
+        # Via a partial file so an interrupted download can't leave a truncated
+        # CSV behind that every later run would then fail to parse.
+        partial = QM9_CSV.with_suffix(".csv.part")
+        urlretrieve(QM9_URL, partial)
+        partial.replace(QM9_CSV)
+    return QM9_CSV
+
+
+@cache
+def load_qm9_dataframe() -> pd.DataFrame:
+    """QM9 (GDB-9): small organic molecules with DFT-computed quantum properties.
+
+    Labelled by ring count, parsed off the SMILES: QM9 molecules only contain
+    C/N/O/F, so every digit is a ring-closure marker and each ring contributes one
+    matched pair. Note that `u0`/`u298`/`h298`/`g298` are near-identical internal
+    energies (pairwise r = 1.0000) — four columns spanning one real dimension.
+    """
+    raw = pd.read_csv(_qm9_csv()).sample(n=QM9_SUBSAMPLE, random_state=0).reset_index(drop=True)
+    rings = (raw["smiles"].str.count(r"[1-9]") // 2).to_numpy()
+    feature_names = [c for c in raw.columns if c not in QM9_ID_COLS]
+    class_names = [f"rings_{n}" for n in range(rings.max() + 1)]
+    return _one_hot_df(raw[feature_names].to_numpy(), rings, feature_names, class_names)
+
+
 @cache
 def load_concentric_dataframe() -> pd.DataFrame:
     coords, labels = _concentric_rings()
@@ -146,6 +180,7 @@ DATASETS: dict[str, "Callable[[], pd.DataFrame]"] = {
     "Concentric rings (Low)": load_concentric_dataframe,
     "Swiss roll (Low)": load_swiss_roll_dataframe,
     "Olivetti faces (Medium)": load_olivetti_faces_dataframe,
+    "QM9 molecules (Medium)": load_qm9_dataframe,
     "Fashion-MNIST (High)": load_fashion_mnist_dataframe,
     "MNIST (High)": load_mnist_dataframe,
 }

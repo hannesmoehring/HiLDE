@@ -16,7 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PORT=8000 \
     HILDE_HOSTING=1 \
-    SCIKIT_LEARN_DATA=/app/.cache/sklearn
+    SCIKIT_LEARN_DATA=/app/datasets/sklearn
 
 # build-essential for any source builds (hdbscan/llvmlite fallbacks)
 RUN apt-get update \
@@ -37,6 +37,7 @@ COPY --from=frontend /app/frontend/dist ./frontend/dist
 COPY datasets/wine_quality ./datasets/wine_quality
 
 EXPOSE 8000
-# Datasets needing local files (wine CSVs, MNIST IDX) are mounted at runtime; the
-# sklearn-provided datasets (iris, digits, …) work with no mounts.
+# Datasets needing local files (wine CSVs, MNIST IDX) are mounted at runtime, on a
+# writable mount so the downloading loaders (QM9, sklearn's cache) can populate it;
+# the sklearn-provided datasets (iris, digits, …) work with no mounts.
 CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port ${PORT}"]

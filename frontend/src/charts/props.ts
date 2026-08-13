@@ -3,6 +3,7 @@
 // against these same types, so components drop in without merge conflicts.
 //
 // Parity references point at the Streamlit source each chart replaces.
+import type { ReactNode } from "react";
 import type { Characteristic, NodeScores, PredicateRow, TargetStat, TreeNode } from "../types";
 
 // A — Cluster projection scatter. Replaces the KDE topography (which ported
@@ -37,6 +38,7 @@ export interface ProjectionScatterProps {
   interactiveGroup?: string[] | null; // color-by-filter mode ("Matches filters"/"Other")
   onSelect: (localIndices: number[]) => void; // indices into points[]
   selected?: number[]; // controlled highlight
+  toolbarExtra?: ReactNode; // right-bound slot in the Lasso/Box row
 }
 
 // D — PCA explained-variance bar. Replaces make_pca_variance_fig.

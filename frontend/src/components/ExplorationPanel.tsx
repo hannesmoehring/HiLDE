@@ -265,10 +265,9 @@ export function ExplorationPanel({
         <span className="kicker">Exploration</span>
         <span className="panel__title">{pathLabel}</span>
       </h2>
-      {(showScores || showVariance) && (
+      {showScores && (
         <div className="exploration__summary">
-          {showScores && <ScoreTiles scores={node.scores} title="DR quality — this cluster" />}
-          {showVariance && <PcaVarianceBar explainedVariance={variance} />}
+          <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
         </div>
       )}
 
@@ -393,6 +392,9 @@ export function ExplorationPanel({
             interactiveGroup={interactive ? interactiveGroup : null}
             onSelect={interactive ? () => {} : setSelected}
             selected={interactive ? [] : selected}
+            toolbarExtra={
+              showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
+            }
           />
         </div>
       </div>

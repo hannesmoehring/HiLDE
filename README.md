@@ -66,8 +66,10 @@ docker compose up --build     # -> http://localhost:8000
 The image sets `HILDE_HOSTING=1`, so the container runs in hosting mode too; its
 run cache is persisted to `./.cache/hilde_runs` via `docker-compose.yml`.
 
-Local datasets (wine CSVs, MNIST IDX files) are mounted read-only via
-`docker-compose.yml`; sklearn-provided datasets (iris, digits, …) need no mounts.
+Local datasets (wine CSVs, MNIST IDX files) are mounted writable at `./datasets`
+via `docker-compose.yml`, so loaders that download on first use (QM9) and the
+sklearn download cache both persist there across restarts; sklearn-provided
+datasets (iris, digits, …) need no mounts.
 
 > The Streamlit UI (`src/ui/`) has been **removed**; the D3 frontend replaces it.
 > `src/analysis` and `src/evaluation` (the calc layer) are unchanged. Dataset

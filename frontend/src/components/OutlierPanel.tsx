@@ -16,14 +16,19 @@ interface Props {
   onSelectRow: (rowId: number | null) => void;
 }
 
-const TOP_N = 25;
+const TOP_N = 100;
 
 interface Ranked {
   rowId: number;
   score: number;
 }
 
-export function OutlierPanel({ node, dataset, selectedRow, onSelectRow }: Props) {
+export function OutlierPanel({
+  node,
+  dataset,
+  selectedRow,
+  onSelectRow,
+}: Props) {
   const [detail, setDetail] = useState<RowsResponse | null>(null);
 
   const scores = node.outlier_scores;
@@ -70,8 +75,8 @@ export function OutlierPanel({ node, dataset, selectedRow, onSelectRow }: Props)
 
       <div className="outliers__body">
         <p className="hint outliers__note">
-          HDBSCAN's Global-Local Outlier Score from Hierarchies, per point of this layer:
-          0 = sits firmly inside its cluster, 1 = strongly outlying.
+          HDBSCAN's Global-Local Outlier Score from Hierarchies, per point of
+          this layer: 0 = sits firmly inside its cluster, 1 = strongly outlying.
         </p>
 
         <OutlierHistogram scores={ranked.map((r) => r.score)} />
@@ -113,7 +118,10 @@ export function OutlierPanel({ node, dataset, selectedRow, onSelectRow }: Props)
                     <td className="num">{r.rowId}</td>
                     <td>
                       <span className="outliers__track">
-                        <span className="outliers__fill" style={{ width: `${r.score * 100}%` }} />
+                        <span
+                          className="outliers__fill"
+                          style={{ width: `${r.score * 100}%` }}
+                        />
                       </span>
                     </td>
                     <td className="num">{r.score.toFixed(3)}</td>
