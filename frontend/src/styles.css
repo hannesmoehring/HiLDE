@@ -347,6 +347,16 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 }
 .tabs button:hover { color: var(--ink-2); border-bottom-color: var(--border-strong); }
 .tabs button.is-active { color: var(--ink); border-bottom-color: var(--ink); }
+/* Count of live range filters — readable from the other two tabs, where the ranges
+   still own the selection everything else is describing. */
+.tabs__badge {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  line-height: 14px;
+  vertical-align: 1px;
+}
 
 /* One fixed-height viewport for both tabs, so switching never resizes the layer
    row. Sized just past the characteristics chart's tallest form (320px SVG + title
@@ -402,20 +412,126 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   color: var(--target);
 }
 
-.interactive-filters select[multiple] { min-height: 90px; width: 100%; }
+/* ── Ranges tab: column picker + one [min,max] window per picked column ───── */
+.range-filters .hint { display: block; margin: 0 0 8px; font-size: 12px; color: var(--ink-2); }
 
-.range-row {
-  display: grid;
-  grid-template-columns: 96px 1fr 1fr 84px;
+.range-filters__head {
+  display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 11.5px;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 12.5px;
   color: var(--ink-2);
-  margin-bottom: 5px;
 }
-.range-row__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.range-row__vals { text-align: right; color: var(--muted); }
-.range-row input[type="range"] { width: 100%; }
+.range-filters__count b { font-weight: 600; }
+.range-filters__head button { margin-left: auto; padding: 1px 8px; font-size: 11.5px; }
+
+/* appearance: Safari draws a search field as a pill regardless of border-radius. */
+.range-filters__search { width: 100%; margin-bottom: 5px; -webkit-appearance: none; appearance: none; }
+.range-filters__list { max-height: 118px; }
+/* The column name sits in a span (targets are tinted), so the ellipsis the picker
+   list puts on the label has to be handed down to it. */
+.range-filters__list label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.range-filters__group + .range-filters__group { margin-top: 5px; }
+.range-filters__group-head {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 2px;
+}
+/* Label columns keep their hue here too — see th.is-target in the table. */
+.range-filters__list .is-target { color: var(--target); }
+
+.range-row { margin-top: 11px; font-size: 11.5px; color: var(--ink-2); }
+.range-row__head { display: flex; align-items: baseline; gap: 8px; }
+.range-row__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.range-row.is-target .range-row__name { color: var(--target); }
+.range-row__vals { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.range-row__drop {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  padding: 0 1px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--faint);
+}
+.range-row__drop:hover { color: var(--ink); }
+.range-row__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 30px tall: histogram in the top 14, the selected span as a rule at y=14, and both
+   thumbs centred on that rule. Keep the three in step if you retune any of them. */
+.range-track { position: relative; height: 30px; }
+
+.range-hist {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+.range-hist span { flex: 1 1 0; background: var(--hair); }
+.range-hist span.is-in { background: var(--border-strong); }
+.range-row.is-target .range-hist span.is-in { background: rgba(15, 107, 99, 0.45); }
+
+.range-track__bar { position: absolute; left: 0; right: 0; top: 14px; height: 2px; background: var(--border); }
+.range-track__fill { position: absolute; top: 0; height: 2px; background: var(--ink); }
+.range-row.is-target .range-track__fill { background: var(--target); }
+
+/* Two sliders stacked on one track. The inputs themselves must not swallow clicks
+   or the upper one would mask the lower's thumb everywhere; only the thumbs do. */
+.range-track input[type="range"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.range-track input[type="range"]::-webkit-slider-runnable-track { height: 100%; background: none; }
+.range-track input[type="range"]::-moz-range-track { height: 100%; background: none; }
+.range-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  cursor: ew-resize;
+  width: 9px;
+  height: 16px;
+  margin-top: 7px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+}
+.range-track input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  cursor: ew-resize;
+  width: 9px;
+  height: 16px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--panel);
+}
+.range-track input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ink); outline-offset: 1px; }
+.range-track input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--ink); outline-offset: 1px; }
+.range-row.is-target .range-track input[type="range"]::-webkit-slider-thumb { border-color: var(--target); }
+.range-row.is-target .range-track input[type="range"]::-moz-range-thumb { border-color: var(--target); }
 
 /* ── GLOSH outlier scores ─────────────────────────────────────────────────── */
 .outliers {
@@ -541,11 +657,6 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 }
 .exploration__cols > .exploration__plot { order: 0; border-right: 1px solid var(--border); }
 .exploration__cols > .exploration__analysis { order: 1; border-right: 0; }
-
-/* The multi-select feature picker needs the full column, not the 78px value slot. */
-.interactive-filters .field { grid-template-columns: minmax(0, 1fr); gap: 3px; }
-.interactive-filters .field > span { font-size: 12px; color: var(--muted); }
-.interactive-filters .hint { display: block; margin: 0 0 8px; font-size: 12px; color: var(--ink-2); }
 
 .exploration__table button { margin-bottom: 8px; }
 

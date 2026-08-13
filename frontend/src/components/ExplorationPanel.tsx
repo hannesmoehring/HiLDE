@@ -1,5 +1,5 @@
 // Leaf exploration: scatter + selection -> predicate bands + selected-points table,
-// plus an interactive feature-range filter mode.
+// plus an interactive column-range filter (the "Ranges" tab).
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
 import { useEffect, useMemo, useState } from "react";
 import { fetchRows, fetchSelectionCharacteristics, fetchTargets, runPredicate } from "../api";
@@ -9,6 +9,7 @@ import { PredicateBands } from "../charts/PredicateBands";
 import { ProjectionScatter } from "../charts/ProjectionScatter";
 import { ScoreTiles } from "../charts/ScoreTiles";
 import { TargetBands } from "../charts/TargetBands";
+import { useDebounced } from "../hooks/useDebounced";
 import type {
   AnalysisConfig,
   Characteristic,
@@ -20,6 +21,8 @@ import type {
   TreeNode,
 } from "../types";
 import { PointImage } from "./PointImage";
+import { collectRangeData, RangeFilters } from "./RangeFilters";
+import type { RangeData } from "./RangeFilters";
 
 interface Props {
   dataset: string;
@@ -36,33 +39,13 @@ interface Props {
 }
 
 // The predicate describes the current selection; the characteristics describe the
-// whole node, so they answer different questions about different point sets.
-type View = "predicate" | "characteristics";
+// whole node; the ranges *make* a selection rather than explain one. Three questions
+// about three point sets, so they take turns in one viewport rather than stacking.
+type View = "predicate" | "characteristics" | "ranges";
 
-// Per-feature standardized (z-score) matrix for the node's rows, computed in the
-// browser — mirrors the fresh StandardScaler in Streamlit's compute_data_layer.
-interface ZData {
-  cols: string[];
-  Z: number[][];
-  bounds: [number, number][]; // [min,max] of each standardized column
-}
-
-function standardize(cols: string[], rows: Record<string, unknown>[]): ZData {
-  const n = rows.length || 1;
-  const raw = rows.map((r) => cols.map((c) => Number(r[c]) || 0));
-  const mean = cols.map((_, j) => raw.reduce((s, row) => s + row[j], 0) / n);
-  const std = cols.map((_, j) => {
-    const m = mean[j];
-    const v = raw.reduce((s, row) => s + (row[j] - m) ** 2, 0) / n;
-    return Math.sqrt(v) || 1;
-  });
-  const Z = raw.map((row) => row.map((v, j) => (v - mean[j]) / std[j]));
-  const bounds = cols.map((_, j) => {
-    const col = Z.map((r) => r[j]);
-    return [Math.min(...col), Math.max(...col)] as [number, number];
-  });
-  return { cols, Z, bounds };
-}
+// How long a slider drag settles before the node is re-scanned and the selected rows
+// refetched. Long enough to swallow a drag, short enough to feel like a live filter.
+const RANGE_SETTLE_MS = 120;
 
 // Target columns sit at the right of the selected-points table, fenced off from
 // the feature columns so nobody reads a label as something the predicate used.
@@ -100,11 +83,17 @@ export function ExplorationPanel({
   const [rows, setRows] = useState<RowsResponse | null>(null);
   const [imageRow, setImageRow] = useState<number | null>(null); // dataframe row id, not a table position
 
-  // Interactive feature-range filter mode.
-  const [interactive, setInteractive] = useState(false);
-  const [zData, setZData] = useState<ZData | null>(null);
-  const [filterFeatures, setFilterFeatures] = useState<string[]>([]);
+  // Column-range filter state. The tab *is* the mode — there is no separate flag that
+  // could drift out of step with which panel is on screen.
+  const [rangeData, setRangeData] = useState<RangeData | null>(null);
+  const [filterCols, setFilterCols] = useState<string[]>([]);
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
+  const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
+  const interactive = view === "ranges";
+  // Until a column is picked the conjunction is empty, i.e. it matches the whole node.
+  // Reading that as a selection would silently throw away whatever the lasso captured
+  // just because somebody clicked the tab, so filtering only starts at one column.
+  const filtering = interactive && filterCols.length > 0;
 
   // Reset everything when the explored node changes.
   useEffect(() => {
@@ -113,8 +102,8 @@ export function ExplorationPanel({
     setCharSel(null);
     setTargets(null);
     setRows(null);
-    setZData(null);
-    setFilterFeatures([]);
+    setRangeData(null);
+    setFilterCols([]);
     setRanges({});
   }, [node.id]);
 
@@ -123,52 +112,57 @@ export function ExplorationPanel({
     setImageRow(null);
   }, [selected]);
 
-  // Fetch + standardize the node's feature values when interactive mode is on.
+  // The table shows the features the predicate speaks about, then the labels it
+  // deliberately ignores — same order the header/CSV are marked up in. The ranges tab
+  // offers exactly this set too: it filters, so a label is a fair thing to slice on.
+  const tableCols = useMemo(() => [...featureCols, ...targetCols], [featureCols, targetCols]);
+  const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
+  const firstTarget = targetCols[0];
+
+  // Fetch the node's raw feature + target values while the ranges tab is open.
   useEffect(() => {
     if (!interactive) {
-      setZData(null);
+      setRangeData(null);
       return;
     }
     let cancelled = false;
-    fetchRows(dataset, node.row_indices, featureCols)
-      .then((r) => !cancelled && setZData(standardize(featureCols, r.rows)))
-      .catch(() => !cancelled && setZData(null));
+    fetchRows(dataset, node.row_indices, tableCols)
+      .then((r) => !cancelled && setRangeData(collectRangeData(tableCols, targetCols, r.rows)))
+      .catch(() => !cancelled && setRangeData(null));
     return () => {
       cancelled = true;
     };
-  }, [interactive, node.id, dataset, featureCols]);
+  }, [interactive, node.id, dataset, tableCols, targetCols]);
 
-  // "Matches filters" / "Other" per point (interactive mode only).
+  // "Matches filters" / "Other" per point (ranges tab only). The column positions are
+  // resolved once rather than per point: on a wide dataset this runs over cols x rows.
   const interactiveGroup = useMemo(() => {
-    if (!interactive || !zData) return null;
-    return zData.Z.map((row) =>
-      filterFeatures.every((f) => {
-        const j = zData.cols.indexOf(f);
-        if (j < 0) return true;
-        const [lo, hi] = ranges[f] ?? zData.bounds[j];
-        return row[j] >= lo && row[j] <= hi;
+    if (!filtering || !rangeData) return null;
+    const clauses = filterCols
+      .map((c) => {
+        const j = rangeData.cols.indexOf(c);
+        const [lo, hi] = settledRanges[c] ?? rangeData.bounds[j] ?? [NaN, NaN];
+        return { j, lo, hi };
       })
+      .filter((c) => c.j >= 0 && Number.isFinite(c.lo) && Number.isFinite(c.hi));
+    return rangeData.values.map((row) =>
+      clauses.every(({ j, lo, hi }) => row[j] >= lo && row[j] <= hi)
         ? "Matches filters"
         : "Other",
     );
-  }, [interactive, zData, filterFeatures, ranges]);
+  }, [filtering, rangeData, filterCols, settledRanges]);
 
-  // In interactive mode the filter *is* the selection (drives the table).
+  // While the ranges tab is filtering, the filter *is* the selection (drives the
+  // table, the target bands, and — once you switch tabs — the predicate).
   useEffect(() => {
-    if (interactive && interactiveGroup) {
+    if (interactiveGroup) {
       setSelected(
         interactiveGroup.flatMap((g, i) =>
           g === "Matches filters" ? [i] : [],
         ),
       );
     }
-  }, [interactive, interactiveGroup]);
-
-  // The table shows the features the predicate speaks about, then the labels it
-  // deliberately ignores — same order the header/CSV are marked up in.
-  const tableCols = useMemo(() => [...featureCols, ...targetCols], [featureCols, targetCols]);
-  const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
-  const firstTarget = targetCols[0];
+  }, [interactiveGroup]);
 
   // A selection indexes into the node it was made in. On the render that swaps the
   // node, the reset effect above has not been applied yet, so `selected` still holds
@@ -276,16 +270,7 @@ export function ExplorationPanel({
 
       <div className="exploration__cols">
         <div className="exploration__analysis">
-          <label className="field--check" style={{ marginBottom: "0.35rem" }}>
-            <input
-              type="checkbox"
-              checked={interactive}
-              onChange={(e) => setInteractive(e.target.checked)}
-            />
-            <span>Interactive feature ranges</span>
-          </label>
-
-          <div className="tabs" role="tablist" aria-label="Selection explanation">
+          <div className="tabs" role="tablist" aria-label="Selection view">
             <button
               role="tab"
               aria-selected={view === "predicate"}
@@ -302,25 +287,35 @@ export function ExplorationPanel({
             >
               Characteristics
             </button>
+            <button
+              role="tab"
+              aria-selected={view === "ranges"}
+              className={view === "ranges" ? "is-active" : undefined}
+              onClick={() => setView("ranges")}
+            >
+              Ranges
+              {filterCols.length > 0 && (
+                <span className="tabs__badge">{filterCols.length}</span>
+              )}
+            </button>
           </div>
 
-          {/* One bounded viewport for both tabs. A wide dataset yields a band per
-              feature — 784 of them on MNIST — which would otherwise run the page
-              on for thousands of pixels below the plot. */}
+          {/* One bounded viewport for all three tabs. A wide dataset yields a band
+              (and a pickable column) per feature — 784 of them on MNIST — which would
+              otherwise run the page on for thousands of pixels below the plot. */}
           <div className="exploration__view" role="tabpanel">
-            {/* `interactive` is tested before the tab, as it was before the tabs
-                existed: InteractiveFilters has exactly one render site, and on the
-                false arm of a tab test the filter UI is unreachable while the lasso
-                is already disabled — leaving an empty conjunction that selects the
-                whole node and a chart that is z=0 by construction. */}
-            {interactive ? (
-              <InteractiveFilters
-                zData={zData}
-                features={filterFeatures}
+            {view === "ranges" ? (
+              <RangeFilters
+                data={rangeData}
+                active={filterCols}
                 ranges={ranges}
-                onFeatures={setFilterFeatures}
-                onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
-                matched={selected.length}
+                matched={filtering ? selected.length : null}
+                onActive={setFilterCols}
+                onRange={(c, r) => setRanges((prev) => ({ ...prev, [c]: r }))}
+                onClear={() => {
+                  setFilterCols([]);
+                  setRanges({});
+                }}
               />
             ) : view === "characteristics" ? (
               selected.length === 0 ? (
@@ -410,9 +405,9 @@ export function ExplorationPanel({
             points={node.embedding_original ?? []}
             rowIds={node.row_indices}
             method={config.method}
-            interactiveGroup={interactive ? interactiveGroup : null}
+            interactiveGroup={interactiveGroup}
             onSelect={interactive ? () => {} : setSelected}
-            selected={interactive ? [] : selected}
+            selected={filtering ? [] : selected}
             toolbarExtra={
               showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
             }
@@ -475,76 +470,5 @@ export function ExplorationPanel({
         )}
       </div>
     </section>
-  );
-}
-
-function InteractiveFilters(props: {
-  zData: ZData | null;
-  features: string[];
-  ranges: Record<string, [number, number]>;
-  onFeatures: (f: string[]) => void;
-  onRange: (f: string, r: [number, number]) => void;
-  matched: number;
-}) {
-  const { zData, features, ranges, onFeatures, onRange, matched } = props;
-  if (!zData) return <p className="hint">Loading feature values…</p>;
-
-  return (
-    <div className="interactive-filters">
-      <p className="hint">
-        Standardized (z-score) ranges. Matching points are highlighted in the
-        plot — {matched} match.
-      </p>
-      <label className="field">
-        <span>Features to filter</span>
-        <select
-          multiple
-          value={features}
-          size={Math.min(6, zData.cols.length)}
-          onChange={(e) =>
-            onFeatures(Array.from(e.target.selectedOptions, (o) => o.value))
-          }
-        >
-          {zData.cols.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      {features.map((f) => {
-        const j = zData.cols.indexOf(f);
-        const [bMin, bMax] = zData.bounds[j] ?? [-3, 3];
-        const [lo, hi] = ranges[f] ?? [bMin, bMax];
-        return (
-          <div key={f} className="range-row">
-            <span className="range-row__label">{f}</span>
-            <input
-              type="range"
-              min={bMin}
-              max={bMax}
-              step={(bMax - bMin) / 100 || 0.01}
-              value={lo}
-              onChange={(e) =>
-                onRange(f, [Math.min(Number(e.target.value), hi), hi])
-              }
-            />
-            <input
-              type="range"
-              min={bMin}
-              max={bMax}
-              step={(bMax - bMin) / 100 || 0.01}
-              value={hi}
-              onChange={(e) =>
-                onRange(f, [lo, Math.max(Number(e.target.value), lo)])
-              }
-            />
-            <span className="range-row__vals">
-              [{lo.toFixed(2)}, {hi.toFixed(2)}]
-            </span>
-          </div>
-        );
-      })}
-    </div>
   );
 }
