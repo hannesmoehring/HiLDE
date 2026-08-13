@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from backend import datasets as ds
 from backend import images as ds_images
 from backend import jobs, run_cache
+from backend.characteristics import compute_selection_characteristics
 from backend.predicate import compute_predicate
 from backend.serialize import serialize_tree
 from backend.targets import compute_targets
@@ -72,6 +73,13 @@ class PredicateRequest(BaseModel):
     row_indices: list[int]
     selected_local_indices: list[int]
     scope: str = "local"
+
+
+class CharacteristicsRequest(BaseModel):
+    dataset: str
+    feature_cols: list[str]
+    row_indices: list[int]
+    selected_local_indices: list[int]
 
 
 class TargetsRequest(BaseModel):
@@ -225,6 +233,26 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Predicate failed: {exc}") from exc
+
+
+@app.post("/api/characteristics")
+def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
+    """A selection's characteristics, z-scored within the node it was made in."""
+    try:
+        df = ds.load(req.dataset)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+    try:
+        return {
+            "characteristics": compute_selection_characteristics(
+                df,
+                req.feature_cols,
+                req.row_indices,
+                req.selected_local_indices,
+            ),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Characteristics failed: {exc}") from exc
 
 
 @app.post("/api/targets")

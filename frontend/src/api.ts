@@ -3,6 +3,7 @@ import type {
   AnalysisConfig,
   AnalysisJob,
   AnalysisResponse,
+  CharacteristicsResponse,
   DatasetColumns,
   DatasetInfo,
   ImagePixels,
@@ -85,6 +86,16 @@ export function runPredicate(args: {
   scope: PredicateScope;
 }): Promise<PredicateResponse> {
   return post("/api/predicate", args);
+}
+
+/** Characteristics of a selection, z-scored within the node it was made in. */
+export function fetchSelectionCharacteristics(args: {
+  dataset: string;
+  feature_cols: string[];
+  row_indices: number[];
+  selected_local_indices: number[];
+}): Promise<CharacteristicsResponse> {
+  return post("/api/characteristics", args);
 }
 
 export function fetchTargets(args: {

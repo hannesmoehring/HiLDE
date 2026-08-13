@@ -102,6 +102,12 @@ export interface PredicateRow {
   predicate_f1: number;
 }
 
+// Characteristics of a lasso selection rather than of a whole node: same records as
+// TreeNode.rel_characteristics, but z-scored within the node being explored.
+export interface CharacteristicsResponse {
+  characteristics: Characteristic[];
+}
+
 export interface PredicateSummary {
   predicate_f1: number;
   n_features_used: number;

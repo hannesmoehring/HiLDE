@@ -2,7 +2,8 @@
 // plus an interactive feature-range filter mode.
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
 import { useEffect, useMemo, useState } from "react";
-import { fetchRows, fetchTargets, runPredicate } from "../api";
+import { fetchRows, fetchSelectionCharacteristics, fetchTargets, runPredicate } from "../api";
+import { CharacteristicsBar } from "../charts/CharacteristicsBar";
 import { PcaVarianceBar } from "../charts/PcaVarianceBar";
 import { PredicateBands } from "../charts/PredicateBands";
 import { ProjectionScatter } from "../charts/ProjectionScatter";
@@ -10,6 +11,7 @@ import { ScoreTiles } from "../charts/ScoreTiles";
 import { TargetBands } from "../charts/TargetBands";
 import type {
   AnalysisConfig,
+  Characteristic,
   ImageSpec,
   PredicateResponse,
   PredicateScope,
@@ -27,7 +29,15 @@ interface Props {
   node: TreeNode;
   pathLabel: string;
   imageSpec: ImageSpec | null; // non-null = table rows can be opened as images
+  // The layer above already reports this node's scores in its side column, so they
+  // are shown here only when there is no layer above — i.e. the root is a leaf.
+  showScores: boolean;
+  charNonFeatureOnly: boolean;
 }
+
+// The predicate describes the current selection; the characteristics describe the
+// whole node, so they answer different questions about different point sets.
+type View = "predicate" | "characteristics";
 
 // Per-feature standardized (z-score) matrix for the node's rows, computed in the
 // browser — mirrors the fresh StandardScaler in Streamlit's compute_data_layer.
@@ -77,10 +87,15 @@ export function ExplorationPanel({
   node,
   pathLabel,
   imageSpec,
+  showScores,
+  charNonFeatureOnly,
 }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
+  const [view, setView] = useState<View>("predicate");
   const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
+  const [charSel, setCharSel] = useState<Characteristic[] | null>(null);
+  const [charFailed, setCharFailed] = useState(false);
   const [targets, setTargets] = useState<TargetsResponse | null>(null);
   const [rows, setRows] = useState<RowsResponse | null>(null);
   const [imageRow, setImageRow] = useState<number | null>(null); // dataframe row id, not a table position
@@ -95,6 +110,7 @@ export function ExplorationPanel({
   useEffect(() => {
     setSelected([]);
     setPredicate(null);
+    setCharSel(null);
     setTargets(null);
     setRows(null);
     setZData(null);
@@ -199,9 +215,32 @@ export function ExplorationPanel({
     };
   }, [selected, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
 
+  // Selection -> characteristics, on its own so the cost is only paid while the tab
+  // is open. Unlike the predicate this holds in interactive mode too: the filtered
+  // points are a selection like any other. Clearing first matters even when the tab
+  // is hidden, or reopening it flashes the previous selection's numbers.
+  useEffect(() => {
+    setCharSel(null);
+    setCharFailed(false);
+    if (view !== "characteristics" || selected.length === 0) return;
+    let cancelled = false;
+    fetchSelectionCharacteristics({
+      dataset,
+      feature_cols: featureCols,
+      row_indices: node.row_indices,
+      selected_local_indices: selected,
+    })
+      .then((c) => !cancelled && setCharSel(c.characteristics))
+      .catch(() => !cancelled && setCharFailed(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [view, selected, node.id, dataset, featureCols]);
+
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
   );
+  const showVariance = config.method === "PCA" && variance.length > 0;
 
   function exportCsv() {
     if (!rows) return;
@@ -220,16 +259,16 @@ export function ExplorationPanel({
         <span className="kicker">Exploration</span>
         <span className="panel__title">{pathLabel}</span>
       </h2>
-      <div className="exploration__summary">
-        <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
-        {config.method === "PCA" && variance.length > 0 && (
-          <PcaVarianceBar explainedVariance={variance} />
-        )}
-      </div>
+      {(showScores || showVariance) && (
+        <div className="exploration__summary">
+          {showScores && <ScoreTiles scores={node.scores} title="DR quality — this cluster" />}
+          {showVariance && <PcaVarianceBar explainedVariance={variance} />}
+        </div>
+      )}
 
       <div className="exploration__cols">
         <div className="exploration__analysis">
-          <label className="field--check" style={{ marginBottom: "0.75rem" }}>
+          <label className="field--check" style={{ marginBottom: "0.35rem" }}>
             <input
               type="checkbox"
               checked={interactive}
@@ -238,59 +277,100 @@ export function ExplorationPanel({
             <span>Interactive feature ranges</span>
           </label>
 
-          {interactive ? (
-            <InteractiveFilters
-              zData={zData}
-              features={filterFeatures}
-              ranges={ranges}
-              onFeatures={setFilterFeatures}
-              onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
-              matched={selected.length}
-            />
-          ) : selected.length === 0 ? (
-            <p className="hint">
-              Use lasso or box selection in the plot to capture points.
-            </p>
-          ) : (
-            <>
-              <div className="scope-toggle">
-                <label>
-                  <input
-                    type="radio"
-                    checked={scope === "global"}
-                    onChange={() => setScope("global")}
-                  />
-                  Whole dataset (global)
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    checked={scope === "local"}
-                    onChange={() => setScope("local")}
-                  />
-                  This cluster (local)
-                </label>
-              </div>
-              {predicate?.summary && (
-                <div className="predicate-summary">
-                  <span>
-                    Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
-                  </span>
-                  <span>
-                    Features used: {predicate.summary.n_features_used} /{" "}
-                    {predicate.summary.n_features_total}
-                  </span>
-                  <span>Selected: {predicate.summary.n_selected}</span>
-                </div>
-              )}
-              {predicate && (
-                <PredicateBands
-                  full={predicate.full}
-                  trimmed={predicate.trimmed}
+          <div className="tabs" role="tablist" aria-label="Selection explanation">
+            <button
+              role="tab"
+              aria-selected={view === "predicate"}
+              className={view === "predicate" ? "is-active" : undefined}
+              onClick={() => setView("predicate")}
+            >
+              Predicate
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === "characteristics"}
+              className={view === "characteristics" ? "is-active" : undefined}
+              onClick={() => setView("characteristics")}
+            >
+              Characteristics
+            </button>
+          </div>
+
+          {/* One bounded viewport for both tabs. A wide dataset yields a band per
+              feature — 784 of them on MNIST — which would otherwise run the page
+              on for thousands of pixels below the plot. */}
+          <div className="exploration__view" role="tabpanel">
+            {view === "characteristics" ? (
+              selected.length === 0 ? (
+                <p className="hint">
+                  Use lasso or box selection in the plot to capture points.
+                </p>
+              ) : charFailed ? (
+                <p className="hint">Could not compute characteristics for this selection.</p>
+              ) : charSel === null ? (
+                <p className="hint">Computing characteristics…</p>
+              ) : (
+                <CharacteristicsBar
+                  data={charSel}
+                  title={`Selection characteristics — vs. ${pathLabel}`}
+                  nonFeatureOnly={charNonFeatureOnly}
                 />
-              )}
-            </>
-          )}
+              )
+            ) : interactive ? (
+              <InteractiveFilters
+                zData={zData}
+                features={filterFeatures}
+                ranges={ranges}
+                onFeatures={setFilterFeatures}
+                onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
+                matched={selected.length}
+              />
+            ) : selected.length === 0 ? (
+              <p className="hint">
+                Use lasso or box selection in the plot to capture points.
+              </p>
+            ) : (
+              <>
+                <div className="scope-toggle">
+                  <label>
+                    <input
+                      type="radio"
+                      checked={scope === "global"}
+                      onChange={() => setScope("global")}
+                    />
+                    Whole dataset (global)
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      checked={scope === "local"}
+                      onChange={() => setScope("local")}
+                    />
+                    This cluster (local)
+                  </label>
+                </div>
+                {predicate?.summary && (
+                  <div className="predicate-summary">
+                    <span>
+                      Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
+                    </span>
+                    <span>
+                      Features used: {predicate.summary.n_features_used} /{" "}
+                      {predicate.summary.n_features_total}
+                    </span>
+                    <span>Selected: {predicate.summary.n_selected}</span>
+                  </div>
+                )}
+                {predicate && (
+                  <PredicateBands
+                    full={predicate.full}
+                    trimmed={predicate.trimmed}
+                  />
+                )}
+              </>
+            )}
+          </div>
+
           {targets && targets.targets.length > 0 && selected.length > 0 && (
             <div className="target-values">
               <h4>Target values — selection</h4>

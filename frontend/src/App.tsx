@@ -364,6 +364,11 @@ function Navigation(props: {
 
   const explorationNode = explorationPath !== null ? getNodeAtPath(root, explorationPath) : null;
   const pathLabel = explorationPath && explorationPath.length ? explorationPath.map((c) => `C${c}`).join(" → ") : "root";
+  // The explored node is whatever the deepest layer holds as its selected child, so
+  // that layer already reports its scores. The one exception is an empty path: the
+  // root is a leaf, no layer rendered at all, and the exploration panel is the only
+  // place the scores can appear.
+  const scoresShownByLayer = explorationPath !== null && explorationPath.length > 0;
 
   return (
     <>
@@ -378,6 +383,8 @@ function Navigation(props: {
           node={explorationNode}
           pathLabel={pathLabel}
           imageSpec={imageSpec}
+          showScores={!scoresShownByLayer}
+          charNonFeatureOnly={charNonFeatureOnly}
         />
       )}
     </>

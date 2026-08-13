@@ -357,6 +357,10 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   height: 396px;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Reserve the gutter always. A hover tooltip is absolutely positioned inside this
+     box and counts toward its scroll height, so without this it can pop the
+     scrollbar in, narrow the box, and make the chart re-measure mid-hover. */
+  scrollbar-gutter: stable;
 }
 
 .layer__predicate { padding: 4px; }
@@ -525,6 +529,16 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 
 /* Exploration: plot leads, predicate reads to its right (source order is reversed). */
 .exploration__summary { padding: 11px 20px 0; }
+
+/* Bounded viewport for the exploration tabs — same job as .layer__view, but sized
+   against the 480px projection scatter it sits beside. Without it a wide dataset's
+   band-per-feature list (784 rows on MNIST) runs on far past the plot. */
+.exploration__view {
+  height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable; /* see .layer__view — keeps hover from resizing the chart */
+}
 .exploration__cols > .exploration__plot { order: 0; border-right: 1px solid var(--border); }
 .exploration__cols > .exploration__analysis { order: 1; border-right: 0; }
 
