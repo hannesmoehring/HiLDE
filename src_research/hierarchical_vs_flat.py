@@ -30,10 +30,12 @@ Two robustness factors from the design are exposed in the CONFIG block:
       classes (independent of the hierarchy), answering the "self-selected regions" caveat.
     * Depth sweep (SS8.3): ``HIER_LAYERS`` is a list.
 
-Reproducibility caveat: ``reduce_dimensionality`` does not thread a seed into UMAP / t-SNE,
-so those embeddings are stochastic. The subsample is seeded (fixed across runs), so the
-``SEEDS`` loop functions as *replicates* that capture embedding variance - the unit of the
-paired H1a test is a (region x seed) pair. PCA replicates are ~identical (deterministic).
+Reproducibility: ``reduce_dimensionality`` threads ``config["*_random_state"]`` into UMAP /
+t-SNE / MDS, so ``run_cell`` writes the replicate id into those three keys - each replicate
+draws a *different but reproducible* embedding. The subsample is seeded (fixed across runs),
+so the ``SEEDS`` loop functions as *replicates* that capture embedding variance - the unit of
+the paired H1a test is a (region x seed) pair. PCA replicates are identical (deterministic),
+so PCA rows carry no replicate variance by construction.
 
 Outputs (written to ``outputs/experiments/<timestamp>/``):
     * h1a_regions.csv   - one row per (dataset, method, seed, region, condition, region_def).
@@ -272,6 +274,10 @@ def run_cell(
     cfg: Config = init_state(init_streamlit=False)
     cfg["method"] = dr_method
     cfg["hierarchical_layers"] = layers
+    # The replicate id must reach the reducers themselves; `init_state` hardcodes 42 for all
+    # three, so without this every "replicate" of a cell is byte-identical and the paired
+    # Wilcoxon below sees R distinct deltas repeated len(SEEDS) times.
+    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = seed
 
     df, feature_cols, y = data
     cell = {"dataset": dataset, "method": dr_method, "seed": seed, "layers": layers}

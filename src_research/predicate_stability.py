@@ -17,7 +17,8 @@ point exists. Decomposed:
         (negative control on ourselves).
 
 Selections come from a simulated user: hierarchy leaves on wine (the tree is rebuilt per
-seed; UMAP is unseeded, so seeds act as replicates) and planted clusters on synthetic data
+seed, with the seed threaded into UMAP's ``random_state``, so seeds are distinct-but-
+reproducible tree-rebuild replicates) and planted clusters on synthetic data
 (no tree needed - keeps recovery scoring independent of tree quality). Perturbation is
 boundary jitter: drop a fraction delta of the selection, add the same number from the
 K_NN-nearest non-selected neighbours of its members in the standardised full space.
@@ -90,7 +91,7 @@ from src_research import predicate_stability_analysis as psa
 # --------------------------------------------------------------------------- #
 
 SEED = 42  # root entropy for the per-selection perturbation RNGs
-SEEDS_WINE = list(range(5))  # tree-rebuild replicates (tree builds dominate cost)
+SEEDS_WINE = list(range(5))  # tree-rebuild replicates, threaded into the DR seed (tree builds dominate cost)
 SEEDS_SYNTH = list(range(20))  # generator replicates (cheap; matches the RQ1-S standard)
 
 T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the thesis - do not add levels after seeing results
@@ -102,7 +103,7 @@ K_NN = 10  # neighbours per member forming the boundary-jitter candidate pool
 MIN_SEL = 20  # quantiles on fewer points are noise (design SS4); sizes are reported
 
 WINE_DATASET = "Wine quality (Low)"
-DR_METHOD = "UMAP"  # UI default; drives the (stochastic) tree builds on wine
+DR_METHOD = "UMAP"  # UI default; drives the per-seed tree builds on wine
 HIER_LAYERS = 2  # matches the RQ1 headline depth
 
 # Axis-parallel generator, fixed headline (design SS3): D = C*r + d_noise = 27 features.
@@ -365,15 +366,19 @@ def selection_records(
 
 def run_cell(arm: str, seed: int) -> tuple[list[dict], list[dict], list[np.ndarray] | None]:
     """Build selections for one (arm, seed) and sweep them. Wine: tree leaves (the tree is
-    the stochastic element - UMAP is unseeded). Synthetic: planted clusters, no tree.
-    Returns (records, recovery_rows, wine_leaf_indices-or-None) - the leaf index sets feed
-    the seed-perturbation pass (b) in the driver."""
+    the varying element - the seed is threaded into UMAP's random_state). Synthetic: planted
+    clusters, no tree. Returns (records, recovery_rows, wine_leaf_indices-or-None) - the leaf
+    index sets feed the seed-perturbation pass (b) in the driver."""
     _silence_noise()  # re-assert in worker processes
     if arm == "wine":
         df, feature_cols, _y = prepare_dataset(WINE_DATASET)
         cfg: Config = init_state(init_streamlit=False)
         cfg["method"] = DR_METHOD
         cfg["hierarchical_layers"] = HIER_LAYERS
+        # Without this the seed reaches nothing: `init_state` hardcodes 42 for all three
+        # reducers, so all SEEDS_WINE "rebuilds" would be one tree and pass (b) would
+        # compare a leaf against itself.
+        cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = seed
         tree = compute_analysis_tree(df, feature_cols, cfg)
         X_all = standardised_X(df, feature_cols, tree)
         leaf_idx = [np.asarray(leaf["row_indices"]) for leaf in collect_leaves(tree)]

@@ -36,9 +36,10 @@ lower c) alongside ARI/NMI (read together, never alone), and lead with within-gr
 Noise rule: metrics vs ``y_fine`` are computed on each condition's own non-noise rows
 (``label != -1``); ``noise_frac`` is reported separately so the exclusion is transparent.
 
-Reproducibility: ``reduce_dimensionality`` does not thread a seed into UMAP / t-SNE, so the DR
-embeddings are stochastic. The generator IS seeded, so the ``SEEDS`` loop captures both
-generator and embedding variance - synthetic data is cheap, so we use many seeds for real CIs.
+Reproducibility: ``reduce_dimensionality`` threads ``config["*_random_state"]`` into UMAP /
+t-SNE / MDS, so ``run_cell`` writes the cell's seed into those three keys as well as into the
+generator. The ``SEEDS`` loop therefore captures both generator and embedding variance, and
+every cell is reproducible - synthetic data is cheap, so we use many seeds for real CIs.
 
 Outputs (written to ``outputs/experiments/<timestamp>/``):
     * subspace_recovery.csv     - one row per (rho, nesting, seed, condition).
@@ -336,6 +337,9 @@ def run_cell(rho: float, nesting: str, seed: int) -> tuple[list[dict], list[dict
     cfg["hierarchical_layers"] = HIER_LAYERS
     cfg["hclust_min_cluster_size"] = MIN_CLUSTER_SIZE
     assert cfg["hclust_min_cluster_size"] == MIN_CLUSTER_SIZE  # identical HDBSCAN size across conditions
+    # The cell's seed must reach the reducers too, not just the generator: `init_state`
+    # hardcodes 42 for all three, so the embedding half of every replicate would be constant.
+    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = seed
 
     eff_rho = rho if nesting == "nested" else 1.0  # non_nested control forces rho=1 (design SS3)
     x, y_fine, y_coarse, block_b = make_nested_subspace(eff_rho, nesting, seed)
