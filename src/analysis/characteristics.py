@@ -26,7 +26,9 @@ def compute_cluster_characteristics(
     if extra_cols:
         extra_order = sorted(extra_cols)
         g_mean = df[extra_order].mean()
-        g_std = df[extra_order].std().replace(0, 1)
+        # ddof=0 throughout, so an extra column is standardized exactly like a feature
+        # column (StandardScaler uses the population std); the two are drawn together.
+        g_std = df[extra_order].std(ddof=0).replace(0, 1)
         c_mean = df.loc[in_cluster, extra_order].mean()
         extra_rows = pd.DataFrame(
             {

@@ -1,10 +1,14 @@
-"""Characteristics of a selection, read against the space it was made in.
+"""Characteristics of a selection, on the same baseline the tree uses.
 
-The tree stores one `rel_characteristics` frame per cluster, contrasting that
-cluster with its parent's space. Exploration needs the same contrast for an
-arbitrary lasso selection inside a node, so this reuses the unchanged calc layer
+The tree stores one `rel_characteristics` frame per cluster. Its *feature* z-scores
+come from a single `StandardScaler` fit on the whole dataset at the root and only
+row-masked thereafter, so they are whole-dataset relative at every depth; its extra
+(non-feature) columns are contrasted against the rows of the space the cluster was
+selected out of. Exploration needs the same contrast for an arbitrary lasso
+selection inside a node, so this reuses the unchanged calc layer
 (`compute_cluster_characteristics`) with a two-label split — selected vs. the rest
-of the node — instead of a cluster id.
+of the node — instead of a cluster id, and reproduces the root scaler rather than
+refitting on the node: both frames are drawn by the same chart on one z-score axis.
 """
 
 from __future__ import annotations
@@ -39,14 +43,18 @@ def compute_selection_characteristics(
     feature_cols: list[str],
     row_indices: list[int],
     selected_local_indices: list[int],
+    normalize: bool = True,
 ) -> list[dict[str, Any]]:
-    """Return characteristic records for the selection, z-scored within the node.
+    """Return characteristic records for the selection, z-scored like the tree's.
 
     - `row_indices`: the explored node's rows into the source df — the space.
     - `selected_local_indices`: indices into `row_indices` (0..N-1) from the lasso.
+    - `normalize`: config["normalize"] — false means the tree reports raw means on
+      the same axis, so this must not standardize either.
 
-    The scaler is fit on the node's rows only, so a z-score reads "relative to this
-    space", matching the local-scope predicate rather than the whole dataset.
+    The scaler is fit on the whole dataset and then row-masked, which is what
+    `compute_analysis_tree` does at the root. Refitting on the node instead put the
+    same points on opposite signs from the tree's own chart at every depth below 1.
     """
     row_idx = np.asarray(row_indices, dtype=int)
     sel = np.asarray(selected_local_indices, dtype=int)
@@ -60,10 +68,9 @@ def compute_selection_characteristics(
     labels[sel] = _SELECTED
 
     # Both frames carry a plain RangeIndex so the in-cluster mask lines up across them.
-    scaled = pd.DataFrame(
-        StandardScaler().fit_transform(sub[feature_cols].to_numpy()),
-        columns=feature_cols,
-    )
+    features = df[feature_cols].to_numpy()
+    scaled_all = StandardScaler().fit_transform(features) if normalize else features
+    scaled = pd.DataFrame(scaled_all[row_idx], columns=feature_cols)
     scaled["cluster"] = labels
 
     raw = sub[feature_cols + extra_cols].reset_index(drop=True)

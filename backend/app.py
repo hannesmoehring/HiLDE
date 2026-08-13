@@ -78,6 +78,7 @@ class PredicateRequest(BaseModel):
 class CharacteristicsRequest(BaseModel):
     dataset: str
     feature_cols: list[str]
+    config: dict[str, Any] = {}
     row_indices: list[int]
     selected_local_indices: list[int]
 
@@ -237,11 +238,12 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
 
 @app.post("/api/characteristics")
 def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
-    """A selection's characteristics, z-scored within the node it was made in."""
+    """A selection's characteristics, on the tree's own z-score baseline."""
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+    normalize = bool(req.config.get("normalize", True))
     try:
         return {
             "characteristics": compute_selection_characteristics(
@@ -249,6 +251,7 @@ def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
                 req.feature_cols,
                 req.row_indices,
                 req.selected_local_indices,
+                normalize,
             ),
         }
     except Exception as exc:

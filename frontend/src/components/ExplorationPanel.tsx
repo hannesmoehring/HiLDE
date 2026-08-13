@@ -233,6 +233,7 @@ export function ExplorationPanel({
     fetchSelectionCharacteristics({
       dataset,
       feature_cols: featureCols,
+      config,
       row_indices: node.row_indices,
       selected_local_indices: selected,
     })
@@ -241,7 +242,9 @@ export function ExplorationPanel({
     return () => {
       cancelled = true;
     };
-  }, [view, selected, staleSelection, node.id, dataset, featureCols]);
+    // `config.normalize` rather than `config`: it is the only field the endpoint
+    // reads, and the whole object is minted fresh on every config keystroke.
+  }, [view, selected, staleSelection, node.id, dataset, featureCols, config.normalize]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,

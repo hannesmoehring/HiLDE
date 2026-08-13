@@ -88,10 +88,11 @@ export function runPredicate(args: {
   return post("/api/predicate", args);
 }
 
-/** Characteristics of a selection, z-scored within the node it was made in. */
+/** Characteristics of a selection, on the same z-score baseline as the tree. */
 export function fetchSelectionCharacteristics(args: {
   dataset: string;
   feature_cols: string[];
+  config: Partial<AnalysisConfig>; // only `normalize` is read, as on /api/predicate
   row_indices: number[];
   selected_local_indices: number[];
 }): Promise<CharacteristicsResponse> {
