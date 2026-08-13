@@ -34,11 +34,12 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
     * plots/*.png         - gain heatmaps, TPE-vs-random bars, convergence curves,
                             internal-vs-external scatter.
 
-Reproducibility caveat: ``reduce_dimensionality`` does not thread a random seed
-into UMAP / t-SNE / MDS, so those embedders remain stochastic. We seed NumPy and
-the Optuna samplers globally, but residual run-to-run variance in the embeddings
-is expected and is itself part of what an honest "effectiveness" measurement
-captures.
+Reproducibility: ``reduce_dimensionality`` threads ``config["*_random_state"]``
+into UMAP / t-SNE / MDS, and ``init_state`` pins all three, so a trial's embedding
+is a deterministic function of its suggested hyperparameters. Together with the
+seeded Optuna samplers and the seeded subsample, a rerun reproduces the grid.
+Note the flip side: this harness therefore measures no embedding variance at all,
+so a "gain" here is a gain at one seed, not an expected gain.
 
 Run with::
 
@@ -63,6 +64,16 @@ import numpy as np
 import optuna
 import pandas as pd
 import seaborn as sns
+
+# kDBCV's type hints reference np.float_ / np.int_, which NumPy 2.0 removed, and they are
+# evaluated at def time — so without this the import below raises AttributeError and this
+# module cannot be imported at all. `pipeline_tuning` and `dbcv_tuning` both carry the same
+# shim; this one was missing, which is why the Track A/B experiment could not be regenerated.
+if not hasattr(np, "float_"):
+    np.float_ = np.float64  # type: ignore[attr-defined]
+if not hasattr(np, "int_"):
+    np.int_ = np.int64  # type: ignore[attr-defined]
+
 from joblib import Parallel, delayed, parallel_config
 from kDBCV.DBCV import DBCV_score
 from rich.console import Console
@@ -481,6 +492,7 @@ def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None
             "gain_pct": 0.0,
             "best_params": "{}",
             "tunable": False,
+            **_baseline_external(base),
             **_secondary(base),
         }
         return [row], []
@@ -508,6 +520,7 @@ def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None
                 "gain_pct": 100.0 * gain / denom,
                 "best_params": json.dumps(study.best_params),
                 "tunable": True,
+                **_baseline_external(base),
                 **_secondary(study.best_trial.user_attrs),
             }
         )
@@ -519,6 +532,16 @@ SECONDARY_KEYS = ["dbcv_embedded", "silhouette", "ari", "nmi", "trustworthiness"
 
 def _secondary(attrs: dict) -> dict:
     return {k: attrs.get(k) for k in SECONDARY_KEYS}
+
+
+def _baseline_external(base: dict) -> dict:
+    """The baseline's own external metrics, on the same row as the tuned ones.
+
+    Without these the only way to reach a baseline ARI was to join against the
+    ``sampler == "none"`` rows — which exist only for untunable cells, i.e. never for
+    Track A — so the join produced an all-NaN column.
+    """
+    return {"ari_base": base.get("ari"), "nmi_base": base.get("nmi")}
 
 
 # --------------------------------------------------------------------------- #
@@ -649,22 +672,26 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
         plt.close(fig)
 
     # 4. Internal vs external: does DBCV gain track an ARI gain? (Track A, needs ground truth)
-    a_ext = a.dropna(subset=["ari"]) if not a.empty else a
+    # `ari_base` is now recorded on the row by run_cell. It used to be joined in from the
+    # `sampler == "none"` rows, which exist only for untunable cells and therefore never for
+    # Track A: the join returned an all-NaN column, and `.fillna(0)` turned the y axis into
+    # raw tuned ARI while the label still read "ARI change vs baseline". A cell whose tuning
+    # *lowered* ARI plotted as a gain. No fill: a pair without both halves is not plotted,
+    # and the count that dropped out is printed.
+    a_ext = a.dropna(subset=["ari", "ari_base"]) if not a.empty else a
     if not a_ext.empty:
-        merged = a_ext.merge(
-            summary[summary["sampler"] == "none"][["track", "dataset", "dr_method", "cluster_method", "ari"]],
-            on=["track", "dataset", "dr_method", "cluster_method"],
-            how="left",
-            suffixes=("", "_base"),
-        )
-        merged["ari_gain"] = merged["ari"] - merged["ari_base"].fillna(0)
+        dropped = len(a) - len(a_ext)
+        if dropped:
+            console.print(f"[yellow]internal-vs-external: {dropped} of {len(a)} Track-A TPE cells lack a tuned or a baseline ARI and are not plotted.[/]")
+        paired = a_ext.assign(ari_gain=a_ext["ari"] - a_ext["ari_base"])
+        r = float(paired["gain"].corr(paired["ari_gain"]))
         fig, ax = plt.subplots(figsize=(6, 5))
-        sns.scatterplot(data=merged, x="gain", y="ari_gain", hue="dataset", style="dr_method", ax=ax)
+        sns.scatterplot(data=paired, x="gain", y="ari_gain", hue="dataset", style="dr_method", ax=ax)
         ax.axhline(0, color="grey", lw=0.6)
         ax.axvline(0, color="grey", lw=0.6)
-        ax.set_xlabel("DBCV gain (tuned - baseline)")
-        ax.set_ylabel("ARI change vs baseline")
-        ax.set_title("Does optimising DBCV improve agreement with ground truth?")
+        ax.set_xlabel("DBCV gain: best tuned DBCV - default-config DBCV (original space)")
+        ax.set_ylabel("ARI gain: best-trial ARI - default-config ARI (vs ground truth)")
+        ax.set_title(f"Does optimising DBCV improve agreement with ground truth?\nTrack A, TPE, n={len(paired)} cells, Pearson r={r:.3f}")
         fig.tight_layout()
         fig.savefig(plots / "internal_vs_external.png", dpi=150)
         plt.close(fig)
