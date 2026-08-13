@@ -86,7 +86,10 @@ def neighbor_scores(orig: np.ndarray, emb: np.ndarray, k: int | None) -> dict[st
             target = orig_rank[row, near_orig]
             mrre_missing[i] = (np.abs(emb_rank[row, near_orig] - target) / target).sum()
 
-    stress = float(np.sqrt(diff_squared_sum / orig_squared_sum))
+    # A node whose points are identical in feature space has no distances to
+    # preserve: the ratio is 0/0. Reporting `None` keeps the four neighbourhood
+    # measures, which are perfectly well defined there (ZADU returns nan/1.0).
+    stress = float(np.sqrt(diff_squared_sum / orig_squared_sum)) if orig_squared_sum > 0 else None
     if k is None:
         return {"stress": stress, "trustworthiness": None, "continuity": None, "mrre_false": None, "mrre_missing": None}
 

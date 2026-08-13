@@ -82,9 +82,7 @@ def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
     k = None
     if n >= MIN_PTS_FOR_NEIGHBORS:
         k = min(EVAL_K, (n - 1) // 2)
-        if k >= 1:
-            scores["k"] = k
-        else:
+        if k < 1:
             k = None
 
     try:
@@ -92,8 +90,13 @@ def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
         # `neighbor_metrics` reproduces ZADU's formulas without its N×N allocations,
         # which a root node of tens of thousands of points cannot afford.
         scores.update(neighbor_scores(X, emb, k))  # type: ignore[typeddict-item]
-    except Exception:
-        pass
+    except Exception as exc:
+        # `k` stays None so the node reads as unscored rather than advertising a
+        # neighbourhood size for five missing numbers. MemoryError lands here too —
+        # the one failure the chunked rewrite exists to prevent — so say so.
+        clog.warn(f"Scoring failed for a node of {n} points: {type(exc).__name__}: {exc}")
+    else:
+        scores["k"] = k
 
     if labels is not None:
         scores["cadi"] = _cadi(X, emb, labels)
