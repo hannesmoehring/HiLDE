@@ -221,6 +221,9 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
         "noise_fraction": 1.0 - covered / n_total,
         "n_leaves_scored": int(sum(1 for leaf in leaves if (leaf.get("scores") or {}).get("trustworthiness") is not None)),
         "n_leaves_predicated": int(sum(1 for s in leaf_sizes if s >= MIN_SELECTION)),
+        # Projections that failed outright, so the census says how much of the tree it saw.
+        "root_unprojected": root_emb is None,
+        "n_leaves_unprojected": int(sum(1 for leaf in leaves if leaf["embedding_original"] is None)),
     }
 
     # ---- per-leaf records: D3 predicates, C2 paired arm, D4 purity -------- #
@@ -228,6 +231,11 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
     c2_rows: list[dict] = []
     purity_rows: list[dict] = []
     root_emb = tree["embedding_original"]
+    # `_embed_original` returns None for a projection that failed (it used to fabricate an
+    # all-zeros embedding, which scores ~0.55 and would enter C2 as a real comparator).
+    # `root_emb[idx]` on None takes the whole build down, so the state is named, carried
+    # into c2_paired.csv per row, and counted in tree_shape.csv — never silently absorbed.
+    root_unprojected = root_emb is None
 
     for leaf_id, leaf in enumerate(leaves):
         idx = leaf["row_indices"]
@@ -277,15 +285,21 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
         # construction — a self-comparison, marked ineligible per the rule fixed in
         # the CONFIG block); the check restricts to n ≥ C2_MIN_N (k = 20 parity).
         X_leaf = X_all[idx]
-        s_leaf = _score_node(X_leaf, leaf["embedding_original"], None)
-        s_root = _score_node(X_leaf, root_emb[idx], None)
-        assert s_leaf["k"] == s_root["k"], f"k mismatch: leaf={s_leaf['k']} root={s_root['k']}"
+        leaf_emb = leaf["embedding_original"]
+        s_leaf = _score_node(X_leaf, leaf_emb, None)
+        s_root = _score_node(X_leaf, None if root_unprojected else root_emb[idx], None)
+        # k parity is the fairness invariant, and it is only defined when both arms scored;
+        # an unprojected arm reports k=None and is excluded below rather than asserted on.
+        if s_leaf["k"] is not None and s_root["k"] is not None:
+            assert s_leaf["k"] == s_root["k"], f"k mismatch: leaf={s_leaf['k']} root={s_root['k']}"
         c2_rows.append(
             {
                 **leaf_cell,
                 "k": s_leaf["k"],
                 "degenerate": degenerate,
-                "eligible": (n_leaf >= C2_MIN_N) and not degenerate,
+                "root_unprojected": root_unprojected,
+                "leaf_unprojected": leaf_emb is None,
+                "eligible": (n_leaf >= C2_MIN_N) and not degenerate and not root_unprojected and leaf_emb is not None,
                 "trust_leaf": s_leaf["trustworthiness"],
                 "trust_root": s_root["trustworthiness"],
                 "cont_leaf": s_leaf["continuity"],
@@ -439,10 +453,13 @@ def check_c2(c2: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
     per_ds = (
         elig.groupby("dataset")["delta_trust"].agg(median="median", win_rate=lambda s: float(np.mean(s > 0)), n="size").reset_index()
     )
+    # Pairs that were eligible on size but carry no Δ (an arm was never projected, or the
+    # scorer failed): a shrinking denominator is stated, not absorbed.
+    n_no_delta = int((c2["eligible"] & c2["delta_trust"].isna()).sum())
     line = {
         "check": "C2",
         "prediction": f"small positive median Δtrust (0 < median ≤ {C2_MEDIAN_BAND}), win rate in [{C2_WIN_RANGE[0]}, {C2_WIN_RANGE[1]}] (pooled, n≥{C2_MIN_N}, non-degenerate)",
-        "observed": f"median Δtrust {med:+.4f}, win rate {win:.2f}, n={d.size}, median Δcont {med_c:+.4f}, Wilcoxon p={p:.3g}",
+        "observed": f"median Δtrust {med:+.4f}, win rate {win:.2f}, n={d.size}, median Δcont {med_c:+.4f}, Wilcoxon p={p:.3g}, unscored pairs excluded={n_no_delta}",
         "verdict": "PASS" if ok else "FAIL",
     }
     return [line], per_ds
