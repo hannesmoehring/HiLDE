@@ -308,7 +308,21 @@ export function ExplorationPanel({
               feature — 784 of them on MNIST — which would otherwise run the page
               on for thousands of pixels below the plot. */}
           <div className="exploration__view" role="tabpanel">
-            {view === "characteristics" ? (
+            {/* `interactive` is tested before the tab, as it was before the tabs
+                existed: InteractiveFilters has exactly one render site, and on the
+                false arm of a tab test the filter UI is unreachable while the lasso
+                is already disabled — leaving an empty conjunction that selects the
+                whole node and a chart that is z=0 by construction. */}
+            {interactive ? (
+              <InteractiveFilters
+                zData={zData}
+                features={filterFeatures}
+                ranges={ranges}
+                onFeatures={setFilterFeatures}
+                onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
+                matched={selected.length}
+              />
+            ) : view === "characteristics" ? (
               selected.length === 0 ? (
                 <p className="hint">
                   Use lasso or box selection in the plot to capture points.
@@ -324,15 +338,6 @@ export function ExplorationPanel({
                   nonFeatureOnly={charNonFeatureOnly}
                 />
               )
-            ) : interactive ? (
-              <InteractiveFilters
-                zData={zData}
-                features={filterFeatures}
-                ranges={ranges}
-                onFeatures={setFilterFeatures}
-                onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
-                matched={selected.length}
-              />
             ) : selected.length === 0 ? (
               <p className="hint">
                 Use lasso or box selection in the plot to capture points.
