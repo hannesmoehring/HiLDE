@@ -68,6 +68,22 @@ WORST = (-1.0, 0.0)
 # was one deterministic comparison reported as 5-vs-5. Fixed offsets keep the run
 # reproducible; the validation arm gets a disjoint block so the preset is never accepted on
 # a seed it was selected on.
+#
+# Necessary, and measured NOT sufficient — read this before citing a select-vs-test result:
+#   * O2 (`tnc_mean`) does vary with the seed whenever the view method is stochastic
+#     (Iris, two seeds: UMAP 0.96589 vs 0.96519, MDS 0.97577 vs 0.98169).
+#   * The pre-registered baseline B is the app-effective default, i.e. `method = "PCA"` with
+#     `hclust_umap_n_components = n_features` — which skips the pre-clustering UMAP entirely
+#     (`preclustering_skipped` is True for every baseline build). PCA takes no random_state,
+#     so the BASELINE arm has no stochastic step to seed and stays deterministic: on Iris
+#     both seeds give tnc_mean 0.9790996059492215 exactly.
+#   * O1 (`dbcv_leaf`) is scored on the leaf partition in the original space. The partition
+#     comes from HDBSCAN on that same deterministic space, so DBCV does not move with the
+#     seed under ANY view method (Iris: 0.47812381882148125 for PCA, UMAP and MDS alike).
+# So A1's separation still compares a deterministic baseline against the preset; what the
+# preset changes there is the clustering path (layers, min_cluster_size, components), not
+# the seed. Widening the baseline is a change to a pre-registered design and is deliberately
+# not made here.
 BASELINE_SEEDS = [SEED + i for i in range(N_BASELINE_BUILDS)]
 VALIDATION_SEEDS = [SEED + 100 + i for i in range(N_VALIDATION_BUILDS)]
 
