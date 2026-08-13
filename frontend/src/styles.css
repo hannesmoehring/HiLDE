@@ -328,6 +328,41 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   padding: 11px 16px 14px;
 }
 
+/* Characteristics / predicate tabs. Underline-only: the active weight stays put so
+   switching never nudges the other tab sideways. */
+.tabs {
+  display: flex;
+  margin-top: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* sit the underline on the rule, not above it */
+  padding: 5px 11px;
+  font-size: 12.5px;
+  color: var(--faint);
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.tabs button:hover { color: var(--ink-2); border-bottom-color: var(--border-strong); }
+.tabs button.is-active { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* One fixed-height viewport for both tabs, so switching never resizes the layer
+   row. Sized just past the characteristics chart's tallest form (320px SVG + title
+   + the legend it grows when non-feature columns are in play) — that view then
+   never scrolls, and the predicate bands scroll rather than push. Sits close to
+   ClusterScatter's 384px, so the two columns stay balanced. */
+.layer__view {
+  height: 396px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.layer__predicate { padding: 4px; }
+.layer__predicate-title { font-size: 14px; font-weight: 600; padding: 2px 0 4px; }
+.layer__predicate .hint { display: block; margin: 0 0 8px; }
+
 .exploration__cols {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);

@@ -49,9 +49,21 @@ def fit_dimensionality_reducer(
         case "pca":
             return _pca(X, n_components=n_components)
         case "t-sne":
-            return _tsne(X, n_components=n_components, perplexity=config["tsne_perplexity"], learning_rate=config["tsne_learning_rate"])
+            return _tsne(
+                X,
+                n_components=n_components,
+                perplexity=config["tsne_perplexity"],
+                learning_rate=config["tsne_learning_rate"],
+                random_state=config["tsne_random_state"],
+            )
         case "umap":
-            return _umap(X, n_components=n_components, n_neighbors=config["umap_n_neighbors"], min_dist=config["umap_min_dist"])
+            return _umap(
+                X,
+                n_components=n_components,
+                n_neighbors=config["umap_n_neighbors"],
+                min_dist=config["umap_min_dist"],
+                random_state=config["umap_random_state"],
+            )
         case "mds":
             return _mds(
                 X,

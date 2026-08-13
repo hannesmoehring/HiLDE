@@ -21,7 +21,11 @@ const TRACK = theme.track;
 const GRID = theme.grid;
 
 // Layout constants.
-const LEFT = 129; // label gutter — scales with the tick font, or long names clip
+const LABEL_FONT = 11.5;
+const CHAR_W = LABEL_FONT * 0.6; // mean advance — the 600 weight clause labels set the width
+const GUTTER_PAD = 10; // breathing room between the longest label and the track
+const LEFT_MIN = 44;
+const LEFT_MAX = 160; // past this, long names clip rather than eat the whole width
 const RIGHT = 24;
 const TOP = 8;
 const BOTTOM = 26; // x-axis (0% / 50% / 100%)
@@ -48,11 +52,17 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
     () => new Map(trimmed.map((r) => [r.feature, r])),
     [trimmed],
   );
+  // Fit the gutter to the names actually on screen. Fixed at the widest case it
+  // stranded a third of a narrow column on short names like `px_54`.
+  const left = useMemo(() => {
+    const longest = rows.reduce((m, r) => Math.max(m, r.feature.length), 0);
+    return clamp(Math.ceil(longest * CHAR_W) + GUTTER_PAD, LEFT_MIN, LEFT_MAX);
+  }, [rows]);
 
   if (full.length === 0) return null;
 
   const width = size.width > 0 ? size.width : 680;
-  const trackWidth = Math.max(width - LEFT - RIGHT, 10);
+  const trackWidth = Math.max(width - left - RIGHT, 10);
   const height = TOP + rows.length * PITCH + BOTTOM;
 
   const handleMove = (e: ReactMouseEvent<SVGRectElement>, row: PredicateRow) => {
@@ -92,7 +102,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
 
       <svg width={width} height={height} role="img" aria-label="Predicate feature range bands">
         {/* Gridlines at 0% / 50% / 100% of every feature's normalized range. */}
-        <g transform={`translate(${LEFT},${TOP})`}>
+        <g transform={`translate(${left},${TOP})`}>
           {[0, 0.5, 1].map((f) => (
             <line
               key={f}
@@ -162,11 +172,11 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         {rows.map((row, i) => (
           <text
             key={row.feature}
-            x={LEFT - 8}
+            x={left - 8}
             y={TOP + i * PITCH + PITCH / 2}
             textAnchor="end"
             dominantBaseline="central"
-            fontSize={11.5}
+            fontSize={LABEL_FONT}
             fill={row.in_predicate ? TEXT : MUTED}
             fontWeight={row.in_predicate ? 600 : 400}
           >
@@ -175,7 +185,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         ))}
 
         {/* X-axis ticks */}
-        <g transform={`translate(${LEFT},${TOP + rows.length * PITCH + 6})`}>
+        <g transform={`translate(${left},${TOP + rows.length * PITCH + 6})`}>
           {[0, 0.5, 1].map((f, idx) => (
             <text
               key={f}

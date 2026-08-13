@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
-import { CharacteristicsBar } from "./charts/CharacteristicsBar";
 import { ClusterScatter } from "./charts/ClusterScatter";
-import { ScoreTiles } from "./charts/ScoreTiles";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
+import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { getNodeAtPath } from "./treeNav";
@@ -331,16 +330,19 @@ function Navigation(props: {
           </div>
           <div className="layer__side">
             {child ? (
-              <>
-                <ScoreTiles scores={child.scores} title={`C${selectedChild} — DR quality`} />
-                <CharacteristicsBar
-                  data={child.rel_characteristics}
-                  title={`C${selectedChild} characteristics`}
-                  nonFeatureOnly={charNonFeatureOnly}
-                />
-              </>
+              <LayerSide
+                parent={node}
+                child={child}
+                childIndex={selectedChild!}
+                dataset={dataset}
+                featureCols={featureCols}
+                config={config}
+                charNonFeatureOnly={charNonFeatureOnly}
+              />
             ) : (
-              <p className="hint">Select a cluster to see its DR quality and characteristics.</p>
+              <p className="hint">
+                Select a cluster to see its DR quality, characteristics and predicate.
+              </p>
             )}
           </div>
         </div>
