@@ -398,8 +398,19 @@ def run_cell(rho: float, nesting: str, seed: int) -> tuple[list[dict], list[dict
 
 
 def build_cells() -> list[tuple[float, str, int]]:
-    """Enumerate (rho, nesting, seed) grid cells - all independent."""
-    return [(rho, nesting, seed) for rho in RHO_GRID for nesting in NESTINGS for seed in SEEDS]
+    """Enumerate (rho, nesting, seed) grid cells - all independent.
+
+    ``run_cell`` forces ``eff_rho = 1`` for the non_nested control (design SS3), so
+    enumerating that arm across the whole RHO_GRID recomputes one condition len(RHO_GRID)
+    times. The duplicates are not free: H2b then averages len(RHO_GRID) copies of a single
+    control condition against that many *distinct* nested conditions. The control is run at
+    the first rho only.
+    """
+    cells: list[tuple[float, str, int]] = []
+    for nesting in NESTINGS:
+        rhos = RHO_GRID if nesting == "nested" else RHO_GRID[:1]
+        cells.extend((rho, nesting, seed) for rho in rhos for seed in SEEDS)
+    return cells
 
 
 def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -441,29 +452,60 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
 # --------------------------------------------------------------------------- #
 
 
+def drop_duplicate_control_cells(rec: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Collapse the non_nested control to the one rho it actually realises.
+
+    ``run_cell`` forces ``eff_rho = 1`` for that arm, so its RHO_GRID levels are repeats of
+    a single condition. ``build_cells`` no longer generates them, but a recovery CSV from
+    before that change still carries them, and any aggregate over ``nesting`` would weight
+    the control by len(RHO_GRID). Returns (frame, rows dropped) so the caller can say so.
+    """
+    ctrl = rec["nesting"] == "non_nested"
+    if not ctrl.any():
+        return rec, 0
+    keep_rho = rec.loc[ctrl, "rho"].min()
+    dup = ctrl & (rec["rho"] != keep_rho)
+    return rec.loc[~dup].copy(), int(dup.sum())
+
+
 def summarise(rec: pd.DataFrame) -> pd.DataFrame:
     """Per (rho, nesting): paired hier-vs-flat within-group ARI delta across seeds (median,
-    win rate, Wilcoxon p, rank-biserial) plus oracle-relative recovery. The unit is a seed."""
+    win rate, Wilcoxon p, rank-biserial) plus oracle-relative recovery. The unit is a seed.
+
+    Every aggregate in a row comes from the *same* dropna'd paired sample. They did not:
+    hier_mean / flat_mean / oracle came from the undropped pivot while median_delta came
+    from the pairs, so a seed whose hierarchical arm failed to score still moved the means -
+    and those drops correlate with the condition being hard, i.e. exactly with the rows the
+    means are used to compare. ``n_seeds`` vs ``n_pairs`` exposes the attrition.
+    """
+    rec, n_dropped = drop_duplicate_control_cells(rec)
+    if n_dropped:
+        console.print(f"[yellow]Dropped {n_dropped} duplicate non_nested rows[/] (eff_rho is forced to 1; only one rho level is a distinct control).")
     rows: list[dict] = []
     for (rho, nesting), sub in rec.groupby(["rho", "nesting"]):
         piv = sub.pivot_table(index="seed", columns="condition", values="within_g_ari")
         if "hierarchical" not in piv or "flat_full" not in piv:
             continue
         pair = piv[["hierarchical", "flat_full"]].dropna()
+        if pair.empty:
+            continue
         d = (pair["hierarchical"] - pair["flat_full"]).to_numpy()
         nz = d[d != 0]
         p = float(wilcoxon(nz).pvalue) if nz.size >= 1 and not np.allclose(d, 0) else float("nan")
         rbc = float((np.sum(d > 0) - np.sum(d < 0)) / nz.size) if nz.size else float("nan")
-        orc = float(piv["oracle_conditional"].mean()) if "oracle_conditional" in piv else float("nan")
-        hier_mean = float(piv["hierarchical"].mean())
+        oracle = piv["oracle_conditional"].reindex(pair.index) if "oracle_conditional" in piv else pd.Series(dtype=float)
+        orc = float(oracle.mean()) if oracle.notna().any() else float("nan")
+        hier_mean = float(pair["hierarchical"].mean())
         rows.append(
             {
                 "rho": rho,
                 "nesting": nesting,
                 "metric": "within_g_ari",
+                "n_seeds": int(piv.shape[0]),
                 "n_pairs": int(d.size),
+                "n_oracle": int(oracle.notna().sum()),
                 "hier_mean": hier_mean,
-                "flat_mean": float(piv["flat_full"].mean()),
+                "flat_mean": float(pair["flat_full"].mean()),
                 "median_delta": float(np.median(d)),
                 "win_rate": float(np.mean(d > 0)),
                 "wilcoxon_p": p,
@@ -570,12 +612,14 @@ def print_summary(rec: pd.DataFrame, summary: pd.DataFrame) -> None:
 
     # H2b: the hier - flat gap should be clearly positive for nested and ~zero for non_nested.
     if not summary.empty:
-        gap = summary.groupby("nesting")["median_delta"].agg(["mean", "median"]).reset_index()
+        gap = summary.groupby("nesting")["median_delta"].agg(["mean", "median", "count"]).reset_index()
         table = Table(title="H2b - hier vs flat within-group ARI gap (should be +ve nested, ~0 non_nested)")
-        for col in ["nesting", "mean_gap", "median_gap"]:
+        # n_rho makes the asymmetry explicit: the nested arm spans the rho sweep, the control
+        # is a single condition (eff_rho is forced to 1), not len(RHO_GRID) copies of one.
+        for col in ["nesting", "mean_gap", "median_gap", "n_rho"]:
             table.add_column(col, justify="right" if col != "nesting" else "left")
         for _, r in gap.iterrows():
-            table.add_row(r["nesting"], f"{r['mean']:+.3f}", f"{r['median']:+.3f}")
+            table.add_row(r["nesting"], f"{r['mean']:+.3f}", f"{r['median']:+.3f}", str(int(r["count"])))
         console.print(table)
 
 
