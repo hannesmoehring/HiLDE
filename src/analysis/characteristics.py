@@ -31,7 +31,9 @@ def compute_cluster_characteristics(
         extra_rows = pd.DataFrame(
             {
                 "z_mean": (c_mean - g_mean) / g_std,
-                "z_std": df.loc[in_cluster, extra_order].std(),
+                # /g_std, like z_mean above: the chart draws z_mean ± z_std on one
+                # z-score axis, and a raw-unit std there sets the whole y-domain.
+                "z_std": df.loc[in_cluster, extra_order].std(ddof=0) / g_std,
                 "raw_mean": c_mean,
                 "is_feature": False,
             },
