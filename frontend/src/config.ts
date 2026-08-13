@@ -1,6 +1,10 @@
 import type { AnalysisConfig } from "./types";
 
-// Mirrors the defaults in src/ui/state.py::init_state (the ones the config panel exposes).
+// Mirrors the defaults in src/config_defaults.py::default_config (the ones the config
+// panel exposes), except for `method`: the app opens on UMAP, while the Python default
+// stays PCA because src_research/benchmark_workflow.py builds "with shipped defaults"
+// and reads its DR method straight off it. Every request carries `method`, so this is
+// the value the app actually runs on.
 export const DEFAULT_CONFIG: AnalysisConfig = {
   hclust_normalize: true,
   hierarchical_layers: 1,
@@ -8,7 +12,7 @@ export const DEFAULT_CONFIG: AnalysisConfig = {
   hclust_min_samples: 5,
   hclust_min_cluster_size: 25,
   normalize: true,
-  method: "PCA",
+  method: "UMAP",
   pca_components: 4,
   tsne_perplexity: 30,
   tsne_learning_rate: 200,
