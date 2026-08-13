@@ -78,7 +78,11 @@ def fit_dimensionality_reducer(
 
 
 def _pca(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult:
-    pca = PCA(n_components=n_components, **kwargs)
+    # svd_solver="auto" picks the *randomized* solver on wide or small matrices (e.g.
+    # Olivetti's 400x4096 root), which draws from the unseeded process-global RNG.
+    # covariance_eigh consults no RNG at all — and is what "auto" already chooses for
+    # the tall/narrow shapes, so those embeddings are unchanged.
+    pca = PCA(n_components=n_components, svd_solver="covariance_eigh", **kwargs)
     embedding = pca.fit_transform(X)
     return ReductionResult(
         embedding=embedding,
