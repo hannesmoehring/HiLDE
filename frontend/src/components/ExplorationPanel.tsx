@@ -362,23 +362,36 @@ export function ExplorationPanel({
                     This cluster (local)
                   </label>
                 </div>
-                {predicate?.summary && (
-                  <div className="predicate-summary">
-                    <span>
-                      Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
-                    </span>
-                    <span>
-                      Features used: {predicate.summary.n_features_used} /{" "}
-                      {predicate.summary.n_features_total}
-                    </span>
-                    <span>Selected: {predicate.summary.n_selected}</span>
-                  </div>
-                )}
-                {predicate && (
-                  <PredicateBands
-                    full={predicate.full}
-                    trimmed={predicate.trimmed}
-                  />
+                {/* An empty conjunction matches everything, so its F1 is reported
+                    as 1.00 over 0 clauses — "Predicate F1: 1.00 · Features used:
+                    0 / 2" reads as a perfect explanation of nothing. LayerSide
+                    already says so instead of drawing it. */}
+                {predicate?.summary && predicate.summary.n_features_used === 0 ? (
+                  <p className="hint">
+                    No feature range separates this selection from the rest of the{" "}
+                    {scope === "global" ? "dataset" : "cluster"}.
+                  </p>
+                ) : (
+                  <>
+                    {predicate?.summary && (
+                      <div className="predicate-summary">
+                        <span>
+                          Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
+                        </span>
+                        <span>
+                          Features used: {predicate.summary.n_features_used} /{" "}
+                          {predicate.summary.n_features_total}
+                        </span>
+                        <span>Selected: {predicate.summary.n_selected}</span>
+                      </div>
+                    )}
+                    {predicate && (
+                      <PredicateBands
+                        full={predicate.full}
+                        trimmed={predicate.trimmed}
+                      />
+                    )}
+                  </>
                 )}
               </>
             )}
