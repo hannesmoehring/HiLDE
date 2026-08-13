@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,25 @@ app.add_middleware(
 )
 
 # Cache serialized trees by request signature; tree build (UMAP+HDBSCAN+ZADU) is expensive.
-_tree_cache: dict[str, dict[str, Any]] = {}
+# Bounded LRU: a payload is ~8-10 MB on the smallest realistic dataset, and a
+# hyperparameter sweep visits a new key every build, so an unbounded dict grows
+# monotonically into the container's memory limit.
+_TREE_CACHE_MAX = 8
+_tree_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+
+def _cache_put(key: str, payload: dict[str, Any]) -> None:
+    _tree_cache[key] = payload
+    _tree_cache.move_to_end(key)
+    while len(_tree_cache) > _TREE_CACHE_MAX:
+        _tree_cache.popitem(last=False)
+
+
+def _cache_get(key: str) -> dict[str, Any] | None:
+    payload = _tree_cache.get(key)
+    if payload is not None:
+        _tree_cache.move_to_end(key)
+    return payload
 
 
 def _merge_config(partial: dict[str, Any]) -> dict[str, Any]:
@@ -145,11 +164,11 @@ def dataset_image(key: str, row_id: int) -> dict[str, Any]:
 
 
 def _cached_payload(key: str) -> dict[str, Any] | None:
-    payload = _tree_cache.get(key)
+    payload = _cache_get(key)
     if payload is None and run_cache.is_hosting():
         payload = run_cache.load(key)
         if payload is not None:
-            _tree_cache[key] = payload
+            _cache_put(key, payload)
     return payload
 
 
@@ -169,7 +188,7 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
-    _tree_cache[key] = payload
+    _cache_put(key, payload)
     if run_cache.is_hosting():
         run_cache.store(key, payload)  # a forced rerun replaces the stored entry
 
@@ -179,7 +198,7 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
         return {"status": "running", "job_id": job.id}
     if job.status == "error":
         return {"status": "error", "job_id": job.id, "detail": job.detail}
-    payload = _tree_cache.get(job.key)
+    payload = _cache_get(job.key)
     if payload is None:  # only if the entry was evicted between finishing and polling
         return {"status": "error", "job_id": job.id, "detail": "Result no longer available — rerun."}
     return {"status": "done", "job_id": job.id, **payload, "cached": False}
