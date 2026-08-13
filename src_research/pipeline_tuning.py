@@ -477,7 +477,9 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
 
 
 def _vals(rows: list[dict[str, Any]], key: str) -> list[float]:
-    return [r[key] for r in rows if r.get(key) is not None]
+    # `pd.isna` rather than `is not None`: a record rehydrated from CSV (pipeline_tuning_b2)
+    # carries NaN where a live record carries None, and one NaN NaNs the whole mean.
+    return [r[key] for r in rows if r.get(key) is not None and not pd.isna(r[key])]
 
 
 def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) -> dict[str, Any]:
@@ -491,7 +493,9 @@ def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) 
     b_noise, p_noise = _vals(test, "noise_frac"), _vals(pre, "noise_frac")
     b_ari, p_ari = _vals(test, "ari"), _vals(pre, "ari")
 
-    n_ok = sum(1 for m in pre if not m.get("exception"))
+    # A build with no exception records None live and NaN once round-tripped through CSV;
+    # `not nan` is False, so the plain truth test failed every rehydrated build.
+    n_ok = sum(1 for m in pre if pd.isna(m.get("exception")))
     a4 = n_ok == N_VALIDATION_BUILDS
     a1 = bool(p_dbcv and b_dbcv and min(p_dbcv) > max(b_dbcv))
     a2 = bool(p_tnc and b_tnc and float(np.mean(p_tnc)) >= float(np.mean(b_tnc)) - 0.01)
