@@ -62,12 +62,21 @@ for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress
         f"{'higher=better' if declared else 'lower=better':>16}   {'ok' if ok else '*** INVERTED ***'}"
     )
 
+inverted = [m for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress")
+            if (float(g[m]) > float(b[m])) != HIGHER_IS_BETTER[m]]
+
 print()
 print("A good embedding scores HIGHER than a bad one on both MRRE terms, so they are")
-print("higher-is-better -- but HIGHER_IS_BETTER declares them lower-is-better.")
-print()
-print("In h1a_summary.csv this flips win_rate and rank_biserial only (median_delta is")
-print("computed without HIGHER_IS_BETTER), which is why the shipped summary contains rows")
-print("whose median_delta and win_rate disagree in sign, e.g.:")
+print("higher-is-better. HIGHER_IS_BETTER used to declare them lower-is-better, which flipped")
+print("win_rate and rank_biserial in h1a_summary.csv while median_delta (computed without the")
+print("map) stayed right -- which is why the SHIPPED summaries contain rows whose two effect")
+print("sizes disagree in sign, e.g.:")
 print("  Breast cancer (Low) PCA hier_leaf mrre_false   median_delta=+0.094339  win_rate=0.023  rbc=-0.955")
 print("  Breast cancer (Low) PCA hier_leaf mrre_missing median_delta=+0.072784  win_rate=0.000  rbc=-1.000")
+print()
+if inverted:
+    print(f"*** STILL INVERTED: {inverted} -- B2 is not (or no longer) applied. ***")
+else:
+    print("B2 applied: every declared direction now matches the measured one, so a re-derived")
+    print("summary agrees with itself. The shipped CSVs above are corrected by")
+    print("`python -m src_research.rederive` (see outputs/experiments/*/rederived_*/DELTAS.md).")

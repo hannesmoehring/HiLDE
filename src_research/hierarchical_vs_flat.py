@@ -34,8 +34,19 @@ Reproducibility: ``reduce_dimensionality`` threads ``config["*_random_state"]`` 
 t-SNE / MDS, so ``run_cell`` writes the replicate id into those three keys - each replicate
 draws a *different but reproducible* embedding. The subsample is seeded (fixed across runs),
 so the ``SEEDS`` loop functions as *replicates* that capture embedding variance - the unit of
-the paired H1a test is a (region x seed) pair. PCA replicates are identical (deterministic),
-so PCA rows carry no replicate variance by construction.
+the paired H1a test is a (region x seed) pair.
+
+Which methods actually vary across replicates (measured, ``review_repro/05``):
+    * UMAP, MDS - yes, the seed reaches the embedding.
+    * PCA - no. ``_pca`` takes no ``random_state`` and is deterministic on these shapes.
+    * t-SNE - **no**, even though the seed is threaded: ``_tsne`` passes no ``init`` and
+      sklearn's default is ``init="pca"``, under which the embedding never consults
+      ``random_state`` (verified on sklearn 1.9: two ``random_state`` values give
+      max|diff| = 0.0; with ``init="random"``, 18.2).
+So PCA and t-SNE rows carry no replicate variance, and their ``SEEDS`` levels are repeats
+rather than replicates. That is a property of ``src/analysis/dim_reducer`` (frozen), not of
+this harness; report those two arms as single-draw, or read only their UMAP/MDS siblings as
+replicated.
 
 Outputs (written to ``outputs/experiments/<timestamp>/``):
     * h1a_regions.csv   - one row per (dataset, method, seed, region, condition, region_def).
