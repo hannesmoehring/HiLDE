@@ -62,6 +62,14 @@ MDS_MAX_N = 2000  # MDS offered as a view method only below this n
 N_BASELINE_BUILDS = 10  # 1-5 select, 6-10 test
 N_VALIDATION_BUILDS = 5
 WORST = (-1.0, 0.0)
+# Distinct DR seeds per repeated build. `default_config()` pins all three random_state keys
+# to 42, so without these every baseline build was byte-identical: the select half and the
+# test half were the same number, and A1's "complete separation across 5 held-out builds"
+# was one deterministic comparison reported as 5-vs-5. Fixed offsets keep the run
+# reproducible; the validation arm gets a disjoint block so the preset is never accepted on
+# a seed it was selected on.
+BASELINE_SEEDS = [SEED + i for i in range(N_BASELINE_BUILDS)]
+VALIDATION_SEEDS = [SEED + 100 + i for i in range(N_VALIDATION_BUILDS)]
 
 OUTPUT_ROOT = Path("outputs/experiments")
 
@@ -80,6 +88,12 @@ _NON_FEATURE_COLS = {"row_id"}
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in _NON_FEATURE_COLS and not str(c).startswith("target_")]
+
+
+def seed_overrides(seed: int) -> dict[str, Any]:
+    """The config keys `fit_dimensionality_reducer` reads for its RNG, all pinned to one
+    replicate seed. Every repeated build must vary these or it is not a replicate."""
+    return {"umap_random_state": seed, "tsne_random_state": seed, "mds_random_state": seed}
 
 
 def ground_truth_labels(df: pd.DataFrame) -> np.ndarray | None:
@@ -406,8 +420,8 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
 
     # ---- baseline: 10 builds, 1-5 select / 6-10 test -----------------------
     for i in range(N_BASELINE_BUILDS):
-        m = build(dataset, {})
-        m |= {"dataset": dataset, "arm": "baseline", "build_index": i, "split": "select" if i < 5 else "test"}
+        m = build(dataset, seed_overrides(BASELINE_SEEDS[i]))
+        m |= {"dataset": dataset, "arm": "baseline", "build_index": i, "dr_seed": BASELINE_SEEDS[i], "split": "select" if i < 5 else "test"}
         run.baseline.append(m)
         _log(f"  baseline {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
 
@@ -420,6 +434,9 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
     study = optuna.create_study(directions=["maximize", "maximize"], sampler=sampler)
 
     def objective(trial: optuna.Trial) -> tuple[float, float]:
+        # Trials are not replicates - each one is a different config - so they keep the
+        # pinned default DR seed and the search stays reproducible. Only the repeated
+        # baseline / validation builds vary it.
         cfg = suggest_config(trial, n, d)
         m = build(dataset, cfg)
         m |= {"dataset": dataset, "arm": "trial", "trial": trial.number, **{f"p_{k}": v for k, v in cfg.items()}}
@@ -450,8 +467,8 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
     # ---- validation --------------------------------------------------------
     cfg = {k[2:]: v for k, v in run.candidate.items() if k.startswith("p_")}
     for i in range(N_VALIDATION_BUILDS):
-        m = build(dataset, cfg)
-        m |= {"dataset": dataset, "arm": "preset", "build_index": i}
+        m = build(dataset, cfg | seed_overrides(VALIDATION_SEEDS[i]))
+        m |= {"dataset": dataset, "arm": "preset", "build_index": i, "dr_seed": VALIDATION_SEEDS[i]}
         run.validation.append(m)
         _log(f"  preset {i + 1}/{N_VALIDATION_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
 
