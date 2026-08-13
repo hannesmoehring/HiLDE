@@ -7,7 +7,8 @@ completed experiments. Unlike the other harnesses this tests no hypothesis; ever
 reporting and aggregation rule is fixed in the design doc *before* the run, and the
 operationalisation of each pass/fail verdict is fixed in this file before any result
 was seen. If a check fails, the failure is the finding — degenerate builds are
-reported, never re-rolled (re-rolling unseeded UMAP is silent p-hacking, design §8).
+reported, never re-rolled (re-rolling a build until the tree looks better is silent
+p-hacking, design §8).
 
 Readouts (design §1):
     D1 hierarchy shape (depth, leaves, sizes, noise fraction — first-class),
@@ -70,7 +71,7 @@ from src_research.predicate_stability import admitted_mask, build_predicate
 # --------------------------------------------------------------------------- #
 
 DATASETS_TO_RUN = ["Wine quality (Low)", "Breast cancer (Low)", "Digits (Low)"]  # design §3
-N_BUILDS = 5  # unseeded UMAP → replicates (SEEDS_WINE convention)
+N_BUILDS = 5  # replicates; the build id is threaded into the DR seed (SEEDS_WINE convention)
 HIER_LAYERS_CAP = 4  # the single named deviation from shipped defaults (design §4)
 T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the thesis; no new levels
 PREDICATE_METHODS = ["threshold", "db"]  # dense (C1) + sparse (C4 / table example)
@@ -151,7 +152,7 @@ def walk_nodes(node: AnalysisObject, depth: int = 0):
 
 
 # --------------------------------------------------------------------------- #
-# One build = one grid cell (dataset × build). Unseeded UMAP → stochastic.     #
+# One build = one grid cell (dataset × build); the build id seeds the reducer.  #
 # --------------------------------------------------------------------------- #
 
 
@@ -162,6 +163,11 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
     cfg: Config = default_config()
     cfg["dataset_choice"] = dataset  # display-only (console banner); no algorithmic effect
     cfg["hierarchical_layers"] = HIER_LAYERS_CAP  # the single named deviation (design §4)
+    # `default_config()` pins all three random_state keys to 42, so without this every one
+    # of the N_BUILDS "replicates" is byte-identical and C2's Wilcoxon receives each leaf
+    # N_BUILDS times. (The shipped 20260728_185329 run predates DR seeding, so its builds
+    # are genuine replicates; a rerun without this line would not be.)
+    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = build
 
     df, feature_cols, y = data
     n_total = len(df)
