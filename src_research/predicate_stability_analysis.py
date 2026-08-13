@@ -123,6 +123,11 @@ def stability_summary(records: pd.DataFrame) -> pd.DataFrame:
                 pair = wide[[t, STRICT_T]].dropna()
                 d = (pair[t] - pair[STRICT_T]).to_numpy()
                 improved = d > 0 if direction == "up" else d < 0
+                # The Wilcoxon runs on (seed x selection) pairs, but the *selection* is the
+                # unit of analysis, and on wine the seeds are rebuilds of one dataset - the
+                # same leaves five times over. Carry both counts so no downstream table can
+                # quote the larger one under the smaller one's name.
+                seeds, sel_ids = (pair.index.get_level_values(lvl) for lvl in ("seed", "sel_id"))
                 group_rows.append(
                     {
                         "arm": arm,
@@ -132,6 +137,8 @@ def stability_summary(records: pd.DataFrame) -> pd.DataFrame:
                         "metric": metric,
                         "t": t,
                         "n_pairs": int(d.size),
+                        "n_selections": int(pd.unique(sel_ids).size),
+                        "n_seeds": int(pd.unique(seeds).size),
                         "median_delta": float(np.median(d)) if d.size else float("nan"),
                         "win_rate": float(np.mean(improved)) if d.size else float("nan"),
                         "wilcoxon_p": _wilcoxon_p(d),
@@ -170,7 +177,11 @@ def verdicts(summary: pd.DataFrame) -> pd.DataFrame:
                 "delta": delta,
                 "t_star": t_star,
                 "h2_supported": bool(not ok.empty),
-                "n_selections": int(sub["n_pairs"].max()),
+                # These were one column: `n_selections` reported `sub["n_pairs"].max()`,
+                # i.e. seeds x selections, overstating the wine sample fivefold.
+                "n_pairs": int(sub["n_pairs"].max()),
+                "n_selections": int(sub["n_selections"].max()),
+                "n_seeds": int(sub["n_seeds"].max()),
                 "primary": bool(sub["primary"].any()),
             }
         )
@@ -384,10 +395,13 @@ def print_report(results: dict[str, pd.DataFrame | None], console: Console) -> N
     if not verd.empty:
         vp = verd[verd["primary"]]
         for _, r in vp.iterrows():
+            # Both counts, at the point of the claim: the test used n_pairs observations,
+            # but they came from only n_selections distinct selections.
+            n = f"[dim](n_selections={r['n_selections']} x n_seeds={r['n_seeds']} = {r['n_pairs']} pairs)[/]"
             if r["h2_supported"]:
-                console.print(f"  [bold green]H2 SUPPORTED[/] on [bold]{r['arm']}[/]: operating point t* = {r['t_star']:g}")
+                console.print(f"  [bold green]H2 SUPPORTED[/] on [bold]{r['arm']}[/]: operating point t* = {r['t_star']:g} {n}")
             else:
-                console.print(f"  [bold red]H2 REFUTED[/] on [bold]{r['arm']}[/]: no t < 1.0 meets the joint criterion")
+                console.print(f"  [bold red]H2 REFUTED[/] on [bold]{r['arm']}[/]: no t < 1.0 meets the joint criterion {n}")
         console.print()
 
     # H2c ablation (threshold method at the headline delta).
