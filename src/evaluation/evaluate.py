@@ -48,8 +48,11 @@ def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[st
     if scaler is not None:
         X = scaler.transform(X)
 
+    # `None` = the node was never projected (too small, or the reducer raised). There
+    # are no coordinates to score, and scoring fabricated ones publishes DR quality
+    # for a projection that does not exist.
     emb = node["embedding_original"]
-    if emb.shape[0] < MIN_PTS_FOR_EMBED or emb.shape[1] < MIN_PTS_FOR_EMBED:
+    if emb is None or emb.shape[0] < MIN_PTS_FOR_EMBED or emb.shape[1] < MIN_PTS_FOR_EMBED:
         emb = None
 
     if "is_leaf" in node:

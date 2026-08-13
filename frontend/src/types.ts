@@ -27,7 +27,7 @@ export interface TreeNode {
   depth: number;
   n_points: number;
   row_indices: number[]; // indices into the source dataframe
-  embedding_original: [number | null, number | null][]; // Nx2 projection
+  embedding_original: [number | null, number | null][] | null; // Nx2 projection; null = not projectable
   embedding_original_variance: (number | null)[] | null; // PCA only
   rel_position: [number | null, number | null] | null; // MDS centroid in sibling layout
   rel_characteristics: Characteristic[];

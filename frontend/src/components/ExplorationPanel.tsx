@@ -386,7 +386,7 @@ export function ExplorationPanel({
 
         <div className="exploration__plot">
           <ProjectionScatter
-            points={node.embedding_original}
+            points={node.embedding_original ?? []}
             rowIds={node.row_indices}
             method={config.method}
             interactiveGroup={interactive ? interactiveGroup : null}

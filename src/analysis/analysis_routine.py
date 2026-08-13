@@ -45,7 +45,7 @@ class HierarchyObject(TypedDict):
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     cluster_points: np.ndarray
-    embedding_original: np.ndarray
+    embedding_original: np.ndarray | None  # None = this node could not be projected
     embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     outlier_scores: np.ndarray | None
@@ -60,7 +60,7 @@ class ExplorationObject(TypedDict):  # add embedded points
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     exploration_points: np.ndarray
-    embedding_original: np.ndarray
+    embedding_original: np.ndarray | None  # None = this node could not be projected
     embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     scores: NotRequired[NodeScores]
@@ -70,18 +70,21 @@ class ExplorationObject(TypedDict):  # add embedded points
 type AnalysisObject = HierarchyObject | ExplorationObject
 
 
-def _embed_original(X_orig: np.ndarray, config: Config) -> tuple[np.ndarray, np.ndarray | None]:
+def _embed_original(X_orig: np.ndarray, config: Config) -> tuple[np.ndarray | None, np.ndarray | None]:
     """2D projection of a node's original (normalized) features, plus PCA explained
-    variance when applicable. Falls back to a zero embedding for nodes too small to
-    project so every point still has 2D coordinates for the scatter.
+    variance when applicable. Returns `None` when the node cannot be projected — too
+    small, or the reducer raised. A zero embedding was fabricated here before, and an
+    (n, 2) array of origins passes every downstream shape check, so a failed
+    projection was scored and published as a real DR-quality result.
     """
     n = X_orig.shape[0]
     if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:
-        return np.zeros((n, 2), dtype=float), None
+        return None, None
     try:
         result = fit_dimensionality_reducer(method=config["method"], X=X_orig, n_components=2, config=config)
-    except Exception:
-        return np.zeros((n, 2), dtype=float), None
+    except Exception as exc:
+        clog.warn(f"Projection failed for a node of {n} points ({type(exc).__name__}: {exc}) — left unembedded")
+        return None, None
     return result.embedding, result.explained_variance_ratio
 
 

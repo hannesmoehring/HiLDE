@@ -53,6 +53,11 @@ def substep(message: str) -> None:
     console.print(f"  [dim]· {message}[/dim]")
 
 
+def warn(message: str) -> None:
+    """Something was skipped or fell back — worth seeing, not fatal."""
+    console.print(f"[bold yellow]![/bold yellow] {message}")
+
+
 def success(message: str, **stats: Any) -> None:
     """A completed step, optionally with `key=value` stats appended."""
     tail = "  ".join(f"[cyan]{k}[/cyan]=[bold]{v}[/bold]" for k, v in stats.items())
