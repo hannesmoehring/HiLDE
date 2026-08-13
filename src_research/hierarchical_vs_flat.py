@@ -104,8 +104,10 @@ OUTPUT_ROOT = Path("outputs/experiments")
 
 # Metrics scored per region (keys of NodeScores we carry into the CSVs).
 H1A_METRIC_KEYS = ["trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress"]
-# Higher-is-better metrics: T&C improve when up, MRRE/stress are errors (improve when down).
-HIGHER_IS_BETTER = {"trustworthiness": True, "continuity": True, "mrre_false": False, "mrre_missing": False, "stress": False}
+# Higher-is-better metrics. Both MRRE terms arrive already inverted into a [0, 1] similarity
+# (`neighbor_metrics` computes 1 - mrre/norm, exactly as ZADU does), so they read like T&C, not
+# like an error. Only `stress` is a genuine error and improves when down.
+HIGHER_IS_BETTER = {"trustworthiness": True, "continuity": True, "mrre_false": True, "mrre_missing": True, "stress": False}
 PRIMARY_METRICS = ["trustworthiness", "continuity"]  # pre-registered primary (SS9)
 
 # --------------------------------------------------------------------------- #
