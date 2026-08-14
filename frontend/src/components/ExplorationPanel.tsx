@@ -52,6 +52,15 @@ const RANGE_SETTLE_MS = 120;
 // node, so the answer would be a comparison of the node with itself: an F1 of 1.00
 // over 0 clauses, and z-scores that are exactly 0 with a standard deviation of exactly
 // 1. Saying so is more use than drawing it.
+// The ranges tab fetches every row x every offered column of the node to compute
+// bounds and 28-bin histograms. `/api/rows` answers in `records` orient, which repeats
+// every column name in every row: the MNIST root at 70000 x 794 is an 807 MB body,
+// past V8's ~537 MB string cap, produced in 10.5 s and 5.3 GB of server RSS and then
+// discarded. Refuse to ask for more cells than a browser can hold rather than hang the
+// tab on a response it cannot decode. A cluster-sized node (3000 x 794 = 2.4 M) is well
+// inside this; only whole layers of a wide dataset are not.
+const RANGE_CELL_BUDGET = 5_000_000;
+
 const WHOLE_NODE_HINT =
   "The selection is the entire node, so the comparison would be self-referential — " +
   "every bar would read 0 by construction. Narrow it with a range or a lasso.";
@@ -108,6 +117,7 @@ export function ExplorationPanel({
   // Column-range filter state. The tab *is* the mode — there is no separate flag that
   // could drift out of step with which panel is on screen.
   const [rangeData, setRangeData] = useState<RangeData | null>(null);
+  const [rangeNote, setRangeNote] = useState<string | null>(null); // why there is no data
   const [filterCols, setFilterCols] = useState<string[]>([]);
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
   const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
@@ -152,12 +162,31 @@ export function ExplorationPanel({
   useEffect(() => {
     if (!interactive) {
       setRangeData(null);
+      setRangeNote(null);
+      return;
+    }
+    const cells = node.row_indices.length * tableCols.length;
+    if (cells > RANGE_CELL_BUDGET) {
+      setRangeData(null);
+      setRangeNote(
+        `This node is too large for client-side ranges — ${node.row_indices.length.toLocaleString()} rows ` +
+          `× ${tableCols.length} columns is ${(cells / 1e6).toFixed(1)} M values, over the ` +
+          `${RANGE_CELL_BUDGET / 1e6} M a browser can hold. Drill deeper into a cluster, or filter ` +
+          `on fewer columns, and the ranges will load.`,
+      );
       return;
     }
     let cancelled = false;
+    setRangeNote(null);
     fetchRows(dataset, node.row_indices, tableCols)
       .then((r) => !cancelled && setRangeData(collectRangeData(tableCols, targetCols, r.rows)))
-      .catch(() => !cancelled && setRangeData(null));
+      .catch((e) => {
+        if (cancelled) return;
+        setRangeData(null);
+        // Never leave the spinner up on a failure: it is indistinguishable from a
+        // fetch still in flight, and this one can fail on size alone.
+        setRangeNote(`Could not load this node's column values: ${e}`);
+      });
     return () => {
       cancelled = true;
     };
@@ -376,6 +405,7 @@ export function ExplorationPanel({
             {view === "ranges" ? (
               <RangeFilters
                 data={rangeData}
+                note={rangeNote}
                 active={filterCols}
                 ranges={ranges}
                 matched={filtering ? selected.length : null}

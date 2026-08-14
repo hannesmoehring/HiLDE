@@ -67,6 +67,7 @@ function histogram(values: number[], min: number, max: number): number[] {
 
 interface Props {
   data: RangeData | null;
+  note: string | null; // why `data` is null — a size refusal or a failed fetch, not a wait
   active: string[]; // chosen columns, in pick order
   ranges: Record<string, [number, number]>;
   matched: number | null; // null = nothing is being filtered, whatever is picked
@@ -76,7 +77,7 @@ interface Props {
   onClear: () => void;
 }
 
-export function RangeFilters({ data, active, ranges, matched, narrowing, onActive, onRange, onClear }: Props) {
+export function RangeFilters({ data, note, active, ranges, matched, narrowing, onActive, onRange, onClear }: Props) {
   const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
@@ -91,7 +92,8 @@ export function RangeFilters({ data, active, ranges, matched, narrowing, onActiv
     ].filter((g) => g.cols.length > 0);
   }, [data, query]);
 
-  if (!data) return <p className="hint">Loading column values…</p>;
+  // A note means the values are not coming — say which, rather than spinning forever.
+  if (!data) return <p className="hint">{note ?? "Loading column values…"}</p>;
 
   return (
     <div className="range-filters">
