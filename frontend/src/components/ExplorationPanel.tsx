@@ -29,6 +29,9 @@ interface Props {
   featureCols: string[];
   targetCols: string[]; // `target_*` label columns — reported, never predicated on
   config: AnalysisConfig;
+  // The DR method the shown embedding was actually computed with, off the run's own
+  // meta — NOT the live rail knob, which the user can flip without rebuilding.
+  builtMethod: string;
   node: TreeNode;
   pathLabel: string;
   imageSpec: ImageSpec | null; // non-null = table rows can be opened as images
@@ -98,6 +101,7 @@ export function ExplorationPanel({
   featureCols,
   targetCols,
   config,
+  builtMethod,
   node,
   pathLabel,
   imageSpec,
@@ -341,7 +345,12 @@ export function ExplorationPanel({
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
   );
-  const showVariance = config.method === "PCA" && variance.length > 0;
+  // Both the axis labels and the variance strip describe *these* coordinates, so they
+  // follow the run that produced them. Off the live knob, flipping Method UMAP -> PCA
+  // relabelled UMAP coordinates "PC1/PC2" with nothing on screen to tell — the variance
+  // strip, which used to be the tell, is absent under the UMAP default because the
+  // backend only ever emits explained_variance_ratio for PCA.
+  const showVariance = builtMethod === "PCA" && variance.length > 0;
 
   function exportCsv() {
     if (!rows) return;
@@ -512,7 +521,7 @@ export function ExplorationPanel({
           <ProjectionScatter
             points={node.embedding_original ?? []}
             rowIds={node.row_indices}
-            method={config.method}
+            method={builtMethod}
             interactiveGroup={interactiveGroup}
             onSelect={filtering ? () => {} : setSelected}
             selected={filtering ? [] : selected}

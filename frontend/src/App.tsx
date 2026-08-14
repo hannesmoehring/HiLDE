@@ -303,6 +303,10 @@ function Navigation(props: {
     props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
+  // What the shown embedding was computed with. The rail's Method knob can be changed
+  // without rebuilding, so it describes the *next* run, not the coordinates on screen.
+  const builtMethod =
+    typeof analysis.meta.config.method === "string" ? analysis.meta.config.method : config.method;
 
   // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
   // One at a time across layers, cleared whenever we drill in or out.
@@ -430,6 +434,7 @@ function Navigation(props: {
           featureCols={featureCols}
           targetCols={targetCols}
           config={config}
+          builtMethod={builtMethod}
           node={explorationNode}
           pathLabel={pathLabel}
           imageSpec={imageSpec}
