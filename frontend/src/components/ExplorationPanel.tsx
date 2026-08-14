@@ -47,6 +47,15 @@ type View = "predicate" | "characteristics" | "ranges";
 // refetched. Long enough to swallow a drag, short enough to feel like a live filter.
 const RANGE_SETTLE_MS = 120;
 
+// Shown instead of a predicate or a characteristics chart when the selection covers
+// every row of the explored node. Both endpoints compare the selection against that
+// node, so the answer would be a comparison of the node with itself: an F1 of 1.00
+// over 0 clauses, and z-scores that are exactly 0 with a standard deviation of exactly
+// 1. Saying so is more use than drawing it.
+const WHOLE_NODE_HINT =
+  "The selection is the entire node, so the comparison would be self-referential — " +
+  "every bar would read 0 by construction. Narrow it with a range or a lasso.";
+
 // Target columns sit at the right of the selected-points table, fenced off from
 // the feature columns so nobody reads a label as something the predicate used.
 function cellClass(col: string, targets: Set<string>, first: string | undefined): string | undefined {
@@ -202,9 +211,26 @@ export function ExplorationPanel({
   // yields rows nobody asked for. Sit the round out; the reset lands next render.
   const staleSelection = selected.some((i) => i >= node.row_indices.length);
 
+  // A selection that *is* the node answers nothing: the predicate separates it from
+  // itself, and the characteristics endpoint z-scores it against itself, which is where
+  // the exactly-zero bars under "Selection characteristics — vs. {node}" came from. A
+  // strict subset is the intended workflow (narrow in Ranges, inspect in Characteristics)
+  // and is carried across tabs untouched; only the whole node is refused.
+  const wholeNodeSelection = selected.length > 0 && selected.length === node.row_indices.length;
+
+  // …and refusing it would strand the user on the Ranges tab with a selection they
+  // cannot use, so leaving that tab drops it. A whole-node lasso made on another tab is
+  // the user's own doing and stays put, hint and all.
+  useEffect(() => {
+    if (interactive) return;
+    setSelected((prev) =>
+      prev.length > 0 && prev.length === node.row_indices.length ? [] : prev,
+    );
+  }, [interactive, node.row_indices.length]);
+
   // Selection -> predicate (skipped in interactive mode) + target values + rows table.
   useEffect(() => {
-    if (selected.length === 0 || staleSelection) {
+    if (selected.length === 0 || staleSelection || wholeNodeSelection) {
       setPredicate(null);
       setTargets(null);
       setRows(null);
@@ -245,7 +271,7 @@ export function ExplorationPanel({
     return () => {
       cancelled = true;
     };
-  }, [selected, staleSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
+  }, [selected, staleSelection, wholeNodeSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
 
   // Selection -> characteristics, on its own so the cost is only paid while the tab
   // is open. Unlike the predicate this holds in interactive mode too: the filtered
@@ -254,7 +280,8 @@ export function ExplorationPanel({
   useEffect(() => {
     setCharSel(null);
     setCharFailed(false);
-    if (view !== "characteristics" || selected.length === 0 || staleSelection) return;
+    if (view !== "characteristics" || selected.length === 0 || staleSelection || wholeNodeSelection)
+      return;
     let cancelled = false;
     fetchSelectionCharacteristics({
       dataset,
@@ -270,7 +297,7 @@ export function ExplorationPanel({
     };
     // `config.normalize` rather than `config`: it is the only field the endpoint
     // reads, and the whole object is minted fresh on every config keystroke.
-  }, [view, selected, staleSelection, node.id, dataset, featureCols, config.normalize]);
+  }, [view, selected, staleSelection, wholeNodeSelection, node.id, dataset, featureCols, config.normalize]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
@@ -348,6 +375,10 @@ export function ExplorationPanel({
                 onClear={() => {
                   setFilterCols([]);
                   setRanges({});
+                  // The filter *was* the selection; leaving it ringed after clearing
+                  // would leave a selection with nothing on screen explaining it, and
+                  // Clear disables itself so it could not be pressed again.
+                  setSelected([]);
                 }}
               />
             ) : view === "characteristics" ? (
@@ -355,6 +386,8 @@ export function ExplorationPanel({
                 <p className="hint">
                   Use lasso or box selection in the plot to capture points.
                 </p>
+              ) : wholeNodeSelection ? (
+                <p className="hint">{WHOLE_NODE_HINT}</p>
               ) : charFailed ? (
                 <p className="hint">Could not compute characteristics for this selection.</p>
               ) : charSel === null ? (
@@ -370,6 +403,8 @@ export function ExplorationPanel({
               <p className="hint">
                 Use lasso or box selection in the plot to capture points.
               </p>
+            ) : wholeNodeSelection ? (
+              <p className="hint">{WHOLE_NODE_HINT}</p>
             ) : (
               <>
                 <div className="scope-toggle">
@@ -450,6 +485,9 @@ export function ExplorationPanel({
 
       <div className="exploration__table">
         <h3>Selected points: {selected.length}</h3>
+        {/* The table is empty in this state because nothing was requested for it; say
+            why here too, since the Ranges tab has no room for the hint above. */}
+        {wholeNodeSelection && <p className="hint">{WHOLE_NODE_HINT}</p>}
         {rows && rows.rows.length > 0 && (
           <>
             <button onClick={exportCsv}>Export selected points to CSV</button>
