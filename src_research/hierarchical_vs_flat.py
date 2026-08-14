@@ -81,7 +81,6 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 from rich.table import Table
 from scipy.stats import wilcoxon
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
-from streamlit import logger as streamlit_logger
 
 from src.analysis.analysis_routine import AnalysisObject, ExplorationObject, _embed_original
 from src.analysis.clustering import compute_clusters
@@ -128,11 +127,9 @@ PRIMARY_METRICS = ["trustworthiness", "continuity"]  # pre-registered primary (S
 
 def _silence_noise() -> None:
     """Mute third-party chatter. Re-asserted in each worker process, since loky children
-    re-import the module and Streamlit/Optuna reconfigure their loggers lazily on first use.
-    Identical to the tuning harness; see its docstring for the Streamlit-logger rationale.
+    re-import the module and Optuna reconfigures its logger lazily on first use.
     """
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    streamlit_logger.set_log_level("error")
     warnings.filterwarnings("ignore")
 
 
@@ -289,7 +286,7 @@ def run_cell(
 
     ``data`` is the preloaded ``(df, feature_cols, y)`` for this dataset (prepared once in
     the driver, not per cell) so workers neither reload nor re-subsample it."""
-    _silence_noise()  # re-assert before init_state touches streamlit in a worker process
+    _silence_noise()  # re-assert third-party logger muting in a worker process
     cfg: Config = init_state(init_streamlit=False)
     cfg["method"] = dr_method
     cfg["hierarchical_layers"] = layers
@@ -378,8 +375,8 @@ def build_cells() -> list[tuple[str, str, int, int]]:
 def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Run the full grid, returning (h1a_df, h1b_df, skipped_df)."""
     cells = build_cells()
-    # Prepare each dataset once (load + seeded subsample), not per cell: avoids redundant
-    # reloads and concentrates the streamlit cache warnings in the driver process.
+    # Prepare each dataset once (load + seeded subsample), not per cell: avoids
+    # redundant reloads.
     datasets = {name: prepare_dataset(name) for name in DATASETS_TO_RUN}
     for name, (df, _, y) in datasets.items():
         note = "no ground truth" if y is None else f"{len(set(y.tolist()))} classes"

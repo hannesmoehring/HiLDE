@@ -81,7 +81,6 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 from rich.table import Table
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
-from streamlit import logger as streamlit_logger
 from zadu.zadu import ZADU
 
 from src.analysis.clustering import compute_clusters
@@ -121,21 +120,10 @@ OUTPUT_ROOT = Path("outputs/experiments")
 
 def _silence_noise() -> None:
     """Mute third-party chatter. Called at import and re-asserted in each worker
-    process, since loky children re-import the module and Streamlit/Optuna
-    reconfigure their own loggers lazily on first use.
-
-    The Streamlit "missing ScriptRunContext" warnings come from ``init_state``
-    writing to ``st.session_state`` outside a Streamlit runtime; they must be
-    silenced on the *exact* child logger (Streamlit sets its level explicitly,
-    so muting the parent ``streamlit`` logger has no effect).
+    process, since loky children re-import the module and Optuna reconfigures its
+    own logger lazily on first use.
     """
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    # Use Streamlit's own API: it re-applies its configured level to every logger
-    # on use, so a plain logging.setLevel() gets overridden. set_log_level updates
-    # all current + future streamlit loggers, killing the "No runtime found" /
-    # "missing ScriptRunContext" / "Session state does not function" spam that
-    # init_state and the @st.cache_data dataset loaders emit outside `streamlit run`.
-    streamlit_logger.set_log_level("error")
     warnings.filterwarnings("ignore")
 
 
@@ -468,8 +456,8 @@ def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None
 
     Returns (summary_rows, trial_rows). One summary row per sampler.
     """
-    _silence_noise()  # re-assert in each (possibly worker) process before init_state touches streamlit
-    base_cfg = init_state(init_streamlit=False)  # no Streamlit runtime in worker processes
+    _silence_noise()  # re-assert in each (possibly worker) process
+    base_cfg = init_state(init_streamlit=False)
     objective, metric = make_objective(track, ds, dr_method, cluster_method, base_cfg)
     base = evaluate_baseline(track, ds, dr_method, cluster_method, base_cfg)
 

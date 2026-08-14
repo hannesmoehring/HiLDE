@@ -1,14 +1,16 @@
 [project]
 name = "shd"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hierarchical Local Decomposition and Explanation Prototype. Bachelor thesis work"
 readme = "README.md"
+authors = [{ name = "Hannes Moehring", email = "hannes.moehring@tum.de" }]
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "fastapi>=0.115",
     "hdbscan>=0.8.43",
     "ipykernel>=7.2.0",
     "ipywidgets>=8.1.8",
+    "joblib>=1.4",
     "kdbcv",
     "matplotlib>=3.10.8",
     "nbformat>=5.10.4",
@@ -21,7 +23,6 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
     "seaborn>=0.13.2",
-    "streamlit>=1.50.0",
     "tabulate>=0.10.0",
     "umap-learn>=0.5.11",
     "uvicorn[standard]>=0.30",
@@ -30,7 +31,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pyinstrument>=5.1.2"]
+dev = ["pyinstrument>=5.1.2", "ruff>=0.16.3"]
 
 [tool.uv]
 # kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1, which is

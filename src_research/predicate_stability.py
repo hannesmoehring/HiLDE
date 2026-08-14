@@ -278,8 +278,7 @@ def dim_recovery(rows: list[dict], rel_dims: np.ndarray, method: str, feature_in
         found = {feature_index[str(r["feature"])] for r in rows if r["in_predicate"]}
     else:
         ranked = sorted(
-            ((r["sel_max"] - r["sel_min"]) / max(r["global_max"] - r["global_min"], 1e-12), feature_index[str(r["feature"])])
-            for r in rows
+            ((r["sel_max"] - r["sel_min"]) / max(r["global_max"] - r["global_min"], 1e-12), feature_index[str(r["feature"])]) for r in rows
         )
         found = {j for _, j in ranked[: len(truth)]}
     tp = len(found & truth)
