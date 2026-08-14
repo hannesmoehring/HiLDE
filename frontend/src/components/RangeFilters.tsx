@@ -245,13 +245,21 @@ function RangeRow(props: {
             style={{ left: `${loPct}%`, right: `${100 - hiPct}%` }}
           />
         </div>
-        {/* Two inputs stacked on one track: the lower thumb never crosses the upper. */}
+        {/* Two inputs stacked on one track: the lower thumb never crosses the upper.
+            Both are position:absolute with z-index:auto, so paint order follows tree
+            order and the maximum (second) wins wherever they coincide. At lo = hi = max
+            that made the window unrecoverable by pointer: only the max thumb could be
+            grabbed, and its handler computes Math.max(v, lo) = max for every v. Raising
+            the minimum once it reaches the top of the span hands it back — and the
+            mirror state lo = hi = min needs nothing, since the max thumb can still move
+            right from there. */}
         <input
           type="range"
           min={min}
           max={max}
           step={step}
           value={lo}
+          style={loPct >= 100 ? { zIndex: 1 } : undefined}
           aria-label={`${col} minimum`}
           onChange={(e) => onRange(col, [Math.min(Number(e.target.value), hi), hi])}
         />
