@@ -2,7 +2,8 @@
 
 The calc layer (`src/analysis`, `src/evaluation`) returns a nested tree of
 TypedDicts carrying numpy arrays and pandas DataFrames — not JSON-serializable.
-This module walks that tree and emits the `Node` schema documented in PLAN.md.
+This module walks that tree and emits the `Node` schema; its TypeScript counterpart
+is `frontend/src/types.ts`.
 
 Nothing here mutates the calc layer; it only reads from it.
 """

@@ -271,7 +271,7 @@ def make_nested_subspace(
 
 def _make_df(x: np.ndarray, y_fine: np.ndarray) -> tuple[pd.DataFrame, list[str]]:
     """Wrap ``X`` as the one-hot app DataFrame ``start_evaluation`` expects (f-columns +
-    ``target_*`` from ``y_fine`` + ``row_id``), mirroring ``src.ui.data._one_hot_df``."""
+    ``target_*`` from ``y_fine`` + ``row_id``), mirroring ``src.datasets._one_hot_df``."""
     feature_cols = [f"f{i}" for i in range(x.shape[1])]
     df = pd.DataFrame(x, columns=feature_cols).astype(np.float64)
     for cid in sorted(set(y_fine.tolist())):

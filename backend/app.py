@@ -1,8 +1,9 @@
 """FastAPI service for the D3 frontend.
 
 Wraps the unchanged calc layer (`src/analysis`, `src/evaluation`) and serves the
-JSON data contract in PLAN.md. The tree is built on demand and cached by
-(dataset, feature_cols, config); navigation/drill-down happens client-side.
+JSON data contract emitted by `backend/serialize.py`. The tree is built on demand
+and cached by (dataset, feature_cols, config); navigation/drill-down happens
+client-side.
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-# Make the repo root importable (mirrors src/ui/app.py) so `src.*` resolves.
+# Make the repo root importable so `src.*` resolves when uvicorn is started from
+# elsewhere; PYTHONPATH=. does the same thing for the documented dev command.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI, HTTPException

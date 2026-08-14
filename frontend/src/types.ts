@@ -1,4 +1,4 @@
-// Data contract shared with the Python backend (see PLAN.md "Data Contract").
+// Data contract shared with the Python backend.
 // Mirrors backend/serialize.py output and the FastAPI request/response shapes.
 
 export interface NodeScores {
