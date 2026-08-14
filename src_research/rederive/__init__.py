@@ -29,7 +29,14 @@ EXPERIMENTS = Path("outputs/experiments")
 REDERIVED_DIRNAME = "rederived_20260813"
 
 # The six RQ1 runs whose h1a_summary.csv carries the inverted MRRE direction.
-H1A_RUNS = ["20260628_182948", "20260628_184005", "20260628_184209", "20260628_184251", "20260628_184350", "20260628_184827"]
+H1A_RUNS = [
+    "20260628_182948",
+    "20260628_184005",
+    "20260628_184209",
+    "20260628_184251",
+    "20260628_184350",
+    "20260628_184827",
+]
 H2B_RUN = "20260628_195214"
 TUNING_RUNS = ["20260628_125924", "20260628_153633"]
 STABILITY_RUN = "20260711_115849"
@@ -53,7 +60,9 @@ def changed(old: object, new: object) -> bool:
     old_na, new_na = pd.isna(old), pd.isna(new)
     if old_na or new_na:
         return bool(old_na != new_na)
-    if isinstance(old, (int, float, np.floating, np.integer)) and isinstance(new, (int, float, np.floating, np.integer)):
+    if isinstance(old, (int, float, np.floating, np.integer)) and isinstance(
+        new, (int, float, np.floating, np.integer)
+    ):
         return abs(float(old) - float(new)) > TOL
     return old != new
 
@@ -66,7 +75,9 @@ def fmt(v: object) -> str:
     return str(v)
 
 
-def diff_rows(old: pd.DataFrame, new: pd.DataFrame, keys: list[str], value_cols: list[str]) -> list[dict]:
+def diff_rows(
+    old: pd.DataFrame, new: pd.DataFrame, keys: list[str], value_cols: list[str]
+) -> list[dict]:
     """Every (key, column) whose value changed between two aggregate frames.
 
     Rows present in only one of the two are reported as such: a re-derivation that drops or
@@ -76,16 +87,22 @@ def diff_rows(old: pd.DataFrame, new: pd.DataFrame, keys: list[str], value_cols:
     n = new.set_index(keys).sort_index()
     out: list[dict] = []
     for key in o.index.difference(n.index):
-        out.append({"key": key, "column": "(whole row)", "old": "present", "new": "DROPPED"})
+        out.append(
+            {"key": key, "column": "(whole row)", "old": "present", "new": "DROPPED"}
+        )
     for key in n.index.difference(o.index):
-        out.append({"key": key, "column": "(whole row)", "old": "ABSENT", "new": "added"})
+        out.append(
+            {"key": key, "column": "(whole row)", "old": "ABSENT", "new": "added"}
+        )
     for key in o.index.intersection(n.index):
         orow, nrow = o.loc[key], n.loc[key]
         for col in value_cols:
             if col not in o.columns or col not in n.columns:
                 continue
             if changed(orow[col], nrow[col]):
-                out.append({"key": key, "column": col, "old": orow[col], "new": nrow[col]})
+                out.append(
+                    {"key": key, "column": col, "old": orow[col], "new": nrow[col]}
+                )
     return out
 
 
@@ -95,7 +112,11 @@ def deltas_table(rows: list[dict], key_name: str) -> list[str]:
         return ["_No derived number changed._", ""]
     lines = [f"| {key_name} | column | old | new |", "|---|---|---|---|"]
     for r in rows:
-        key = " · ".join(str(k) for k in r["key"]) if isinstance(r["key"], tuple) else str(r["key"])
+        key = (
+            " · ".join(str(k) for k in r["key"])
+            if isinstance(r["key"], tuple)
+            else str(r["key"])
+        )
         lines.append(f"| {key} | `{r['column']}` | {fmt(r['old'])} | {fmt(r['new'])} |")
     lines.append("")
     return lines

@@ -24,20 +24,44 @@ import numpy as np
 import pandas as pd
 from scipy.stats import wilcoxon
 
-from src_research.hierarchical_vs_flat import HIGHER_IS_BETTER, _paired_deltas, h1a_summary
-from src_research.rederive import H1A_RUNS, deltas_table, diff_rows, fmt, out_dir, run_dir, write_deltas
+from src_research.hierarchical_vs_flat import (
+    HIGHER_IS_BETTER,
+    _paired_deltas,
+    h1a_summary,
+)
+from src_research.rederive import (
+    H1A_RUNS,
+    deltas_table,
+    diff_rows,
+    fmt,
+    out_dir,
+    run_dir,
+    write_deltas,
+)
 
 KEYS = ["dataset", "method", "region_def", "metric"]
-VALUES = ["n_pairs", "median_delta", "win_rate", "wilcoxon_p", "rank_biserial", "primary"]
+VALUES = [
+    "n_pairs",
+    "median_delta",
+    "win_rate",
+    "wilcoxon_p",
+    "rank_biserial",
+    "primary",
+]
 ALPHA = 0.05
 EXACT_TOL = 1e-5  # a branch "reproduces" the shipped p at this relative difference
-NEAR_TOL = 1e-2  # above EXACT_TOL but below this: same branch, different SciPy internals
+NEAR_TOL = (
+    1e-2  # above EXACT_TOL but below this: same branch, different SciPy internals
+)
 
 
 def _is_b2(row: dict) -> bool:
     """A change the MRRE direction fix explains: an effect size on an MRRE metric."""
     metric = row["key"][KEYS.index("metric")]
-    return str(metric).startswith("mrre") and row["column"] in {"win_rate", "rank_biserial"}
+    return str(metric).startswith("mrre") and row["column"] in {
+        "win_rate",
+        "rank_biserial",
+    }
 
 
 def _branch_match(regions: pd.DataFrame, row: dict) -> tuple[str, float]:
@@ -111,14 +135,22 @@ def rederive_run(run: str) -> dict:
         "fingerprint of an environment difference rather than a direction fix. Each was re-tested against "
         "SciPy's two branches on the shipped deltas:",
         f"    - **{len(exact_hits)}** are reproduced to within {EXACT_TOL:g} relative by naming a branch "
-        "explicitly, i.e. `method=\"auto\"` simply picks a different branch now than it did in June;",
+        'explicitly, i.e. `method="auto"` simply picks a different branch now than it did in June;',
         f"    - **{len(near_hits)}** match a branch to within {NEAR_TOL:g} but not {EXACT_TOL:g} "
         f"(worst {worst_near:.1e} relative) — the same branch computing slightly differently, i.e. SciPy's "
         "internals, not the data;",
         f"    - **{len(unmatched)}** match neither branch"
-        + (" — none." if not unmatched else " — **unexplained, investigate before citing.**"),
+        + (
+            " — none."
+            if not unmatched
+            else " — **unexplained, investigate before citing.**"
+        ),
         f"- **{len(other)}** are some other column"
-        + (" — none." if not other else " — **unexplained, investigate before citing.**"),
+        + (
+            " — none."
+            if not other
+            else " — **unexplained, investigate before citing.**"
+        ),
         "",
         "`n_pairs` and `median_delta` are identical on every row, which is what rules out any change to "
         "the measurements or to the pairing.",

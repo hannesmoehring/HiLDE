@@ -161,13 +161,27 @@ generator with `_one_hot_df`, encoding `y_fine` as the `target_*` columns so the
 
 ```python
 # src/ui/data.py  (sketch — follows _concentric_rings / _one_hot_df)
-def _nested_subspace(rho=8.0, G=3, K=4, d_A=3, d_B=3, d_noise=10,
-                     n_per=60, sigma_A=0.4, sigma_B=0.4, sigma_noise=1.0,
-                     rotate_blocks=True, rotation_diversity=1.0, seed=0): ...
+def _nested_subspace(
+    rho=8.0,
+    G=3,
+    K=4,
+    d_A=3,
+    d_B=3,
+    d_noise=10,
+    n_per=60,
+    sigma_A=0.4,
+    sigma_B=0.4,
+    sigma_noise=1.0,
+    rotate_blocks=True,
+    rotation_diversity=1.0,
+    seed=0,
+): ...
 def load_nested_subspace_dataframe() -> pd.DataFrame:
     X, y_fine, *_ = _nested_subspace()
     names = [f"c{g}_{k}" for g in range(G) for k in range(K)]
     return _one_hot_df(X, y_fine, [f"f{i}" for i in range(X.shape[1])], names)
+
+
 # DATASETS["Nested subspace (Synthetic)"] = load_nested_subspace_dataframe
 ```
 

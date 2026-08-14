@@ -4,9 +4,8 @@ import numpy as np
 import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS, TSNE
-from sklearn.preprocessing import StandardScaler
 
-from src.types import Config, DRMethod
+from src.types import Config
 from src.util import console as clog
 
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
@@ -44,7 +43,9 @@ def fit_dimensionality_reducer(
     #     scaler = StandardScaler()
     #     X = scaler.fit_transform(X)
 
-    clog.substep(f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D")
+    clog.substep(
+        f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D"
+    )
     match method.lower():
         case "pca":
             return _pca(X, n_components=n_components)
@@ -95,7 +96,9 @@ def _tsne(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
     # sklearn requires perplexity < n_samples; clamp so t-SNE works on small clusters
     # (e.g. hierarchical sub-regions), not just the full dataset.
     if "perplexity" in kwargs:
-        kwargs["perplexity"] = min(float(kwargs["perplexity"]), max(1.0, X.shape[0] - 1.0))
+        kwargs["perplexity"] = min(
+            float(kwargs["perplexity"]), max(1.0, X.shape[0] - 1.0)
+        )
     tsne = TSNE(n_components=n_components, **kwargs)
     embedding = tsne.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=tsne)

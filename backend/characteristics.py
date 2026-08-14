@@ -34,7 +34,9 @@ def nonfeature_cols(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
     return [
         str(c)
         for c in df.columns
-        if c not in feature_cols and c != "row_id" and pd.api.types.is_numeric_dtype(df[c])
+        if c not in feature_cols
+        and c != "row_id"
+        and pd.api.types.is_numeric_dtype(df[c])
     ]
 
 

@@ -40,7 +40,9 @@ def _order_and_ranking(dist: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return order, ranking
 
 
-def neighbor_scores(orig: np.ndarray, emb: np.ndarray, k: int | None) -> dict[str, float | None]:
+def neighbor_scores(
+    orig: np.ndarray, emb: np.ndarray, k: int | None
+) -> dict[str, float | None]:
     """Stress, plus — when `k` is given — trustworthiness, continuity and both MRRE terms.
 
     `k` is None for nodes too small for a meaningful neighbourhood, where only the
@@ -89,9 +91,19 @@ def neighbor_scores(orig: np.ndarray, emb: np.ndarray, k: int | None) -> dict[st
     # A node whose points are identical in feature space has no distances to
     # preserve: the ratio is 0/0. Reporting `None` keeps the four neighbourhood
     # measures, which are perfectly well defined there (ZADU returns nan/1.0).
-    stress = float(np.sqrt(diff_squared_sum / orig_squared_sum)) if orig_squared_sum > 0 else None
+    stress = (
+        float(np.sqrt(diff_squared_sum / orig_squared_sum))
+        if orig_squared_sum > 0
+        else None
+    )
     if k is None:
-        return {"stress": stress, "trustworthiness": None, "continuity": None, "mrre_false": None, "mrre_missing": None}
+        return {
+            "stress": stress,
+            "trustworthiness": None,
+            "continuity": None,
+            "mrre_false": None,
+            "mrre_missing": None,
+        }
 
     tnc_norm = 2 / (k * (2 * n - 3 * k - 1))
     mrre_norm = sum(abs(n - 2 * i + 1) / i for i in range(1, k + 1))

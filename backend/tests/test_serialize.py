@@ -16,9 +16,18 @@ from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
 _NODE_KEYS = {
-    "id", "is_leaf", "depth", "n_points", "row_indices",
-    "embedding_original", "embedding_original_variance", "rel_position",
-    "rel_characteristics", "outlier_scores", "scores", "children",
+    "id",
+    "is_leaf",
+    "depth",
+    "n_points",
+    "row_indices",
+    "embedding_original",
+    "embedding_original_variance",
+    "rel_position",
+    "rel_characteristics",
+    "outlier_scores",
+    "scores",
+    "children",
 }
 
 
@@ -49,7 +58,9 @@ def test_serialized_tree_is_json_safe_and_well_formed():
     assert len(nodes) > 1  # root + at least one child
 
     for n in nodes:
-        assert set(n.keys()) == _NODE_KEYS, f"unexpected keys on {n['id']}: {set(n.keys()) ^ _NODE_KEYS}"
+        assert set(n.keys()) == _NODE_KEYS, (
+            f"unexpected keys on {n['id']}: {set(n.keys()) ^ _NODE_KEYS}"
+        )
         assert isinstance(n["id"], str)
         assert isinstance(n["is_leaf"], bool)
         assert isinstance(n["depth"], int)
@@ -58,7 +69,13 @@ def test_serialized_tree_is_json_safe_and_well_formed():
         for xy in n["embedding_original"]:
             assert len(xy) == 2
         for rc in n["rel_characteristics"]:
-            assert set(rc.keys()) == {"feature", "z_mean", "z_std", "raw_mean", "is_feature"}
+            assert set(rc.keys()) == {
+                "feature",
+                "z_mean",
+                "z_std",
+                "raw_mean",
+                "is_feature",
+            }
         if n["is_leaf"]:
             assert n["children"] is None
             assert n["outlier_scores"] is None

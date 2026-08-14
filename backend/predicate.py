@@ -53,7 +53,11 @@ def compute_predicate(
     if scope == "global":
         all_features = df[feature_cols].to_numpy()
         global_scaler = StandardScaler().fit(all_features) if normalize else None
-        background = global_scaler.transform(all_features) if global_scaler is not None else all_features
+        background = (
+            global_scaler.transform(all_features)
+            if global_scaler is not None
+            else all_features
+        )
         global_sel_rows = row_idx[sel].tolist()
         sel_scaled = background[global_sel_rows]
         sel_idx: list[int] = global_sel_rows
@@ -66,8 +70,12 @@ def compute_predicate(
         return {"full": [], "trimmed": [], "summary": None}
 
     selected_scaled_df = pd.DataFrame(sel_scaled, columns=feature_cols)
-    full = generate_predicate("db", selected_scaled_df, background, threshold=1.0, selected_indices=sel_idx)
-    trimmed = generate_predicate("db", selected_scaled_df, background, threshold=0.9, selected_indices=sel_idx)
+    full = generate_predicate(
+        "db", selected_scaled_df, background, threshold=1.0, selected_indices=sel_idx
+    )
+    trimmed = generate_predicate(
+        "db", selected_scaled_df, background, threshold=0.9, selected_indices=sel_idx
+    )
 
     full_rows: list[dict[str, Any]] = [_sanitized(r) for r in full]  # type: ignore[union-attr]
     trimmed_rows: list[dict[str, Any]] = [_sanitized(r) for r in trimmed]  # type: ignore[union-attr]

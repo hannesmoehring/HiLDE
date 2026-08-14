@@ -34,7 +34,9 @@ BASE_JOIN_KEYS = ["track", "dataset", "dr_method", "cluster_method"]
 
 def _shipped_merge(summary: pd.DataFrame) -> pd.DataFrame:
     """Exactly what make_plots used to do, so the claim about it is checkable."""
-    a = summary[(summary["sampler"] == "TPE") & summary["tunable"] & (summary["track"] == "A")]
+    a = summary[
+        (summary["sampler"] == "TPE") & summary["tunable"] & (summary["track"] == "A")
+    ]
     a_ext = a.dropna(subset=["ari"])
     merged = a_ext.merge(
         summary[summary["sampler"] == "none"][[*BASE_JOIN_KEYS, "ari"]],
@@ -52,7 +54,9 @@ def rederive_run(run: str) -> dict:
     merged = _shipped_merge(summary)
 
     n_base_rows = int((summary["sampler"] == "none").sum())
-    n_base_trackA = int(((summary["sampler"] == "none") & (summary["track"] == "A")).sum())
+    n_base_trackA = int(
+        ((summary["sampler"] == "none") & (summary["track"] == "A")).sum()
+    )
     n_base_ari = int(summary.loc[summary["sampler"] == "none", "ari"].notna().sum())
     all_nan = bool(merged["ari_base"].isna().all())
     identical = bool((merged["ari_gain_shipped"] - merged["ari"]).abs().max() == 0)
@@ -61,14 +65,31 @@ def rederive_run(run: str) -> dict:
     r_plotted = float(merged["gain"].corr(merged["ari_gain_shipped"]))
     r_raw_ari = float(merged["gain"].corr(merged["ari"]))
 
-    corrected = merged[[*BASE_JOIN_KEYS, "sampler", "baseline", "best", "gain", "ari", "ari_base", "ari_gain_shipped"]].copy()
-    corrected = corrected.rename(columns={"ari": "ari_tuned", "ari_gain_shipped": "y_actually_plotted"})
-    corrected["ari_gain_corrected"] = pd.NA  # not derivable: baseline ARI was never persisted
+    corrected = merged[
+        [
+            *BASE_JOIN_KEYS,
+            "sampler",
+            "baseline",
+            "best",
+            "gain",
+            "ari",
+            "ari_base",
+            "ari_gain_shipped",
+        ]
+    ].copy()
+    corrected = corrected.rename(
+        columns={"ari": "ari_tuned", "ari_gain_shipped": "y_actually_plotted"}
+    )
+    corrected["ari_gain_corrected"] = (
+        pd.NA
+    )  # not derivable: baseline ARI was never persisted
     corrected.to_csv(out_dir(run) / "internal_vs_external_records.csv", index=False)
 
     sns.set_theme(style="whitegrid")
     fig, ax = plt.subplots(figsize=(6.4, 5))
-    sns.scatterplot(data=merged, x="gain", y="ari", hue="dataset", style="dr_method", ax=ax)
+    sns.scatterplot(
+        data=merged, x="gain", y="ari", hue="dataset", style="dr_method", ax=ax
+    )
     ax.axhline(0, color="grey", lw=0.6)
     ax.axvline(0, color="grey", lw=0.6)
     ax.set_xlabel("DBCV gain: best tuned DBCV - default-config DBCV (original space)")
@@ -88,7 +109,7 @@ def rederive_run(run: str) -> dict:
         "",
         "### 3a. The join returned nothing, and fillna(0) hid that",
         "",
-        f"- `sampler == \"none\"` rows in this run: **{n_base_rows}**, of which **{n_base_trackA}** are Track A "
+        f'- `sampler == "none"` rows in this run: **{n_base_rows}**, of which **{n_base_trackA}** are Track A '
         f"and **{n_base_ari}** carry a non-null `ari`.",
         f"- Track-A TPE rows entering the figure: **{len(merged)}**.",
         f"- `ari_base` after the join is entirely null: **{all_nan}**.",
@@ -122,7 +143,9 @@ def rederive_run(run: str) -> dict:
         "",
     ]
     write_deltas(run, f"Corrected internal-vs-external readout — {run}", sections)
-    print(f"  {run}: n={len(merged)} Track-A TPE cells, r(gain, tuned ARI)={r_raw_ari:.4f}; ari_base all-null={all_nan}; corrected gain NOT derivable")
+    print(
+        f"  {run}: n={len(merged)} Track-A TPE cells, r(gain, tuned ARI)={r_raw_ari:.4f}; ari_base all-null={all_nan}; corrected gain NOT derivable"
+    )
     return {"run": run, "n_cells": len(merged), "r": r_raw_ari, "all_nan": all_nan}
 
 

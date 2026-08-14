@@ -36,7 +36,10 @@ MNIST_RAW_DIR = Path("datasets/MNIST/raw")
 QM9_CSV = Path("datasets/QM9/qm9.csv")
 QM9_URL = "https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/qm9.csv"
 QM9_SUBSAMPLE = 30_000
-QM9_ID_COLS = ["mol_id", "smiles"]  # everything else in the CSV is a DFT-computed property
+QM9_ID_COLS = [
+    "mol_id",
+    "smiles",
+]  # everything else in the CSV is a DFT-computed property
 
 
 @cache
@@ -52,12 +55,19 @@ def load_dataset() -> pd.DataFrame:
     return df
 
 
-def _one_hot_df(features: np.ndarray, labels: np.ndarray, feature_names: list[str], class_names: list[str]) -> pd.DataFrame:
+def _one_hot_df(
+    features: np.ndarray,
+    labels: np.ndarray,
+    feature_names: list[str],
+    class_names: list[str],
+) -> pd.DataFrame:
     """App-format DataFrame: float feature columns, boolean one-hot `target_<name>`
     columns (exactly one True per row), and a `row_id` index column. `labels` must be
     integer-coded 0..k-1 aligned with the order of `class_names`.
     """
-    df = pd.DataFrame(np.asarray(features, dtype=np.float64), columns=list(feature_names))
+    df = pd.DataFrame(
+        np.asarray(features, dtype=np.float64), columns=list(feature_names)
+    )
     labels = np.asarray(labels)
     for i, name in enumerate(class_names):
         df[f"target_{name}"] = labels == i
@@ -66,7 +76,10 @@ def _one_hot_df(features: np.ndarray, labels: np.ndarray, feature_names: list[st
 
 
 def _concentric_rings(
-    n_per_ring: int = 600, radii: tuple[float, ...] = (1.0, 2.5, 4.0), noise: float = 0.12, seed: int = 0
+    n_per_ring: int = 600,
+    radii: tuple[float, ...] = (1.0, 2.5, 4.0),
+    noise: float = 0.12,
+    seed: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     coords, labels = [], []
@@ -85,12 +98,20 @@ def load_mnist_dataframe() -> pd.DataFrame:
     # Prefer the local IDX files (offline, reliable); fall back to an OpenML download.
     if (MNIST_RAW_DIR / "train-images-idx3-ubyte").exists():
         images = np.concatenate(
-            [load_mnist_images(MNIST_RAW_DIR / "train-images-idx3-ubyte"), load_mnist_images(MNIST_RAW_DIR / "t10k-images-idx3-ubyte")],
+            [
+                load_mnist_images(MNIST_RAW_DIR / "train-images-idx3-ubyte"),
+                load_mnist_images(MNIST_RAW_DIR / "t10k-images-idx3-ubyte"),
+            ],
         )
         labels = np.concatenate(
-            [load_mnist_labels(MNIST_RAW_DIR / "train-labels-idx1-ubyte"), load_mnist_labels(MNIST_RAW_DIR / "t10k-labels-idx1-ubyte")],
+            [
+                load_mnist_labels(MNIST_RAW_DIR / "train-labels-idx1-ubyte"),
+                load_mnist_labels(MNIST_RAW_DIR / "t10k-labels-idx1-ubyte"),
+            ],
         )
-        return _one_hot_df(images.reshape(images.shape[0], 784) / 255.0, labels, feature_names, names)
+        return _one_hot_df(
+            images.reshape(images.shape[0], 784) / 255.0, labels, feature_names, names
+        )
 
     data = fetch_openml("mnist_784", version=1, as_frame=False, n_retries=5, delay=2.0)
     return _one_hot_df(data.data / 255.0, data.target.astype(int), feature_names, names)
@@ -98,34 +119,66 @@ def load_mnist_dataframe() -> pd.DataFrame:
 
 @cache
 def load_fashion_mnist_dataframe() -> pd.DataFrame:
-    data = fetch_openml("Fashion-MNIST", version=1, as_frame=False, n_retries=5, delay=2.0)
-    names = ["tshirt_top", "trouser", "pullover", "dress", "coat", "sandal", "shirt", "sneaker", "bag", "ankle_boot"]
-    return _one_hot_df(data.data / 255.0, data.target.astype(int), [f"px_{i}" for i in range(784)], names)
+    data = fetch_openml(
+        "Fashion-MNIST", version=1, as_frame=False, n_retries=5, delay=2.0
+    )
+    names = [
+        "tshirt_top",
+        "trouser",
+        "pullover",
+        "dress",
+        "coat",
+        "sandal",
+        "shirt",
+        "sneaker",
+        "bag",
+        "ankle_boot",
+    ]
+    return _one_hot_df(
+        data.data / 255.0,
+        data.target.astype(int),
+        [f"px_{i}" for i in range(784)],
+        names,
+    )
 
 
 @cache
 def load_digits_dataframe() -> pd.DataFrame:
     data = load_digits()
     names = [str(d) for d in range(10)]
-    return _one_hot_df(data.data / 16.0, data.target, [f"px_{i}" for i in range(data.data.shape[1])], names)
+    return _one_hot_df(
+        data.data / 16.0,
+        data.target,
+        [f"px_{i}" for i in range(data.data.shape[1])],
+        names,
+    )
 
 
 @cache
 def load_iris_dataframe() -> pd.DataFrame:
     data = load_iris()
-    return _one_hot_df(data.data, data.target, list(data.feature_names), list(data.target_names))
+    return _one_hot_df(
+        data.data, data.target, list(data.feature_names), list(data.target_names)
+    )
 
 
 @cache
 def load_breast_cancer_dataframe() -> pd.DataFrame:
     data = load_breast_cancer()
-    return _one_hot_df(data.data, data.target, list(data.feature_names), list(data.target_names))
+    return _one_hot_df(
+        data.data, data.target, list(data.feature_names), list(data.target_names)
+    )
 
 
 @cache
 def load_olivetti_faces_dataframe() -> pd.DataFrame:
     data = fetch_olivetti_faces()
-    return _one_hot_df(data.data, data.target, [f"px_{i}" for i in range(data.data.shape[1])], [str(i) for i in range(40)])
+    return _one_hot_df(
+        data.data,
+        data.target,
+        [f"px_{i}" for i in range(data.data.shape[1])],
+        [str(i) for i in range(40)],
+    )
 
 
 def _qm9_csv() -> Path:
@@ -149,7 +202,11 @@ def load_qm9_dataframe() -> pd.DataFrame:
     matched pair. Note that `u0`/`u298`/`h298`/`g298` are near-identical internal
     energies (pairwise r = 1.0000) — four columns spanning one real dimension.
     """
-    raw = pd.read_csv(_qm9_csv()).sample(n=QM9_SUBSAMPLE, random_state=0).reset_index(drop=True)
+    raw = (
+        pd.read_csv(_qm9_csv())
+        .sample(n=QM9_SUBSAMPLE, random_state=0)
+        .reset_index(drop=True)
+    )
     rings = (raw["smiles"].str.count(r"[1-9]") // 2).to_numpy()
     feature_names = [c for c in raw.columns if c not in QM9_ID_COLS]
     class_names = [f"rings_{n}" for n in range(rings.max() + 1)]
@@ -166,13 +223,15 @@ def load_concentric_dataframe() -> pd.DataFrame:
 def load_swiss_roll_dataframe() -> pd.DataFrame:
     coords, position = make_swiss_roll(n_samples=1500, noise=0.05, random_state=0)
     df = pd.DataFrame(coords, columns=["x", "y", "z"])
-    df["target_manifold_position"] = position  # continuous non-feature target (position along the roll)
+    df["target_manifold_position"] = (
+        position  # continuous non-feature target (position along the roll)
+    )
     df["row_id"] = df.index
     return df
 
 
 # Display label (with size/complexity marker) → loader.
-DATASETS: dict[str, "Callable[[], pd.DataFrame]"] = {
+DATASETS: dict[str, Callable[[], pd.DataFrame]] = {
     "Wine quality (Low)": load_dataset,
     "Iris (Low)": load_iris_dataframe,
     "Digits (Low)": load_digits_dataframe,

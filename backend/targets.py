@@ -58,7 +58,9 @@ def compute_targets(
         targets.append(
             {
                 "feature": col,
-                "is_boolean": bool(finite.size > 0 and np.isin(finite, (0.0, 1.0)).all()),
+                "is_boolean": bool(
+                    finite.size > 0 and np.isin(finite, (0.0, 1.0)).all()
+                ),
                 **_stats(values[sel_idx], "sel"),
                 **_stats(values, "global"),
             }

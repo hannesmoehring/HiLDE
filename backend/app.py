@@ -124,7 +124,10 @@ def health() -> dict[str, str]:
 def mode() -> dict[str, Any]:
     """Whether the server runs in hosting mode (persistent run cache + UI banner)."""
     hosting = run_cache.is_hosting()
-    return {"hosting": hosting, "cache_dir": str(run_cache.cache_dir()) if hosting else None}
+    return {
+        "hosting": hosting,
+        "cache_dir": str(run_cache.cache_dir()) if hosting else None,
+    }
 
 
 @app.get("/api/datasets")
@@ -142,7 +145,7 @@ def dataset_columns(key: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Unknown dataset: {key}") from exc
     return {
         "key": key,
-        "n_rows": int(len(df)),
+        "n_rows": len(df),
         "columns": [str(c) for c in df.columns],
         "default_feature_cols": ds.default_feature_cols(df),
         "image": ds_images.spec(key),  # non-null = rows can be rendered as images
@@ -184,7 +187,7 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
             "dataset": req.dataset,
             "feature_cols": req.feature_cols,
             "config": req.config,
-            "n_total": int(len(df)),
+            "n_total": len(df),
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
@@ -200,7 +203,11 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
         return {"status": "error", "job_id": job.id, "detail": job.detail}
     payload = _cache_get(job.key)
     if payload is None:  # only if the entry was evicted between finishing and polling
-        return {"status": "error", "job_id": job.id, "detail": "Result no longer available — rerun."}
+        return {
+            "status": "error",
+            "job_id": job.id,
+            "detail": "Result no longer available — rerun.",
+        }
     return {"status": "done", "job_id": job.id, **payload, "cached": False}
 
 
@@ -214,7 +221,9 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
 
     key = _cache_key(req.dataset, req.feature_cols, req.config)
 
@@ -240,7 +249,9 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
     normalize = bool(req.config.get("normalize", True))
     try:
         return compute_predicate(
@@ -261,7 +272,9 @@ def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
     normalize = bool(req.config.get("normalize", True))
     try:
         return {
@@ -274,7 +287,9 @@ def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
             ),
         }
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Characteristics failed: {exc}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"Characteristics failed: {exc}"
+        ) from exc
 
 
 @app.post("/api/targets")
@@ -283,9 +298,13 @@ def targets(req: TargetsRequest) -> dict[str, Any]:
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
     try:
-        return compute_targets(df, req.target_cols, req.row_indices, req.selected_local_indices)
+        return compute_targets(
+            df, req.target_cols, req.row_indices, req.selected_local_indices
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Targets failed: {exc}") from exc
 
@@ -296,7 +315,9 @@ def rows(req: RowsRequest) -> dict[str, Any]:
     try:
         df = ds.load(req.dataset)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {req.dataset}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
     # Ids are positions into *this* dataset's frame. A client holding a tree built on
     # another dataset sends ids that are perfectly valid integers and simply too large,
     # which pandas raises on — a bad request, not a server fault. Every sibling
@@ -319,7 +340,9 @@ def rows(req: RowsRequest) -> dict[str, Any]:
             )
         cols = req.columns
     sub = df.iloc[req.ids][cols]
-    records = json.loads(sub.to_json(orient="records"))  # to_json coerces NaN->null, np types->native
+    records = json.loads(
+        sub.to_json(orient="records")
+    )  # to_json coerces NaN->null, np types->native
     return {"columns": cols, "rows": records}
 
 

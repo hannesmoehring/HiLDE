@@ -16,7 +16,14 @@ import pandas as pd
 
 from src_research.predicate_stability_analysis import stability_summary
 from src_research.predicate_stability_analysis import verdicts as compute_verdicts
-from src_research.rederive import STABILITY_RUN, deltas_table, diff_rows, out_dir, run_dir, write_deltas
+from src_research.rederive import (
+    STABILITY_RUN,
+    deltas_table,
+    diff_rows,
+    out_dir,
+    run_dir,
+    write_deltas,
+)
 
 KEYS = ["arm", "method", "split", "delta"]
 
@@ -32,11 +39,16 @@ def main() -> dict:
     corrected.to_csv(out_dir(run) / "verdicts.csv", index=False)
 
     # The scientific verdict must not move: only the description of the sample does.
-    verdict_rows = diff_rows(old, corrected, KEYS, ["t_star", "h2_supported", "primary"])
+    verdict_rows = diff_rows(
+        old, corrected, KEYS, ["t_star", "h2_supported", "primary"]
+    )
     n_rows = diff_rows(old, corrected, KEYS, ["n_selections"])
 
     per_arm = (
-        corrected.groupby("arm")[["n_pairs", "n_selections", "n_seeds"]].max().reset_index().sort_values("arm")
+        corrected.groupby("arm")[["n_pairs", "n_selections", "n_seeds"]]
+        .max()
+        .reset_index()
+        .sort_values("arm")
     )
 
     sections = [
@@ -52,7 +64,9 @@ def main() -> dict:
     ]
     for r in per_arm.itertuples():
         factor = r.n_pairs / r.n_selections if r.n_selections else float("nan")
-        sections.append(f"| {r.arm} | {r.n_pairs} | {r.n_selections} | {r.n_seeds} | {factor:.1f}x |")
+        sections.append(
+            f"| {r.arm} | {r.n_pairs} | {r.n_selections} | {r.n_seeds} | {factor:.1f}x |"
+        )
     sections += [
         "",
         "On `wine` the five seeds are tree rebuilds of one dataset, so the distinct selections are the",
@@ -75,12 +89,18 @@ def main() -> dict:
             else "**`t_star` / `h2_supported` moved on some rows — investigate before citing:**"
         ),
         "",
-        *([] if not verdict_rows else deltas_table(verdict_rows, "arm · method · split · delta")),
+        *(
+            []
+            if not verdict_rows
+            else deltas_table(verdict_rows, "arm · method · split · delta")
+        ),
         "The p-values are still computed over n_pairs. Aggregating to one value per selection before",
         "testing would change a pre-registered analysis, which is out of scope for a re-derivation; the",
         "honest n is reported so a reader can judge the pseudo-replication for themselves.",
         "",
     ]
     write_deltas(run, f"Corrected RQ2 verdicts — {run}", sections)
-    print(f"  {run}: {len(corrected)} verdicts re-derived, n_selections restated on {len(n_rows)} rows, verdicts moved on {len(verdict_rows)}")
+    print(
+        f"  {run}: {len(corrected)} verdicts re-derived, n_selections restated on {len(n_rows)} rows, verdicts moved on {len(verdict_rows)}"
+    )
     return {"run": run, "n_changed": len(n_rows), "n_verdicts_moved": len(verdict_rows)}

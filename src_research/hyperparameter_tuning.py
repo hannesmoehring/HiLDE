@@ -77,17 +77,27 @@ if not hasattr(np, "int_"):
 from joblib import Parallel, delayed, parallel_config
 from kDBCV.DBCV import DBCV_score
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+from sklearn.metrics import (
+    adjusted_rand_score,
+    normalized_mutual_info_score,
+    silhouette_score,
+)
 from sklearn.preprocessing import StandardScaler
 from zadu.zadu import ZADU
 
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
-from src.types import Config
-from src.datasets import DATASETS
 from src.config_defaults import init_state
+from src.datasets import DATASETS
+from src.types import Config
 
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this block to change the experiment. Defaults = "Medium" grid. #
@@ -96,7 +106,9 @@ from src.config_defaults import init_state
 SEED = 42
 N_TRIALS = 100  # trials per study (one TPE + one random study per cell)
 SUBSAMPLE_CAP = 500  # cap rows per dataset (seeded) to keep t-SNE/UMAP tractable
-PARALLEL_JOBS = -1  # grid cells to run concurrently; 1 = serial, -1 = all cores. See note below.
+PARALLEL_JOBS = (
+    -1
+)  # grid cells to run concurrently; 1 = serial, -1 = all cores. See note below.
 # Cells (dataset x DR x clustering) are independent and run in separate processes when
 # PARALLEL_JOBS != 1. Each worker's inner BLAS/UMAP threads are capped to 1 to avoid
 # oversubscription, so a good value is ~ (physical cores) with a little headroom.
@@ -108,7 +120,11 @@ DATASETS_TO_RUN = [
     "Concentric rings (Low)",  # non-convex density clusters; density-based vs convex contrast
 ]
 DR_METHODS = ["UMAP", "t-SNE", "PCA", "MDS"]  # also supported: "MDS" (slow)
-CLUSTER_METHODS = ["HDBSCAN", "DBSCAN", "KMeans"]  # Track A only; Track B collapses clustering axis #, "GMM"
+CLUSTER_METHODS = [
+    "HDBSCAN",
+    "DBSCAN",
+    "KMeans",
+]  # Track A only; Track B collapses clustering axis #, "GMM"
 TRACKS = ["A", "B"]  # A = DBCV pipeline, B = ZADU DR faithfulness
 
 OUTPUT_ROOT = Path("outputs/experiments")
@@ -150,7 +166,9 @@ class Metric:
 
 
 DBCV_METRIC = Metric("dbcv", "maximize", -1.0)  # DBCV is in [-1, 1]
-TNC_METRIC = Metric("tnc", "maximize", 0.0)  # mean(trustworthiness, continuity) in [0, 1]
+TNC_METRIC = Metric(
+    "tnc", "maximize", 0.0
+)  # mean(trustworthiness, continuity) in [0, 1]
 
 
 def finite_or_worst(value: float | None, metric: Metric) -> float:
@@ -190,11 +208,15 @@ def prepare_dataset(display_name: str) -> Dataset:
     """
     df = DATASETS[display_name]()
     target_cols = [c for c in df.columns if c.startswith("target_")]
-    feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
+    feature_cols = [
+        c for c in df.columns if c != "row_id" and not c.startswith("target_")
+    ]
 
     if "target_is_red" in df.columns:  # wine quality
         y = df["target_is_red"].to_numpy().astype(int)
-    elif "target_manifold_position" in df.columns:  # swiss roll - continuous, no classes
+    elif (
+        "target_manifold_position" in df.columns
+    ):  # swiss roll - continuous, no classes
         y = None
     elif target_cols:
         y = df[target_cols].to_numpy().argmax(axis=1)
@@ -218,7 +240,9 @@ def prepare_dataset(display_name: str) -> Dataset:
 # --------------------------------------------------------------------------- #
 
 
-def suggest_dr_params(trial: optuna.Trial, method: str, n_dims: int, fixed_n_components: int | None) -> tuple[dict, int]:
+def suggest_dr_params(
+    trial: optuna.Trial, method: str, n_dims: int, fixed_n_components: int | None
+) -> tuple[dict, int]:
     """Suggest DR hyperparameters. Returns (config overrides, n_components).
 
     ``fixed_n_components`` pins the embedding dimension (Track B uses 2); when
@@ -228,15 +252,23 @@ def suggest_dr_params(trial: optuna.Trial, method: str, n_dims: int, fixed_n_com
     if method == "UMAP":
         overrides["umap_n_neighbors"] = trial.suggest_int("umap_n_neighbors", 5, 50)
         overrides["umap_min_dist"] = trial.suggest_float("umap_min_dist", 0.0, 0.5)
-        n_components = fixed_n_components or trial.suggest_int("n_components", 2, min(n_dims, 15))
+        n_components = fixed_n_components or trial.suggest_int(
+            "n_components", 2, min(n_dims, 15)
+        )
     elif method == "t-SNE":
         overrides["tsne_perplexity"] = trial.suggest_float("tsne_perplexity", 5.0, 50.0)
-        overrides["tsne_learning_rate"] = trial.suggest_float("tsne_learning_rate", 10.0, 1000.0)
+        overrides["tsne_learning_rate"] = trial.suggest_float(
+            "tsne_learning_rate", 10.0, 1000.0
+        )
         n_components = 2  # sklearn 'barnes_hut' only supports 2 components
     elif method == "PCA":
-        n_components = fixed_n_components or trial.suggest_int("n_components", 2, n_dims)
+        n_components = fixed_n_components or trial.suggest_int(
+            "n_components", 2, n_dims
+        )
     elif method == "MDS":
-        n_components = fixed_n_components or trial.suggest_int("n_components", 2, min(n_dims, 10))
+        n_components = fixed_n_components or trial.suggest_int(
+            "n_components", 2, min(n_dims, 10)
+        )
     else:
         raise ValueError(f"Unknown DR method: {method}")
     return overrides, n_components
@@ -250,7 +282,9 @@ def suggest_cluster_params(trial: optuna.Trial, method: str) -> dict:
     """
     if method == "HDBSCAN":
         return {
-            "hclust_min_cluster_size": trial.suggest_int("hclust_min_cluster_size", 2, 50),
+            "hclust_min_cluster_size": trial.suggest_int(
+                "hclust_min_cluster_size", 2, 50
+            ),
             "hclust_min_samples": trial.suggest_int("hclust_min_samples", 1, 25),
         }
     if method == "DBSCAN":
@@ -261,7 +295,9 @@ def suggest_cluster_params(trial: optuna.Trial, method: str) -> dict:
     if method == "KMeans":
         return {"cluster_n_clusters": trial.suggest_int("cluster_n_clusters", 2, 15)}
     if method == "GMM":
-        return {"hclust_umap_n_components": trial.suggest_int("gmm_n_components", 2, 15)}
+        return {
+            "hclust_umap_n_components": trial.suggest_int("gmm_n_components", 2, 15)
+        }
     raise ValueError(f"Unknown clustering method: {method}")
 
 
@@ -279,10 +315,14 @@ def dr_is_tunable(method: str, fixed_n_components: int | None) -> bool:
 # --------------------------------------------------------------------------- #
 
 
-def run_pipeline(X: np.ndarray, dr_method: str, n_components: int, cluster_method: str, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
+def run_pipeline(
+    X: np.ndarray, dr_method: str, n_components: int, cluster_method: str, cfg: Config
+) -> tuple[np.ndarray, np.ndarray]:
     """Reduce then cluster. Normalises the clustering return-type asymmetry
     (HDBSCAN returns ``(labels, outlier_scores)``; others return ``labels``)."""
-    embedding = reduce_dimensionality(method=dr_method, X=X, config=cfg, n_components=n_components)
+    embedding = reduce_dimensionality(
+        method=dr_method, X=X, config=cfg, n_components=n_components
+    )
     out = compute_clusters(embedding, method=cluster_method, config=cfg)
     labels = out[0] if isinstance(out, tuple) else out
     return embedding, np.asarray(labels)
@@ -305,14 +345,22 @@ def _dbcv(data: np.ndarray, labels: np.ndarray) -> float | None:
         return None
 
 
-def clustering_metrics(X: np.ndarray, embedding: np.ndarray, labels: np.ndarray, y: np.ndarray | None) -> dict:
+def clustering_metrics(
+    X: np.ndarray, embedding: np.ndarray, labels: np.ndarray, y: np.ndarray | None
+) -> dict:
     """Internal (DBCV, silhouette) and external (ARI, NMI) clustering metrics.
 
     Returns a dict of floats / None. ``dbcv`` is scored in the original space
     (robust but pessimistic in high dimensions); ``dbcv_embedded`` in the
     embedding for comparison.
     """
-    out: dict = {"dbcv": None, "dbcv_embedded": None, "silhouette": None, "ari": None, "nmi": None}
+    out: dict = {
+        "dbcv": None,
+        "dbcv_embedded": None,
+        "silhouette": None,
+        "ari": None,
+        "nmi": None,
+    }
     n_clusters, _ = cluster_stats(labels)
     if n_clusters < 2:
         return out
@@ -366,7 +414,13 @@ def tnc_mean(dr_scores: dict) -> float | None:
 # --------------------------------------------------------------------------- #
 
 
-def make_objective(track: str, ds: Dataset, dr_method: str, cluster_method: str | None, base_cfg: Config):
+def make_objective(
+    track: str,
+    ds: Dataset,
+    dr_method: str,
+    cluster_method: str | None,
+    base_cfg: Config,
+):
     """Build an Optuna objective for a single grid cell.
 
     Side effect: every trial records its secondary metrics as ``user_attrs`` so
@@ -378,12 +432,16 @@ def make_objective(track: str, ds: Dataset, dr_method: str, cluster_method: str 
     def objective(trial: optuna.Trial) -> float:
         cfg: Config = base_cfg.copy()
         try:
-            dr_overrides, n_components = suggest_dr_params(trial, dr_method, ds.n_dims, fixed_nc)
+            dr_overrides, n_components = suggest_dr_params(
+                trial, dr_method, ds.n_dims, fixed_nc
+            )
             cfg.update(dr_overrides)
 
             if track == "A":
                 cfg.update(suggest_cluster_params(trial, cluster_method))
-                embedding, labels = run_pipeline(ds.X, dr_method, n_components, cluster_method, cfg)
+                embedding, labels = run_pipeline(
+                    ds.X, dr_method, n_components, cluster_method, cfg
+                )
                 n_clusters, noise_frac = cluster_stats(labels)
                 if n_clusters < 2 or noise_frac > 0.5:
                     return metric.worst
@@ -392,12 +450,16 @@ def make_objective(track: str, ds: Dataset, dr_method: str, cluster_method: str 
                 return finite_or_worst(cm["dbcv"], metric)
 
             # Track B: faithfulness of a 2-D embedding; cluster with default HDBSCAN for ARI
-            embedding = reduce_dimensionality(method=dr_method, X=ds.X, config=cfg, n_components=2)
+            embedding = reduce_dimensionality(
+                method=dr_method, X=ds.X, config=cfg, n_components=2
+            )
             dm = dr_metrics(ds.X, embedding)
             score = tnc_mean(dm)
             ext = {"ari": None, "nmi": None}
             if ds.y is not None:
-                labels = np.asarray(compute_clusters(embedding, method="HDBSCAN", config=cfg)[0])
+                labels = np.asarray(
+                    compute_clusters(embedding, method="HDBSCAN", config=cfg)[0]
+                )
                 if cluster_stats(labels)[0] >= 2:
                     ext["ari"] = float(adjusted_rand_score(ds.y, labels))
                     ext["nmi"] = float(normalized_mutual_info_score(ds.y, labels))
@@ -424,7 +486,13 @@ SAMPLERS = {
 }
 
 
-def evaluate_baseline(track: str, ds: Dataset, dr_method: str, cluster_method: str | None, base_cfg: Config) -> dict:
+def evaluate_baseline(
+    track: str,
+    ds: Dataset,
+    dr_method: str,
+    cluster_method: str | None,
+    base_cfg: Config,
+) -> dict:
     """Score the pipeline with the project's default hyperparameters (n_components=2)."""
     cfg: Config = base_cfg.copy()
     try:
@@ -434,7 +502,9 @@ def evaluate_baseline(track: str, ds: Dataset, dr_method: str, cluster_method: s
                 return {"baseline": DBCV_METRIC.worst}
             cm = clustering_metrics(ds.X, embedding, labels, ds.y)
             return {"baseline": finite_or_worst(cm["dbcv"], DBCV_METRIC), **cm}
-        embedding = reduce_dimensionality(method=dr_method, X=ds.X, config=cfg, n_components=2)
+        embedding = reduce_dimensionality(
+            method=dr_method, X=ds.X, config=cfg, n_components=2
+        )
         dm = dr_metrics(ds.X, embedding)
         return {"baseline": finite_or_worst(tnc_mean(dm), TNC_METRIC), **dm}
     except Exception:
@@ -451,7 +521,9 @@ def best_so_far(values: list[float], direction: str) -> list[float]:
     return out
 
 
-def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None) -> tuple[list[dict], list[dict]]:
+def run_cell(
+    track: str, ds: Dataset, dr_method: str, cluster_method: str | None
+) -> tuple[list[dict], list[dict]]:
     """Run baseline + both samplers for one grid cell.
 
     Returns (summary_rows, trial_rows). One summary row per sampler.
@@ -491,10 +563,20 @@ def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None
         study = optuna.create_study(direction=metric.direction, sampler=make_sampler())
         study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=False)
 
-        values = [t.value if t.value is not None else metric.worst for t in study.trials]
+        values = [
+            t.value if t.value is not None else metric.worst for t in study.trials
+        ]
         bsf = best_so_far(values, metric.direction)
         for t, b in zip(study.trials, bsf):
-            trial_rows.append({**cell, "sampler": sampler_name, "trial": t.number, "value": t.value, "best_so_far": b})
+            trial_rows.append(
+                {
+                    **cell,
+                    "sampler": sampler_name,
+                    "trial": t.number,
+                    "value": t.value,
+                    "best_so_far": b,
+                }
+            )
 
         gain = study.best_value - base["baseline"]
         denom = abs(base["baseline"]) if base["baseline"] != 0 else 1.0
@@ -515,7 +597,17 @@ def run_cell(track: str, ds: Dataset, dr_method: str, cluster_method: str | None
     return summary_rows, trial_rows
 
 
-SECONDARY_KEYS = ["dbcv_embedded", "silhouette", "ari", "nmi", "trustworthiness", "continuity", "stress", "n_clusters", "noise_frac"]
+SECONDARY_KEYS = [
+    "dbcv_embedded",
+    "silhouette",
+    "ari",
+    "nmi",
+    "trustworthiness",
+    "continuity",
+    "stress",
+    "n_clusters",
+    "noise_frac",
+]
 
 
 def _secondary(attrs: dict) -> dict:
@@ -558,8 +650,12 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
     cells = build_cells()
     datasets = {name: prepare_dataset(name) for name in DATASETS_TO_RUN}
     for name, ds in datasets.items():
-        note = "no ground truth" if ds.y is None else f"{len(set(ds.y.tolist()))} classes"
-        console.print(f"  loaded [bold]{name}[/]: {ds.X.shape[0]}x{ds.X.shape[1]}, {note}")
+        note = (
+            "no ground truth" if ds.y is None else f"{len(set(ds.y.tolist()))} classes"
+        )
+        console.print(
+            f"  loaded [bold]{name}[/]: {ds.X.shape[0]}x{ds.X.shape[1]}, {note}"
+        )
 
     summaries: list[dict] = []
     trials: list[dict] = []
@@ -585,7 +681,10 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
             # Cells are independent -> run in worker processes. inner_max_num_threads=1
             # stops each worker's UMAP/BLAS pools from oversubscribing the cores.
             # return_as="generator" yields results as cells finish, so the bar stays live.
-            jobs = (delayed(run_cell)(track, datasets[dataset], dr, cm) for track, dataset, dr, cm in cells)
+            jobs = (
+                delayed(run_cell)(track, datasets[dataset], dr, cm)
+                for track, dataset, dr, cm in cells
+            )
             with parallel_config(backend="loky", inner_max_num_threads=1):
                 for s, t in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(jobs):
                     summaries.extend(s)
@@ -618,10 +717,16 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
     a = tpe[tpe["track"] == "A"]
     if not a.empty:
         datasets = a["dataset"].unique()
-        fig, axes = plt.subplots(1, len(datasets), figsize=(4 * len(datasets), 3.5), squeeze=False)
+        fig, axes = plt.subplots(
+            1, len(datasets), figsize=(4 * len(datasets), 3.5), squeeze=False
+        )
         for ax, dname in zip(axes[0], datasets):
-            piv = a[a["dataset"] == dname].pivot_table(index="dr_method", columns="cluster_method", values="gain")
-            sns.heatmap(piv, annot=True, fmt=".2f", center=0, cmap="RdYlGn", ax=ax, cbar=False)
+            piv = a[a["dataset"] == dname].pivot_table(
+                index="dr_method", columns="cluster_method", values="gain"
+            )
+            sns.heatmap(
+                piv, annot=True, fmt=".2f", center=0, cmap="RdYlGn", ax=ax, cbar=False
+            )
             ax.set_title(dname, fontsize=9)
             ax.set_xlabel("")
             ax.set_ylabel("")
@@ -643,9 +748,15 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
 
     # 3. Convergence: mean best-so-far across cells, per track, TPE vs random.
     if not trials.empty:
-        conv = trials.groupby(["track", "sampler", "trial"])["best_so_far"].mean().reset_index()
+        conv = (
+            trials.groupby(["track", "sampler", "trial"])["best_so_far"]
+            .mean()
+            .reset_index()
+        )
         tracks = conv["track"].unique()
-        fig, axes = plt.subplots(1, len(tracks), figsize=(5 * len(tracks), 4), squeeze=False)
+        fig, axes = plt.subplots(
+            1, len(tracks), figsize=(5 * len(tracks), 4), squeeze=False
+        )
         for ax, tr in zip(axes[0], tracks):
             sub = conv[conv["track"] == tr]
             for sampler_name in sub["sampler"].unique():
@@ -670,16 +781,24 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
     if not a_ext.empty:
         dropped = len(a) - len(a_ext)
         if dropped:
-            console.print(f"[yellow]internal-vs-external: {dropped} of {len(a)} Track-A TPE cells lack a tuned or a baseline ARI and are not plotted.[/]")
+            console.print(
+                f"[yellow]internal-vs-external: {dropped} of {len(a)} Track-A TPE cells lack a tuned or a baseline ARI and are not plotted.[/]"
+            )
         paired = a_ext.assign(ari_gain=a_ext["ari"] - a_ext["ari_base"])
         r = float(paired["gain"].corr(paired["ari_gain"]))
         fig, ax = plt.subplots(figsize=(6, 5))
-        sns.scatterplot(data=paired, x="gain", y="ari_gain", hue="dataset", style="dr_method", ax=ax)
+        sns.scatterplot(
+            data=paired, x="gain", y="ari_gain", hue="dataset", style="dr_method", ax=ax
+        )
         ax.axhline(0, color="grey", lw=0.6)
         ax.axvline(0, color="grey", lw=0.6)
-        ax.set_xlabel("DBCV gain: best tuned DBCV - default-config DBCV (original space)")
+        ax.set_xlabel(
+            "DBCV gain: best tuned DBCV - default-config DBCV (original space)"
+        )
         ax.set_ylabel("ARI gain: best-trial ARI - default-config ARI (vs ground truth)")
-        ax.set_title(f"Does optimising DBCV improve agreement with ground truth?\nTrack A, TPE, n={len(paired)} cells, Pearson r={r:.3f}")
+        ax.set_title(
+            f"Does optimising DBCV improve agreement with ground truth?\nTrack A, TPE, n={len(paired)} cells, Pearson r={r:.3f}"
+        )
         fig.tight_layout()
         fig.savefig(plots / "internal_vs_external.png", dpi=150)
         plt.close(fig)
@@ -688,18 +807,45 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
 def print_summary(summary: pd.DataFrame) -> None:
     """Render per-track rich tables of baseline / best / gain (TPE rows)."""
     for track in summary["track"].unique():
-        sub = summary[(summary["track"] == track) & (summary["sampler"].isin(["TPE", "none"]))]
+        sub = summary[
+            (summary["track"] == track) & (summary["sampler"].isin(["TPE", "none"]))
+        ]
         if sub.empty:
             continue
         metric = sub["objective"].iloc[0]
         table = Table(title=f"Track {track} - objective: {metric} (best = TPE)")
-        for col in ["dataset", "dr_method", "cluster_method", "baseline", "best", "gain", "ari"]:
-            table.add_column(col, justify="right" if col in {"baseline", "best", "gain", "ari"} else "left")
+        for col in [
+            "dataset",
+            "dr_method",
+            "cluster_method",
+            "baseline",
+            "best",
+            "gain",
+            "ari",
+        ]:
+            table.add_column(
+                col,
+                justify="right"
+                if col in {"baseline", "best", "gain", "ari"}
+                else "left",
+            )
         for _, r in sub.iterrows():
             gain = r["gain"]
-            gain_str = f"[green]{gain:+.3f}[/]" if gain > 0 else (f"[red]{gain:+.3f}[/]" if gain < 0 else f"{gain:+.3f}")
+            gain_str = (
+                f"[green]{gain:+.3f}[/]"
+                if gain > 0
+                else (f"[red]{gain:+.3f}[/]" if gain < 0 else f"{gain:+.3f}")
+            )
             ari = "-" if pd.isna(r.get("ari")) else f"{r['ari']:.3f}"
-            table.add_row(r["dataset"], r["dr_method"], r["cluster_method"], f"{r['baseline']:.3f}", f"{r['best']:.3f}", gain_str, ari)
+            table.add_row(
+                r["dataset"],
+                r["dr_method"],
+                r["cluster_method"],
+                f"{r['baseline']:.3f}",
+                f"{r['best']:.3f}",
+                gain_str,
+                ari,
+            )
         console.print(table)
 
     tv = summary[summary["tunable"]]
@@ -712,7 +858,9 @@ def print_summary(summary: pd.DataFrame) -> None:
 def main() -> None:
     np.random.seed(SEED)
     console.rule("[bold]Hyperparameter-tuning effectiveness experiment")
-    console.print(f"datasets={len(DATASETS_TO_RUN)}  DR={DR_METHODS}  clustering={CLUSTER_METHODS}  tracks={TRACKS}  trials/study={N_TRIALS}\n")
+    console.print(
+        f"datasets={len(DATASETS_TO_RUN)}  DR={DR_METHODS}  clustering={CLUSTER_METHODS}  tracks={TRACKS}  trials/study={N_TRIALS}\n"
+    )
 
     summary, trials = run_experiment()
 

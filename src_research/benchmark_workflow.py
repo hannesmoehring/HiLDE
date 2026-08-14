@@ -54,7 +54,13 @@ import pandas as pd
 import seaborn as sns
 from joblib import Parallel, delayed, parallel_config
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 from scipy.stats import spearmanr, wilcoxon
 
@@ -63,15 +69,26 @@ from src.analysis.predicate_generator import _f1
 from src.config_defaults import default_config
 from src.evaluation.evaluate import _score_node, start_evaluation
 from src.types import Config
-from src_research.hierarchical_vs_flat import _silence_noise, collect_leaves, prepare_dataset, standardised_X
+from src_research.hierarchical_vs_flat import (
+    _silence_noise,
+    collect_leaves,
+    prepare_dataset,
+    standardised_X,
+)
 from src_research.predicate_stability import admitted_mask, build_predicate
 
 # --------------------------------------------------------------------------- #
 # CONFIG — fixed by the design doc (§3, §4). No new levels, no new datasets.   #
 # --------------------------------------------------------------------------- #
 
-DATASETS_TO_RUN = ["Wine quality (Low)", "Breast cancer (Low)", "Digits (Low)"]  # design §3
-N_BUILDS = 5  # replicates; the build id is threaded into the DR seed (SEEDS_WINE convention)
+DATASETS_TO_RUN = [
+    "Wine quality (Low)",
+    "Breast cancer (Low)",
+    "Digits (Low)",
+]  # design §3
+N_BUILDS = (
+    5  # replicates; the build id is threaded into the DR seed (SEEDS_WINE convention)
+)
 HIER_LAYERS_CAP = 4  # the single named deviation from shipped defaults (design §4)
 T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the thesis; no new levels
 PREDICATE_METHODS = ["threshold", "db"]  # dense (C1) + sparse (C4 / table example)
@@ -156,18 +173,26 @@ def walk_nodes(node: AnalysisObject, depth: int = 0):
 # --------------------------------------------------------------------------- #
 
 
-def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | None], build: int) -> dict[str, list[dict]]:
+def run_build(
+    dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | None], build: int
+) -> dict[str, list[dict]]:
     """Build the tree with shipped defaults (cap HIER_LAYERS_CAP) and extract every
     record the design needs. Returns lists of plain dicts (trees stay in the worker)."""
     _silence_noise()
     cfg: Config = default_config()
-    cfg["dataset_choice"] = dataset  # display-only (console banner); no algorithmic effect
-    cfg["hierarchical_layers"] = HIER_LAYERS_CAP  # the single named deviation (design §4)
+    cfg["dataset_choice"] = (
+        dataset  # display-only (console banner); no algorithmic effect
+    )
+    cfg["hierarchical_layers"] = (
+        HIER_LAYERS_CAP  # the single named deviation (design §4)
+    )
     # `default_config()` pins all three random_state keys to 42, so without this every one
     # of the N_BUILDS "replicates" is byte-identical and C2's Wilcoxon receives each leaf
     # N_BUILDS times. (The shipped 20260728_185329 run predates DR seeding, so its builds
     # are genuine replicates; a rerun without this line would not be.)
-    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = build
+    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = (
+        build
+    )
 
     df, feature_cols, y = data
     n_total = len(df)
@@ -185,7 +210,9 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
     for node_id, (node, depth) in enumerate(walk_nodes(tree)):
         is_leaf = "is_leaf" in node
         if is_leaf:
-            assert node["depth"] == depth, f"walk depth {depth} != stored {node['depth']}"
+            assert node["depth"] == depth, (
+                f"walk depth {depth} != stored {node['depth']}"
+            )
             leaf_depths.append(depth)
         s = node.get("scores") or {}
         node_rows.append(
@@ -219,11 +246,19 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
         "min_leaf_size": int(min(leaf_sizes)) if leaf_sizes else 0,
         "max_leaf_size": int(max(leaf_sizes)) if leaf_sizes else 0,
         "noise_fraction": 1.0 - covered / n_total,
-        "n_leaves_scored": int(sum(1 for leaf in leaves if (leaf.get("scores") or {}).get("trustworthiness") is not None)),
+        "n_leaves_scored": int(
+            sum(
+                1
+                for leaf in leaves
+                if (leaf.get("scores") or {}).get("trustworthiness") is not None
+            )
+        ),
         "n_leaves_predicated": int(sum(1 for s in leaf_sizes if s >= MIN_SELECTION)),
         # Projections that failed outright, so the census says how much of the tree it saw.
         "root_unprojected": root_emb is None,
-        "n_leaves_unprojected": int(sum(1 for leaf in leaves if leaf["embedding_original"] is None)),
+        "n_leaves_unprojected": int(
+            sum(1 for leaf in leaves if leaf["embedding_original"] is None)
+        ),
     }
 
     # ---- per-leaf records: D3 predicates, C2 paired arm, D4 purity -------- #
@@ -241,7 +276,12 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
         idx = leaf["row_indices"]
         n_leaf = int(idx.shape[0])
         leaf_scores = leaf.get("scores") or {}
-        leaf_cell = {**cell, "leaf_id": leaf_id, "leaf_n": n_leaf, "leaf_depth": int(leaf["depth"])}
+        leaf_cell = {
+            **cell,
+            "leaf_id": leaf_id,
+            "leaf_n": n_leaf,
+            "leaf_depth": int(leaf["depth"]),
+        }
 
         # D3 / C1 / C4 — predicates for every eligible leaf, both methods, full t grid.
         if n_leaf >= MIN_SELECTION:
@@ -249,14 +289,18 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
             y_leaf[idx] = True
             for method in PREDICATE_METHODS:
                 for t in T_GRID:
-                    rows = build_predicate(method, TAIL_SPLIT, t, idx, X_all, feature_cols)
+                    rows = build_predicate(
+                        method, TAIL_SPLIT, t, idx, X_all, feature_cols
+                    )
                     mask = admitted_mask(rows, X_all, feature_index)
                     f1, precision, recall = _f1(mask, y_leaf)
                     rec = {
                         **leaf_cell,
                         "method": method,
                         "t": t,
-                        "length": int(sum(bool(r.get("in_predicate")) for r in rows)) if method == "db" else len(feature_cols),
+                        "length": int(sum(bool(r.get("in_predicate")) for r in rows))
+                        if method == "db"
+                        else len(feature_cols),
                         "f1": f1,
                         "precision": precision,
                         "recall": recall,
@@ -291,7 +335,9 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
         # k parity is the fairness invariant, and it is only defined when both arms scored;
         # an unprojected arm reports k=None and is excluded below rather than asserted on.
         if s_leaf["k"] is not None and s_root["k"] is not None:
-            assert s_leaf["k"] == s_root["k"], f"k mismatch: leaf={s_leaf['k']} root={s_root['k']}"
+            assert s_leaf["k"] == s_root["k"], (
+                f"k mismatch: leaf={s_leaf['k']} root={s_root['k']}"
+            )
         c2_rows.append(
             {
                 **leaf_cell,
@@ -299,13 +345,17 @@ def run_build(dataset: str, data: tuple[pd.DataFrame, list[str], np.ndarray | No
                 "degenerate": degenerate,
                 "root_unprojected": root_unprojected,
                 "leaf_unprojected": leaf_emb is None,
-                "eligible": (n_leaf >= C2_MIN_N) and not degenerate and not root_unprojected and leaf_emb is not None,
+                "eligible": (n_leaf >= C2_MIN_N)
+                and not degenerate
+                and not root_unprojected
+                and leaf_emb is not None,
                 "trust_leaf": s_leaf["trustworthiness"],
                 "trust_root": s_root["trustworthiness"],
                 "cont_leaf": s_leaf["continuity"],
                 "cont_root": s_root["continuity"],
                 "delta_trust": None
-                if s_leaf["trustworthiness"] is None or s_root["trustworthiness"] is None
+                if s_leaf["trustworthiness"] is None
+                or s_root["trustworthiness"] is None
                 else s_leaf["trustworthiness"] - s_root["trustworthiness"],
                 "delta_cont": None
                 if s_leaf["continuity"] is None or s_root["continuity"] is None
@@ -353,21 +403,31 @@ def _med_range(values: pd.Series | list, fmt: str = "{:.2f}") -> str:
     return f"{fmt.format(v.median())} ({fmt.format(v.min())}–{fmt.format(v.max())})"
 
 
-def build_leaf_means(pred_or_scores: pd.DataFrame, value_cols: list[str]) -> pd.DataFrame:
+def build_leaf_means(
+    pred_or_scores: pd.DataFrame, value_cols: list[str]
+) -> pd.DataFrame:
     """Per (dataset, build): unweighted mean over scored leaves (every leaf one view,
     design §5) plus the size-weighted variant (CSV only, never the table)."""
     rows = []
     for (dataset, build), g in pred_or_scores.groupby(["dataset", "build"]):
-        rec = {"dataset": dataset, "build": build, "n_leaves_scored": int(g[value_cols[0]].notna().sum())}
+        rec = {
+            "dataset": dataset,
+            "build": build,
+            "n_leaves_scored": int(g[value_cols[0]].notna().sum()),
+        }
         for c in value_cols:
             gv = g.dropna(subset=[c])
             rec[f"{c}_mean"] = float(gv[c].mean()) if len(gv) else np.nan
-            rec[f"{c}_wmean"] = float(np.average(gv[c], weights=gv["n_points"])) if len(gv) else np.nan
+            rec[f"{c}_wmean"] = (
+                float(np.average(gv[c], weights=gv["n_points"])) if len(gv) else np.nan
+            )
         rows.append(rec)
     return pd.DataFrame(rows)
 
 
-def pick_example_leaf(shape: pd.DataFrame, predicates: pd.DataFrame, dataset: str) -> dict | None:
+def pick_example_leaf(
+    shape: pd.DataFrame, predicates: pd.DataFrame, dataset: str
+) -> dict | None:
     """The fixed example rule (§5): the build with the median leaf count (tie → earlier
     build id); within it the leaf of median size (even count → the larger middle; equal
     sizes → the later leaf id, a fixed arbitrary tiebreak). Returns the strict and
@@ -383,7 +443,9 @@ def pick_example_leaf(shape: pd.DataFrame, predicates: pd.DataFrame, dataset: st
     build = int(cand.iloc[0]["build"])
 
     leafs = (
-        predicates[(predicates["dataset"] == dataset) & (predicates["build"] == build)][["leaf_id", "leaf_n"]]
+        predicates[(predicates["dataset"] == dataset) & (predicates["build"] == build)][
+            ["leaf_id", "leaf_n"]
+        ]
         .drop_duplicates()
         .sort_values(["leaf_n", "leaf_id"])
         .reset_index(drop=True)
@@ -403,7 +465,14 @@ def pick_example_leaf(shape: pd.DataFrame, predicates: pd.DataFrame, dataset: st
         return None
     strict = sel[sel["t"] == 1.0].iloc[0].to_dict()
     relaxed = sel[sel["t"] == C4_RELAXED_T].iloc[0].to_dict()
-    return {"dataset": dataset, "build": build, "leaf_id": leaf_id, "leaf_n": int(chosen["leaf_n"]), "strict": strict, "relaxed": relaxed}
+    return {
+        "dataset": dataset,
+        "build": build,
+        "leaf_id": leaf_id,
+        "leaf_n": int(chosen["leaf_n"]),
+        "strict": strict,
+        "relaxed": relaxed,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -416,10 +485,23 @@ def check_c1(predicates: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
     # records — the natural reading; the two-stage per-build variant (median over the
     # 5 build medians) is emitted alongside so a reader can re-judge borderline cases.
     dense = predicates[predicates["method"] == "threshold"]
-    detail = dense.groupby(["dataset", "t"])["recall"].agg(median="median", count="size").reset_index()
-    two_stage = dense.groupby(["dataset", "build", "t"])["recall"].median().groupby(["dataset", "t"]).median().rename("median_of_build_medians").reset_index()
+    detail = (
+        dense.groupby(["dataset", "t"])["recall"]
+        .agg(median="median", count="size")
+        .reset_index()
+    )
+    two_stage = (
+        dense.groupby(["dataset", "build", "t"])["recall"]
+        .median()
+        .groupby(["dataset", "t"])
+        .median()
+        .rename("median_of_build_medians")
+        .reset_index()
+    )
     detail = detail.merge(two_stage, on=["dataset", "t"])
-    obs: dict[tuple[str, float], float] = {(r["dataset"], r["t"]): r["median"] for _, r in detail.iterrows()}
+    obs: dict[tuple[str, float], float] = {
+        (r["dataset"], r["t"]): r["median"] for _, r in detail.iterrows()
+    }
     parts, ok = [], True
     for ds in C1_OOS_DATASETS:
         d = DATASET_D[ds]
@@ -429,12 +511,16 @@ def check_c1(predicates: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
         if ds == "Digits (Low)":
             ds_ok = ds_ok and bool(med < C1_DIGITS_CEILING)
         ok &= ds_ok
-        parts.append(f"{ds}: median {med:.4f} vs bound {bound:.4f}" + (f" (< {C1_DIGITS_CEILING})" if ds == "Digits (Low)" else ""))
+        parts.append(
+            f"{ds}: median {med:.4f} vs bound {bound:.4f}"
+            + (f" (< {C1_DIGITS_CEILING})" if ds == "Digits (Low)" else "")
+        )
     wine_med = obs.get(("Wine quality (Low)", C1_T_STAR), np.nan)
     line = {
         "check": "C1",
         "prediction": f"dense recall at t={C1_T_STAR} ≥ t^d and ≪ 1 for d=30, 64; digits < {C1_DIGITS_CEILING}",
-        "observed": "; ".join(parts) + f"; wine (in-sample): {wine_med:.4f} vs bound {C1_T_STAR**11:.4f}",
+        "observed": "; ".join(parts)
+        + f"; wine (in-sample): {wine_med:.4f} vs bound {C1_T_STAR**11:.4f}",
         "verdict": "PASS" if ok else "FAIL",
     }
     return [line], detail
@@ -449,9 +535,15 @@ def check_c2(c2: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
     med_c = float(elig["delta_cont"].median()) if d.size else np.nan
     nz = d[d != 0]
     p = float(wilcoxon(nz).pvalue) if nz.size >= 1 and not np.allclose(d, 0) else np.nan
-    ok = bool(d.size and 0 < med <= C2_MEDIAN_BAND and C2_WIN_RANGE[0] <= win <= C2_WIN_RANGE[1])
+    ok = bool(
+        d.size
+        and 0 < med <= C2_MEDIAN_BAND
+        and C2_WIN_RANGE[0] <= win <= C2_WIN_RANGE[1]
+    )
     per_ds = (
-        elig.groupby("dataset")["delta_trust"].agg(median="median", win_rate=lambda s: float(np.mean(s > 0)), n="size").reset_index()
+        elig.groupby("dataset")["delta_trust"]
+        .agg(median="median", win_rate=lambda s: float(np.mean(s > 0)), n="size")
+        .reset_index()
     )
     # Pairs that were eligible on size but carry no Δ (an arm was never projected, or the
     # scorer failed): a shrinking denominator is stated, not absorbed.
@@ -473,7 +565,11 @@ def check_c3(shape: pd.DataFrame) -> list[dict]:
         band = (lo * C3_BAND_LO_FACTOR, hi * C3_BAND_HI_FACTOR)
         all_in_range = bool(np.all((fr >= lo) & (fr <= hi)))
         all_in_band = bool(np.all((fr >= band[0]) & (fr <= band[1])))
-        verdict = "PASS" if all_in_range else ("PASS-WITH-EXCURSION" if all_in_band else "FAIL")
+        verdict = (
+            "PASS"
+            if all_in_range
+            else ("PASS-WITH-EXCURSION" if all_in_band else "FAIL")
+        )
         lines.append(
             {
                 "check": f"C3 [{ds}]",
@@ -496,10 +592,13 @@ def check_c4(predicates: pd.DataFrame) -> list[dict]:
         relaxed = db[(db["dataset"] == ds) & (db["t"] == C4_RELAXED_T)]["length"]
         s_med, r_med = float(strict.median()), float(relaxed.median())
         if ds == "Wine quality (Low)":
-            ok = C4_WINE_STRICT[0] <= s_med <= C4_WINE_STRICT[1] and C4_WINE_RELAXED[0] <= r_med <= C4_WINE_RELAXED[1]
+            ok = (
+                C4_WINE_STRICT[0] <= s_med <= C4_WINE_STRICT[1]
+                and C4_WINE_RELAXED[0] <= r_med <= C4_WINE_RELAXED[1]
+            )
             pred = f"strict median in {C4_WINE_STRICT}, relaxed (t={C4_RELAXED_T}) in {C4_WINE_RELAXED} (RQ2: 10 → 6 ± 2)"
         else:
-            ok = (r_med < s_med) and (s_med < d / 2)
+            ok = r_med < s_med < d / 2
             pred = f"direction: relaxed median < strict median ≪ d={d} (strict < d/2)"
         lines.append(
             {
@@ -527,20 +626,52 @@ def fig_shape_faithfulness(nodes: pd.DataFrame, out_dir: Path) -> None:
         sub = nodes[nodes["dataset"] == ds]
         leaf = sub[sub["is_leaf"]]
         root = sub[sub["depth"] == 0]
-        dd = leaf.melt(value_vars=["trustworthiness", "continuity"], var_name="measure", value_name="score").dropna()
-        sns.boxplot(data=dd, x="measure", y="score", hue="measure", ax=ax, width=0.5, fliersize=2, legend=False)
+        dd = leaf.melt(
+            value_vars=["trustworthiness", "continuity"],
+            var_name="measure",
+            value_name="score",
+        ).dropna()
+        sns.boxplot(
+            data=dd,
+            x="measure",
+            y="score",
+            hue="measure",
+            ax=ax,
+            width=0.5,
+            fliersize=2,
+            legend=False,
+        )
         for i, m in enumerate(["trustworthiness", "continuity"]):
             vals = root[m].dropna()
-            ax.scatter(np.full(len(vals), i), vals, marker="D", s=28, zorder=5, facecolor="none", edgecolor="crimson", label="root (per build)" if i == 0 else None)
+            ax.scatter(
+                np.full(len(vals), i),
+                vals,
+                marker="D",
+                s=28,
+                zorder=5,
+                facecolor="none",
+                edgecolor="crimson",
+                label="root (per build)" if i == 0 else None,
+            )
         ax.set_title(ds.replace(" (Low)", ""), fontsize=10)
         ax.set_xlabel("")
         ax.set_xticks([0, 1], ["trust.", "cont."])
         ax.set_ylabel("score" if ds == DATASETS_TO_RUN[0] else "")
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles[:1], ["root embedding (one mark per build)"], loc="lower center", ncol=1, frameon=False)
-    fig.suptitle("Leaf-local faithfulness (pooled over 5 builds) vs the root view", y=1.0)
+    fig.legend(
+        handles[:1],
+        ["root embedding (one mark per build)"],
+        loc="lower center",
+        ncol=1,
+        frameon=False,
+    )
+    fig.suptitle(
+        "Leaf-local faithfulness (pooled over 5 builds) vs the root view", y=1.0
+    )
     fig.tight_layout(rect=(0, 0.06, 1, 1))
-    fig.savefig(out_dir / "benchmark_shape_faithfulness.png", dpi=150, bbox_inches="tight")
+    fig.savefig(
+        out_dir / "benchmark_shape_faithfulness.png", dpi=150, bbox_inches="tight"
+    )
     plt.close(fig)
 
 
@@ -550,8 +681,16 @@ def fig_compounding(c1_detail: pd.DataFrame, out_dir: Path) -> None:
     plt.rcdefaults()
     fig, ax = plt.subplots(figsize=(6.4, 4.6))
     ts = np.array(sorted(T_GRID, reverse=True))
-    colors = {"Wine quality (Low)": "C1", "Breast cancer (Low)": "C2", "Digits (Low)": "C0"}
-    markers = {"Wine quality (Low)": "s", "Breast cancer (Low)": "^", "Digits (Low)": "o"}
+    colors = {
+        "Wine quality (Low)": "C1",
+        "Breast cancer (Low)": "C2",
+        "Digits (Low)": "C0",
+    }
+    markers = {
+        "Wine quality (Low)": "s",
+        "Breast cancer (Low)": "^",
+        "Digits (Low)": "o",
+    }
     floor = None
     med = {(r["dataset"], r["t"]): r["median"] for _, r in c1_detail.iterrows()}
     positive = [m for m in med.values() if m > 0]
@@ -561,11 +700,23 @@ def fig_compounding(c1_detail: pd.DataFrame, out_dir: Path) -> None:
         obs = np.array([med.get((ds, t), np.nan) for t in ts])
         shown = np.where(obs > 0, obs, floor)
         label = ds.replace(" quality (Low)", "").replace(" (Low)", "").lower()
-        ax.plot(ts, shown, marker=markers[ds], color=colors[ds], label=f"{label}, observed ($d={d}$)")
+        ax.plot(
+            ts,
+            shown,
+            marker=markers[ds],
+            color=colors[ds],
+            label=f"{label}, observed ($d={d}$)",
+        )
         ax.plot(ts, ts**d, ls=":", color=colors[ds], label=f"$t^{{{d}}}$")
         for t, o in zip(ts, obs, strict=True):
             if o == 0:
-                ax.annotate(f"recall $= 0$ at $t={t}$", xy=(t, floor), xytext=(t + 0.035, floor * 2.6), fontsize=9, arrowprops={"arrowstyle": "->", "lw": 0.9})
+                ax.annotate(
+                    f"recall $= 0$ at $t={t}$",
+                    xy=(t, floor),
+                    xytext=(t + 0.035, floor * 2.6),
+                    fontsize=9,
+                    arrowprops={"arrowstyle": "->", "lw": 0.9},
+                )
     ax.set_yscale("log")
     ax.set_xlim(1.005, 0.79)  # t decreasing rightwards, as in rq2_compounding
     ax.set_xticks(ts, [f"{t:.2f}" for t in ts])
@@ -587,15 +738,31 @@ def run_experiment() -> dict[str, pd.DataFrame]:
     cells = [(ds, b) for ds in DATASETS_TO_RUN for b in range(N_BUILDS)]
     datasets = {name: prepare_dataset(name) for name in DATASETS_TO_RUN}
     for name, (df, fc, y) in datasets.items():
-        console.print(f"  loaded [bold]{name}[/]: {len(df)} rows, d={len(fc)}, {len(np.unique(y))} classes")
-        assert len(fc) == DATASET_D[name], f"{name}: d={len(fc)} != design {DATASET_D[name]}"
+        console.print(
+            f"  loaded [bold]{name}[/]: {len(df)} rows, d={len(fc)}, {len(np.unique(y))} classes"
+        )
+        assert len(fc) == DATASET_D[name], (
+            f"{name}: d={len(fc)} != design {DATASET_D[name]}"
+        )
 
-    buckets: dict[str, list[dict]] = {"shape": [], "nodes": [], "predicates": [], "c2": [], "purity": []}
+    buckets: dict[str, list[dict]] = {
+        "shape": [],
+        "nodes": [],
+        "predicates": [],
+        "c2": [],
+        "purity": [],
+    }
     progress = Progress(
-        TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeElapsedColumn(), console=console
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
     )
     with progress:
-        task = progress.add_task(f"Benchmark walk (jobs={PARALLEL_JOBS})", total=len(cells))
+        task = progress.add_task(
+            f"Benchmark walk (jobs={PARALLEL_JOBS})", total=len(cells)
+        )
         jobs = (delayed(run_build)(ds, datasets[ds], b) for ds, b in cells)
         with parallel_config(backend="loky", inner_max_num_threads=1):
             for result in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(jobs):
@@ -604,7 +771,9 @@ def run_experiment() -> dict[str, pd.DataFrame]:
                 progress.advance(task)
 
     return {
-        "shape": pd.DataFrame(buckets["shape"]).sort_values(["dataset", "build"]).reset_index(drop=True),
+        "shape": pd.DataFrame(buckets["shape"])
+        .sort_values(["dataset", "build"])
+        .reset_index(drop=True),
         "nodes": pd.DataFrame(buckets["nodes"]),
         "predicates": pd.DataFrame(buckets["predicates"]),
         "c2": pd.DataFrame(buckets["c2"]),
@@ -613,7 +782,9 @@ def run_experiment() -> dict[str, pd.DataFrame]:
 
 
 def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
-    shape, nodes, predicates, c2, purity = (frames[k] for k in ["shape", "nodes", "predicates", "c2", "purity"])
+    shape, nodes, predicates, c2, purity = (
+        frames[k] for k in ["shape", "nodes", "predicates", "c2", "purity"]
+    )
 
     # ---- Table 6.2 cells (§5) -------------------------------------------- #
     leaf_scores = nodes[nodes["is_leaf"]]
@@ -624,7 +795,10 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
     for ds in DATASETS_TO_RUN:
         s = shape[shape["dataset"] == ds]
         pb = per_build[per_build["dataset"] == ds]
-        depth_cells = [f"{int(r.realized_depth)}{'†' if r.cap_censored else ''}" for r in s.itertuples()]
+        depth_cells = [
+            f"{int(r.realized_depth)}{'†' if r.cap_censored else ''}"
+            for r in s.itertuples()
+        ]
         depth_med = f"{int(np.median(s['realized_depth']))}{'†' if s['cap_censored'].any() else ''}"
         table_rows.append(
             {
@@ -660,11 +834,21 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
     # only p-value, design §5/§7; adversarial review 2026-07-28 finding 1).
     d4_lines = []
     for ds in DATASETS_TO_RUN:
-        sub = purity[(purity["dataset"] == ds)].dropna(subset=["trustworthiness", "continuity", "purity"])
+        sub = purity[(purity["dataset"] == ds)].dropna(
+            subset=["trustworthiness", "continuity", "purity"]
+        )
         if len(sub) >= 3:
             tc = (sub["trustworthiness"] + sub["continuity"]) / 2
             rho, _ = spearmanr(tc, sub["purity"])
-            d4_lines.append({"dataset": ds, "spearman_rho": float(rho), "n_leaves": len(sub), "median_purity": float(sub["purity"].median()), "median_enrichment": float(sub["enrichment"].median())})
+            d4_lines.append(
+                {
+                    "dataset": ds,
+                    "spearman_rho": float(rho),
+                    "n_leaves": len(sub),
+                    "median_purity": float(sub["purity"].median()),
+                    "median_enrichment": float(sub["enrichment"].median()),
+                }
+            )
     d4 = pd.DataFrame(d4_lines)
     d4.to_csv(out_dir / "d4_purity_association.csv", index=False)
 
@@ -683,24 +867,51 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
     for col in ["check", "prediction", "observed", "verdict"]:
         vt.add_column(col, overflow="fold")
     for v in verdicts:
-        colour = {"PASS": "green", "PASS-WITH-EXCURSION": "yellow"}.get(v["verdict"], "red")
-        vt.add_row(v["check"], v["prediction"], v["observed"], f"[{colour}]{v['verdict']}[/]")
+        colour = {"PASS": "green", "PASS-WITH-EXCURSION": "yellow"}.get(
+            v["verdict"], "red"
+        )
+        vt.add_row(
+            v["check"], v["prediction"], v["observed"], f"[{colour}]{v['verdict']}[/]"
+        )
     console.print(vt)
 
-    lines = ["# Benchmark workflow walk — run summary", "", "## Table 6.2 cells", "", table.to_markdown(index=False), "", "## Consistency checks", ""]
+    lines = [
+        "# Benchmark workflow walk — run summary",
+        "",
+        "## Table 6.2 cells",
+        "",
+        table.to_markdown(index=False),
+        "",
+        "## Consistency checks",
+        "",
+    ]
     for v in verdicts:
-        lines.append(f"- **{v['check']}** — {v['verdict']}. Prediction: {v['prediction']}. Observed: {v['observed']}.")
-    lines += ["", "## D4 purity association (Spearman ρ, leaf mean T&C vs purity)", "", d4.to_markdown(index=False) if not d4.empty else "(insufficient records)", ""]
+        lines.append(
+            f"- **{v['check']}** — {v['verdict']}. Prediction: {v['prediction']}. Observed: {v['observed']}."
+        )
+    lines += [
+        "",
+        "## D4 purity association (Spearman ρ, leaf mean T&C vs purity)",
+        "",
+        d4.to_markdown(index=False) if not d4.empty else "(insufficient records)",
+        "",
+    ]
     for ds, ex in examples.items():
         if ex is None:
             continue
-        lines.append(f"### Example leaf predicate — {ds} (build {ex['build']}, leaf {ex['leaf_id']}, n={ex['leaf_n']})")
+        lines.append(
+            f"### Example leaf predicate — {ds} (build {ex['build']}, leaf {ex['leaf_id']}, n={ex['leaf_n']})"
+        )
         for arm in ["strict", "relaxed"]:
             rec = ex[arm]
             clauses = [c for c in json.loads(rec["clauses_json"]) if c["in_predicate"]]
-            lines.append(f"- {arm} (t={rec['t']}): length {rec['length']}, F1 {rec['f1']:.3f}, coverage {rec['coverage']:.3f}")
+            lines.append(
+                f"- {arm} (t={rec['t']}): length {rec['length']}, F1 {rec['f1']:.3f}, coverage {rec['coverage']:.3f}"
+            )
             for c in sorted(clauses, key=lambda c: (c["step"] is None, c["step"])):
-                lines.append(f"    - `{c['feature']}` ∈ [{c['sel_min']:.2f}, {c['sel_max']:.2f}]")
+                lines.append(
+                    f"    - `{c['feature']}` ∈ [{c['sel_min']:.2f}, {c['sel_max']:.2f}]"
+                )
         lines.append("")
     text = "\n".join(lines)
     (out_dir / "summary.md").write_text(text)
@@ -709,7 +920,9 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
 
 def main() -> None:
     console.rule("[bold]§6.5 benchmark workflow walk")
-    console.print(f"datasets={DATASETS_TO_RUN}  builds={N_BUILDS}  cap={HIER_LAYERS_CAP}  t={T_GRID}  split={TAIL_SPLIT}\n")
+    console.print(
+        f"datasets={DATASETS_TO_RUN}  builds={N_BUILDS}  cap={HIER_LAYERS_CAP}  t={T_GRID}  split={TAIL_SPLIT}\n"
+    )
     frames = run_experiment()
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -735,7 +948,18 @@ def main() -> None:
                 "c2_min_n": C2_MIN_N,
                 "versions": {
                     "python": platform.python_version(),
-                    **{p: pkg_version(p) for p in ["numpy", "pandas", "scikit-learn", "umap-learn", "hdbscan", "zadu", "scipy"]},
+                    **{
+                        p: pkg_version(p)
+                        for p in [
+                            "numpy",
+                            "pandas",
+                            "scikit-learn",
+                            "umap-learn",
+                            "hdbscan",
+                            "zadu",
+                            "scipy",
+                        ]
+                    },
                 },
                 "platform": platform.platform(),
             },
@@ -744,7 +968,9 @@ def main() -> None:
     )
 
     summarise(frames, out_dir)
-    console.print(f"\n[bold green]Done.[/] Results + figures in [underline]{out_dir}[/]")
+    console.print(
+        f"\n[bold green]Done.[/] Results + figures in [underline]{out_dir}[/]"
+    )
 
 
 if __name__ == "__main__":

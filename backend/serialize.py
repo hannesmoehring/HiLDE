@@ -105,10 +105,12 @@ def serialize_node(node: dict[str, Any], node_id: str, depth: int) -> dict[str, 
         "id": node_id,
         "is_leaf": is_leaf,
         "depth": int(node["depth"]) if is_leaf else depth,
-        "n_points": int(len(node["row_indices"])),
+        "n_points": len(node["row_indices"]),
         "row_indices": _int_list(node["row_indices"]),
         "embedding_original": _xy_list(node["embedding_original"]),
-        "embedding_original_variance": _float_list(node.get("embedding_original_variance")),
+        "embedding_original_variance": _float_list(
+            node.get("embedding_original_variance")
+        ),
         "rel_position": _pair(node["rel_position"]),
         "rel_characteristics": characteristic_records(node["rel_characteristics"]),
         "scores": _scores(node.get("scores")),
@@ -120,7 +122,8 @@ def serialize_node(node: dict[str, Any], node_id: str, depth: int) -> dict[str, 
         out["outlier_scores"] = _float_list(node.get("outlier_scores"))
         children = node.get("next_object_layer") or []
         out["children"] = [
-            serialize_node(child, f"{node_id}/{i}", depth + 1) for i, child in enumerate(children)
+            serialize_node(child, f"{node_id}/{i}", depth + 1)
+            for i, child in enumerate(children)
         ]
     return out
 

@@ -51,6 +51,8 @@ def fit_cluster_decision_tree(
     in_cluster: pd.Series,
     tree_depth: int = 3,
 ) -> str:
-    tree = DecisionTreeClassifier(max_depth=tree_depth, class_weight="balanced", random_state=0)
+    tree = DecisionTreeClassifier(
+        max_depth=tree_depth, class_weight="balanced", random_state=0
+    )
     tree.fit(df[feature_cols].to_numpy(), in_cluster.to_numpy().astype(int))
     return export_text(tree, feature_names=list(feature_cols))

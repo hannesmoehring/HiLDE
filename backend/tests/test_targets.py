@@ -14,9 +14,14 @@ from backend import datasets as ds
 from backend.targets import compute_targets
 
 _KEYS = {
-    "feature", "is_boolean",
-    "sel_min", "sel_max", "sel_mean",
-    "global_min", "global_max", "global_mean",
+    "feature",
+    "is_boolean",
+    "sel_min",
+    "sel_max",
+    "sel_mean",
+    "global_min",
+    "global_max",
+    "global_mean",
 }
 
 
@@ -54,7 +59,13 @@ def test_continuous_target_reports_a_range():
     (t,) = out["targets"]
     assert t["feature"] == "target_manifold_position"
     assert t["is_boolean"] is False
-    assert t["global_min"] <= t["sel_min"] <= t["sel_mean"] <= t["sel_max"] <= t["global_max"]
+    assert (
+        t["global_min"]
+        <= t["sel_min"]
+        <= t["sel_mean"]
+        <= t["sel_max"]
+        <= t["global_max"]
+    )
 
 
 def test_edge_cases_stay_json_safe():

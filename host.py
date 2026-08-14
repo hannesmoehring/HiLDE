@@ -61,13 +61,17 @@ def ensure_frontend() -> None:
         build_frontend()
     except FileNotFoundError:
         if not (DIST / "index.html").is_file():
-            sys.exit("[host] npm not found and no frontend/dist to serve — install node, or build elsewhere")
+            sys.exit(
+                "[host] npm not found and no frontend/dist to serve — install node, or build elsewhere"
+            )
         _say("npm not found — serving the existing (stale) frontend/dist")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run HiLDE in hosting mode.")
-    parser.add_argument("--host", default="0.0.0.0", help="bind address (default: all interfaces)")
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="bind address (default: all interfaces)"
+    )
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
     args = parser.parse_args()
 

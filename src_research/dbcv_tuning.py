@@ -8,15 +8,13 @@ import pandas as pd
 if not hasattr(np, "float_"):
     np.float_ = np.float64
 from kDBCV.DBCV import DBCV_score
-from sklearn.datasets import make_blobs, make_circles, make_moons
 from sklearn.preprocessing import StandardScaler
 
-import src.analysis.analysis_routine as ar
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
-from src.types import Config
-from src.datasets import load_dataset
 from src.config_defaults import init_state
+from src.datasets import load_dataset
+from src.types import Config
 from src_research.pipeline_tuning import feature_columns
 
 SEED = 42
@@ -40,17 +38,25 @@ def clustering_matrix(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
 
 
 def make_objective(X: np.ndarray, config: Config):
-    n_dims = X.shape[1]  # the real feature count (11), not 14: it bounds the component range
+    n_dims = X.shape[
+        1
+    ]  # the real feature count (11), not 14: it bounds the component range
 
     def objective(trial):
         cfg: Config = config.copy()
         cfg["umap_n_neighbors"] = trial.suggest_int("umap_n_neighbors", 5, 50)
         cfg["umap_min_dist"] = trial.suggest_float("umap_min_dist", 0.0, 0.5)
-        cfg["hclust_min_cluster_size"] = trial.suggest_int("hclust_min_cluster_size", 2, 50)
+        cfg["hclust_min_cluster_size"] = trial.suggest_int(
+            "hclust_min_cluster_size", 2, 50
+        )
         cfg["hclust_min_samples"] = trial.suggest_int("hclust_min_samples", 1, 25)
-        cfg["hclust_umap_n_components"] = trial.suggest_int("hclust_umap_n_components", 2, n_dims)
+        cfg["hclust_umap_n_components"] = trial.suggest_int(
+            "hclust_umap_n_components", 2, n_dims
+        )
 
-        X_reduced = reduce_dimensionality(method="UMAP", X=X, n_components=cfg["hclust_umap_n_components"], config=cfg)
+        X_reduced = reduce_dimensionality(
+            method="UMAP", X=X, n_components=cfg["hclust_umap_n_components"], config=cfg
+        )
         labels, _ = compute_clusters(X_reduced, method="HDBSCAN", config=cfg)
 
         # guard degenerate solutions
@@ -59,7 +65,9 @@ def make_objective(X: np.ndarray, config: Config):
         if n_clusters < 2 or noise_frac > 0.5:
             return -1.0  # DBCV is in [-1, 1]; worst possible
 
-        score, _ = DBCV_score(X, labels)  # returns (score, None); scored in ORIGINAL space (optimized)
+        score, _ = DBCV_score(
+            X, labels
+        )  # returns (score, None); scored in ORIGINAL space (optimized)
         # diagnostic: DBCV in the embedding space — if much higher, UMAP is sharpening faint structure
         score_embedded, _ = DBCV_score(X_reduced, labels)
         trial.set_user_attr("dbcv_embedded", float(score_embedded))
@@ -76,12 +84,19 @@ def main() -> None:
     print(f"tuning on {X.shape[0]}x{X.shape[1]}: {feature_cols}")
     # Seeded sampler: an unseeded study cannot be reproduced, so its best_params are not a
     # result anyone else can check.
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED))
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED)
+    )
     study.optimize(make_objective(X, config), n_trials=N_TRIALS)
     print(study.best_params)
     print("DBCV (original space):", study.best_value)
     print("DBCV (embedding space):", study.best_trial.user_attrs["dbcv_embedded"])
-    print("n_clusters:", study.best_trial.user_attrs["n_clusters"], "| noise_frac:", study.best_trial.user_attrs["noise_frac"])
+    print(
+        "n_clusters:",
+        study.best_trial.user_attrs["n_clusters"],
+        "| noise_frac:",
+        study.best_trial.user_attrs["noise_frac"],
+    )
 
 
 # Everything above is definition only. The dataset load and the 200-trial study used to run

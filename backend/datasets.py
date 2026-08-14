@@ -18,13 +18,13 @@ def dataset_keys() -> list[str]:
     return list(DATASETS)
 
 
-def load(key: str) -> "pd.DataFrame":
+def load(key: str) -> pd.DataFrame:
     if key not in DATASETS:
         raise KeyError(key)
     return DATASETS[key]()
 
 
-def default_feature_cols(df: "pd.DataFrame") -> list[str]:
+def default_feature_cols(df: pd.DataFrame) -> list[str]:
     """Every column except `row_id` and the `target_*` label columns.
 
     Labels must stay out of the feature space: clustering, the per-node projection,

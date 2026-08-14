@@ -17,16 +17,40 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src_research.planted_subspace_recovery import drop_duplicate_control_cells, summarise
-from src_research.rederive import H2B_RUN, deltas_table, diff_rows, fmt, out_dir, run_dir, write_deltas
+from src_research.planted_subspace_recovery import (
+    drop_duplicate_control_cells,
+    summarise,
+)
+from src_research.rederive import (
+    H2B_RUN,
+    deltas_table,
+    diff_rows,
+    fmt,
+    out_dir,
+    run_dir,
+    write_deltas,
+)
 
 KEYS = ["rho", "nesting"]
-VALUES = ["n_pairs", "hier_mean", "flat_mean", "median_delta", "win_rate", "wilcoxon_p", "rank_biserial", "oracle_relative"]
+VALUES = [
+    "n_pairs",
+    "hier_mean",
+    "flat_mean",
+    "median_delta",
+    "win_rate",
+    "wilcoxon_p",
+    "rank_biserial",
+    "oracle_relative",
+]
 
 
 def _gap_table(summary: pd.DataFrame) -> pd.DataFrame:
     """The H2b readout: the hier-minus-flat gap per nesting arm."""
-    return summary.groupby("nesting")["median_delta"].agg(["mean", "median", "count"]).reset_index()
+    return (
+        summary.groupby("nesting")["median_delta"]
+        .agg(["mean", "median", "count"])
+        .reset_index()
+    )
 
 
 def main() -> dict:
@@ -72,7 +96,7 @@ def main() -> dict:
     for nesting in sorted(set(old_gap["nesting"]) | set(new_gap["nesting"])):
         o = old_gap[old_gap["nesting"] == nesting]
         n = new_gap[new_gap["nesting"] == nesting]
-        get = lambda f, c: fmt(f[c].iloc[0]) if len(f) else "—"  # noqa: E731 - local formatting shorthand
+        get = lambda f, c: fmt(f[c].iloc[0]) if len(f) else "—"
         sections.append(
             f"| {nesting} | {get(o, 'mean')} | {get(n, 'mean')} | {get(o, 'median')} | {get(n, 'median')} | "
             f"{get(o, 'count')} -> {get(n, 'count')} |"
@@ -108,10 +132,15 @@ def main() -> dict:
         sections += [
             "| rho · nesting | n_seeds | n_pairs | n_oracle |",
             "|---|---|---|---|",
-            *[f"| {r.rho} · {r.nesting} | {r.n_seeds} | {r.n_pairs} | {r.n_oracle} |" for r in attrition.itertuples()],
+            *[
+                f"| {r.rho} · {r.nesting} | {r.n_seeds} | {r.n_pairs} | {r.n_oracle} |"
+                for r in attrition.itertuples()
+            ],
             "",
         ]
 
     write_deltas(run, f"Corrected RQ1-S / H2b summary — {run}", sections)
-    print(f"  {run}: {len(old)} -> {len(corrected)} summary rows, {n_dropped} duplicate control records dropped, {len(rows) + len(gap_rows)} numbers changed")
+    print(
+        f"  {run}: {len(old)} -> {len(corrected)} summary rows, {n_dropped} duplicate control records dropped, {len(rows) + len(gap_rows)} numbers changed"
+    )
     return {"run": run, "n_changed": len(rows) + len(gap_rows), "n_dropped": n_dropped}

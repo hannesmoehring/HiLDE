@@ -103,13 +103,21 @@ _NON_FEATURE_COLS = {"row_id"}
 
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns if c not in _NON_FEATURE_COLS and not str(c).startswith("target_")]
+    return [
+        c
+        for c in df.columns
+        if c not in _NON_FEATURE_COLS and not str(c).startswith("target_")
+    ]
 
 
 def seed_overrides(seed: int) -> dict[str, Any]:
     """The config keys `fit_dimensionality_reducer` reads for its RNG, all pinned to one
     replicate seed. Every repeated build must vary these or it is not a replicate."""
-    return {"umap_random_state": seed, "tsne_random_state": seed, "mds_random_state": seed}
+    return {
+        "umap_random_state": seed,
+        "tsne_random_state": seed,
+        "mds_random_state": seed,
+    }
 
 
 def ground_truth_labels(df: pd.DataFrame) -> np.ndarray | None:
@@ -228,7 +236,9 @@ def _build_and_score(dataset: str, overrides: dict[str, Any]) -> dict[str, Any]:
 
     leaf_labels = _leaf_partition(tree, len(df))
     noise_frac = float(np.mean(leaf_labels == -1))
-    leaf_sizes = [int(np.sum(leaf_labels == c)) for c in sorted(set(leaf_labels.tolist()) - {-1})]
+    leaf_sizes = [
+        int(np.sum(leaf_labels == c)) for c in sorted(set(leaf_labels.tolist()) - {-1})
+    ]
 
     dbcv, dbcv_status = _dbcv(X_all, leaf_labels)
     keep = leaf_labels != -1
@@ -282,11 +292,21 @@ def _build_and_score(dataset: str, overrides: dict[str, Any]) -> dict[str, Any]:
         "n_features": len(fcols),
     }
     if y is not None and len(leaf_sizes) >= 1:
-        out["ari"] = float(adjusted_rand_score(y[keep], leaf_labels[keep])) if keep.any() else None
-        out["ami"] = float(adjusted_mutual_info_score(y[keep], leaf_labels[keep])) if keep.any() else None
+        out["ari"] = (
+            float(adjusted_rand_score(y[keep], leaf_labels[keep]))
+            if keep.any()
+            else None
+        )
+        out["ami"] = (
+            float(adjusted_mutual_info_score(y[keep], leaf_labels[keep]))
+            if keep.any()
+            else None
+        )
         d1 = _depth1_partition(tree, len(df))
         k1 = d1 != -1
-        out["ari_depth1"] = float(adjusted_rand_score(y[k1], d1[k1])) if k1.any() else None
+        out["ari_depth1"] = (
+            float(adjusted_rand_score(y[k1], d1[k1])) if k1.any() else None
+        )
     else:
         out["ari"] = out["ami"] = out["ari_depth1"] = None
     return out
@@ -310,13 +330,25 @@ def build(dataset: str, overrides: dict[str, Any]) -> dict[str, Any]:
     if p.is_alive():
         p.terminate()
         p.join()
-        return {"exception": "timeout", "build_seconds": time.time() - t0, "degenerate": True}
+        return {
+            "exception": "timeout",
+            "build_seconds": time.time() - t0,
+            "degenerate": True,
+        }
     try:
         status, payload = q.get_nowait()
     except Exception:  # noqa: BLE001 - child died without putting a result
-        return {"exception": "child_died", "build_seconds": time.time() - t0, "degenerate": True}
+        return {
+            "exception": "child_died",
+            "build_seconds": time.time() - t0,
+            "degenerate": True,
+        }
     if status == "error":
-        return {"exception": payload.strip().splitlines()[-1][:200], "build_seconds": time.time() - t0, "degenerate": True}
+        return {
+            "exception": payload.strip().splitlines()[-1][:200],
+            "build_seconds": time.time() - t0,
+            "degenerate": True,
+        }
     payload["exception"] = None
     payload["degenerate"] = _is_degenerate(payload)
     return payload
@@ -334,7 +366,9 @@ def _is_degenerate(m: dict[str, Any]) -> bool:
 
 
 def objectives(m: dict[str, Any]) -> tuple[float, float]:
-    return WORST if m.get("degenerate") else (float(m["dbcv_leaf"]), float(m["tnc_mean"]))
+    return (
+        WORST if m.get("degenerate") else (float(m["dbcv_leaf"]), float(m["tnc_mean"]))
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -350,7 +384,9 @@ def suggest_config(trial: optuna.Trial, n: int, d: int) -> dict[str, Any]:
 
     cfg: dict[str, Any] = {
         "hierarchical_layers": trial.suggest_int("hierarchical_layers", 1, 3),
-        "hclust_umap_n_components": trial.suggest_int("hclust_umap_n_components", 2, max(2, d)),
+        "hclust_umap_n_components": trial.suggest_int(
+            "hclust_umap_n_components", 2, max(2, d)
+        ),
         "hclust_min_cluster_size": mcs,
         "hclust_min_samples": max(1, round(r_ms * mcs)),
         "umap_n_neighbors": trial.suggest_int("umap_n_neighbors", 5, 50),
@@ -361,7 +397,9 @@ def suggest_config(trial: optuna.Trial, n: int, d: int) -> dict[str, Any]:
     cfg["method"] = method
     if method == "t-SNE":
         cfg["tsne_perplexity"] = trial.suggest_float("tsne_perplexity", 5.0, 50.0)
-        cfg["tsne_learning_rate"] = trial.suggest_float("tsne_learning_rate", 10.0, 1000.0)
+        cfg["tsne_learning_rate"] = trial.suggest_float(
+            "tsne_learning_rate", 10.0, 1000.0
+        )
     elif method == "MDS":
         cfg["mds_n_init"] = trial.suggest_int("mds_n_init", 1, 4)
         cfg["mds_max_iter"] = trial.suggest_int("mds_max_iter", 50, 300)
@@ -405,7 +443,9 @@ def _log(msg: str) -> None:
 def _skip_note(m: dict[str, Any]) -> str:
     """Nodes this build could not project, made visible on the build's own log line -
     a silent skip is indistinguishable from a tree that had nothing to skip."""
-    parts = [f"{k}={m[k]}" for k in ("unembedded_nodes", "zero_embed_nodes") if m.get(k)]
+    parts = [
+        f"{k}={m[k]}" for k in ("unembedded_nodes", "zero_embed_nodes") if m.get(k)
+    ]
     return f" SKIPPED[{' '.join(parts)}]" if parts else ""
 
 
@@ -422,7 +462,12 @@ def reference_dbcv(dataset: str) -> dict[str, Any]:
         return {"dataset": dataset, "dbcv_ground_truth": None}
     X = StandardScaler().fit_transform(df[fcols].to_numpy(dtype=np.float64))
     value, status = _dbcv(X, y)
-    return {"dataset": dataset, "dbcv_ground_truth": value, "status": status, "n_classes": len(set(y.tolist()))}
+    return {
+        "dataset": dataset,
+        "dbcv_ground_truth": value,
+        "status": status,
+        "n_classes": len(set(y.tolist())),
+    }
 
 
 def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
@@ -437,11 +482,23 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
     # ---- baseline: 10 builds, 1-5 select / 6-10 test -----------------------
     for i in range(N_BASELINE_BUILDS):
         m = build(dataset, seed_overrides(BASELINE_SEEDS[i]))
-        m |= {"dataset": dataset, "arm": "baseline", "build_index": i, "dr_seed": BASELINE_SEEDS[i], "split": "select" if i < 5 else "test"}
+        m |= {
+            "dataset": dataset,
+            "arm": "baseline",
+            "build_index": i,
+            "dr_seed": BASELINE_SEEDS[i],
+            "split": "select" if i < 5 else "test",
+        }
         run.baseline.append(m)
-        _log(f"  baseline {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
+        _log(
+            f"  baseline {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}"
+        )
 
-    tnc_select = [b["tnc_mean"] for b in run.baseline if b["split"] == "select" and b.get("tnc_mean") is not None]
+    tnc_select = [
+        b["tnc_mean"]
+        for b in run.baseline
+        if b["split"] == "select" and b.get("tnc_mean") is not None
+    ]
     tnc_floor = (float(np.mean(tnc_select)) - 0.01) if tnc_select else -np.inf
     _log(f"  selection floor tnc >= {tnc_floor:.4f}")
 
@@ -455,11 +512,20 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
         # baseline / validation builds vary it.
         cfg = suggest_config(trial, n, d)
         m = build(dataset, cfg)
-        m |= {"dataset": dataset, "arm": "trial", "trial": trial.number, **{f"p_{k}": v for k, v in cfg.items()}}
+        m |= {
+            "dataset": dataset,
+            "arm": "trial",
+            "trial": trial.number,
+            **{f"p_{k}": v for k, v in cfg.items()},
+        }
         run.trials.append(m)
-        pd.DataFrame(run.trials).to_csv(out_dir / f"trials_{_slug(dataset)}.csv", index=False)
+        pd.DataFrame(run.trials).to_csv(
+            out_dir / f"trials_{_slug(dataset)}.csv", index=False
+        )
         o = objectives(m)
-        _log(f"  trial {trial.number:2d}: {cfg['method']:5s} L{cfg['hierarchical_layers']} mcs={cfg['hclust_min_cluster_size']:4d} -> dbcv={o[0]:+.4f} tnc={o[1]:.4f} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{' DEGEN' if m.get('degenerate') else ''}{_skip_note(m)}{' ' + str(m.get('exception')) if m.get('exception') else ''}")
+        _log(
+            f"  trial {trial.number:2d}: {cfg['method']:5s} L{cfg['hierarchical_layers']} mcs={cfg['hclust_min_cluster_size']:4d} -> dbcv={o[0]:+.4f} tnc={o[1]:.4f} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{' DEGEN' if m.get('degenerate') else ''}{_skip_note(m)}{' ' + str(m.get('exception')) if m.get('exception') else ''}"
+        )
         return o
 
     study.optimize(objective, n_trials=n_trials, catch=())
@@ -468,25 +534,47 @@ def run_dataset(dataset: str, n_trials: int, out_dir: Path) -> DatasetRun:
     front = [t for t in study.best_trials]
     front_rows = [run.trials[t.number] for t in front if t.number < len(run.trials)]
     eligible = [
-        r for r in front_rows
-        if not r.get("degenerate") and r.get("tnc_mean") is not None and r["tnc_mean"] >= tnc_floor
+        r
+        for r in front_rows
+        if not r.get("degenerate")
+        and r.get("tnc_mean") is not None
+        and r["tnc_mean"] >= tnc_floor
     ]
     if eligible:
-        eligible.sort(key=lambda r: (-r["dbcv_leaf"], r["build_seconds"], r["p_hierarchical_layers"]))
+        eligible.sort(
+            key=lambda r: (
+                -r["dbcv_leaf"],
+                r["build_seconds"],
+                r["p_hierarchical_layers"],
+            )
+        )
         run.candidate = eligible[0]
-        _log(f"  candidate: trial {run.candidate['trial']} dbcv={run.candidate['dbcv_leaf']:+.4f} tnc={run.candidate['tnc_mean']:.4f}")
+        _log(
+            f"  candidate: trial {run.candidate['trial']} dbcv={run.candidate['dbcv_leaf']:+.4f} tnc={run.candidate['tnc_mean']:.4f}"
+        )
     else:
         _log("  no eligible Pareto point -> defaults retained")
-        run.verdict = {"dataset": dataset, "adopted": False, "reason": "no Pareto point met the view floor"}
+        run.verdict = {
+            "dataset": dataset,
+            "adopted": False,
+            "reason": "no Pareto point met the view floor",
+        }
         return run
 
     # ---- validation --------------------------------------------------------
     cfg = {k[2:]: v for k, v in run.candidate.items() if k.startswith("p_")}
     for i in range(N_VALIDATION_BUILDS):
         m = build(dataset, cfg | seed_overrides(VALIDATION_SEEDS[i]))
-        m |= {"dataset": dataset, "arm": "preset", "build_index": i, "dr_seed": VALIDATION_SEEDS[i]}
+        m |= {
+            "dataset": dataset,
+            "arm": "preset",
+            "build_index": i,
+            "dr_seed": VALIDATION_SEEDS[i],
+        }
         run.validation.append(m)
-        _log(f"  preset {i + 1}/{N_VALIDATION_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}")
+        _log(
+            f"  preset {i + 1}/{N_VALIDATION_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} {m.get('build_seconds', 0):.0f}s{_skip_note(m)}"
+        )
 
     run.verdict = judge(dataset, run, cfg, fcols)
     return run
@@ -498,7 +586,9 @@ def _vals(rows: list[dict[str, Any]], key: str) -> list[float]:
     return [r[key] for r in rows if r.get(key) is not None and not pd.isna(r[key])]
 
 
-def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) -> dict[str, Any]:
+def judge(
+    dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]
+) -> dict[str, Any]:
     """Apply A1-A6 exactly as pre-registered (design section 6)."""
     test = [b for b in run.baseline if b["split"] == "test"]
     pre = run.validation
@@ -515,7 +605,12 @@ def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) 
     a4 = n_ok == N_VALIDATION_BUILDS
     a1 = bool(p_dbcv and b_dbcv and min(p_dbcv) > max(b_dbcv))
     a2 = bool(p_tnc and b_tnc and float(np.mean(p_tnc)) >= float(np.mean(b_tnc)) - 0.01)
-    a3 = bool(p_sec and b_sec and float(np.median(p_sec)) <= min(BUILD_TIMEOUT_S, 3.0 * float(np.median(b_sec))))
+    a3 = bool(
+        p_sec
+        and b_sec
+        and float(np.median(p_sec))
+        <= min(BUILD_TIMEOUT_S, 3.0 * float(np.median(b_sec)))
+    )
     a5 = bool(
         pre
         and all((m.get("median_leaf_size") or 0) >= MIN_NODE_PTS_FOR_SCORE for m in pre)
@@ -523,7 +618,9 @@ def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) 
         and b_noise
         and float(np.mean(p_noise)) <= float(np.mean(b_noise)) + 0.05,
     )
-    a6 = bool(not b_ari or not p_ari or float(np.mean(p_ari)) >= float(np.mean(b_ari)) - 0.05)
+    a6 = bool(
+        not b_ari or not p_ari or float(np.mean(p_ari)) >= float(np.mean(b_ari)) - 0.05
+    )
 
     adopted = all([a1, a2, a3, a4, a5, a6])
     return {
@@ -551,8 +648,12 @@ def judge(dataset: str, run: DatasetRun, cfg: dict[str, Any], fcols: list[str]) 
         "preset_leaves": [m.get("n_leaves") for m in pre],
         # Nodes dropped from O2 because they could not be projected: the coverage guard
         # already reacts to them, but the verdict must say how many there were.
-        "baseline_unembedded_nodes": int(sum(m.get("unembedded_nodes") or 0 for m in test)),
-        "preset_unembedded_nodes": int(sum(m.get("unembedded_nodes") or 0 for m in pre)),
+        "baseline_unembedded_nodes": int(
+            sum(m.get("unembedded_nodes") or 0 for m in test)
+        ),
+        "preset_unembedded_nodes": int(
+            sum(m.get("unembedded_nodes") or 0 for m in pre)
+        ),
         "config": cfg,
         "feature_cols": fcols,
     }
@@ -572,16 +673,30 @@ def main() -> None:
     stamp = args.out or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     out_dir = OUTPUT_ROOT / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
-    _log(f"run {stamp} -> {out_dir}  ({len(args.datasets)} datasets, {args.trials} trials each)")
+    _log(
+        f"run {stamp} -> {out_dir}  ({len(args.datasets)} datasets, {args.trials} trials each)"
+    )
 
     from src.config_defaults import default_config
 
-    base = {k: v for k, v in default_config().items() if isinstance(v, (int, float, str, bool))}
+    base = {
+        k: v
+        for k, v in default_config().items()
+        if isinstance(v, (int, float, str, bool))
+    }
     (out_dir / "baseline.json").write_text(
-        json.dumps({"note": "hclust_umap_n_components is overwritten with n_features by App.tsx", "config_defaults": base}, indent=2),
+        json.dumps(
+            {
+                "note": "hclust_umap_n_components is overwritten with n_features by App.tsx",
+                "config_defaults": base,
+            },
+            indent=2,
+        ),
     )
 
-    pd.DataFrame([reference_dbcv(ds) for ds in args.datasets]).to_csv(out_dir / "reference_dbcv.csv", index=False)
+    pd.DataFrame([reference_dbcv(ds) for ds in args.datasets]).to_csv(
+        out_dir / "reference_dbcv.csv", index=False
+    )
 
     runs: list[DatasetRun] = []
     for ds in args.datasets:
@@ -589,9 +704,15 @@ def main() -> None:
         runs.append(run)
         rows = run.baseline + run.validation
         if rows:
-            pd.DataFrame(rows).to_csv(out_dir / f"validation_{_slug(ds)}.csv", index=False)
-        (out_dir / f"verdict_{_slug(ds)}.json").write_text(json.dumps(run.verdict, indent=2, default=str))
-        _log(f"  VERDICT {ds}: {'ADOPTED' if run.verdict.get('adopted') else 'defaults retained'}")
+            pd.DataFrame(rows).to_csv(
+                out_dir / f"validation_{_slug(ds)}.csv", index=False
+            )
+        (out_dir / f"verdict_{_slug(ds)}.json").write_text(
+            json.dumps(run.verdict, indent=2, default=str)
+        )
+        _log(
+            f"  VERDICT {ds}: {'ADOPTED' if run.verdict.get('adopted') else 'defaults retained'}"
+        )
 
     presets = {
         r.dataset: {k: v for k, v in r.verdict["config"].items() if k in PRESET_KEYS}
@@ -600,7 +721,9 @@ def main() -> None:
         if r.verdict.get("adopted")
     }
     (out_dir / "presets.json").write_text(json.dumps(presets, indent=2))
-    pd.DataFrame([r.verdict for r in runs]).to_csv(out_dir / "verdicts.csv", index=False)
+    pd.DataFrame([r.verdict for r in runs]).to_csv(
+        out_dir / "verdicts.csv", index=False
+    )
     _log(f"done. adopted: {list(presets) or 'none'}")
 
 

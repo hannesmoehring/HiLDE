@@ -30,7 +30,7 @@ def spec(key: str) -> dict[str, int] | None:
     return None if size is None else {"width": size[0], "height": size[1]}
 
 
-def pixels(df: "pd.DataFrame", key: str, row_id: int) -> dict[str, Any]:
+def pixels(df: pd.DataFrame, key: str, row_id: int) -> dict[str, Any]:
     """One row as 0..255 greyscale values, row-major."""
     width, height = IMAGE_SPECS[key]
     cols = [f"px_{i}" for i in range(width * height)]

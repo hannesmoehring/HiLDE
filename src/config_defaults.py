@@ -61,7 +61,7 @@ def default_config() -> Config:
     return cast("Config", defaults)
 
 
-def init_state(init_streamlit: bool = False) -> Config:  # noqa: ARG001 — kept for back-compat
+def init_state(init_streamlit: bool = False) -> Config:
     """Back-compat shim for callers of the former `src.ui.state.init_state`
     (e.g. src_research scripts). The Streamlit-session behaviour is gone; this
     just returns the default config."""

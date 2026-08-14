@@ -26,7 +26,12 @@ _DEFAULT_DIR = Path(__file__).resolve().parents[1] / ".cache" / "hilde_runs"
 
 
 def is_hosting() -> bool:
-    return os.environ.get(HOSTING_ENV, "").strip().lower() not in ("", "0", "false", "no")
+    return os.environ.get(HOSTING_ENV, "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+    )
 
 
 def cache_dir() -> Path:
