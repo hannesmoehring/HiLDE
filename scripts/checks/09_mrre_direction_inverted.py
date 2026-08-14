@@ -49,8 +49,10 @@ bad = rng.normal(size=(n, 2))
 g = neighbor_scores(X, good, k)
 b = neighbor_scores(X, bad, k)
 
-print(f"{'metric':<18} {'GOOD emb':>12} {'BAD emb':>12}   {'good>bad?':>10}   "
-      f"{'declared':>16}   verdict")
+print(
+    f"{'metric':<18} {'GOOD emb':>12} {'BAD emb':>12}   {'good>bad?':>10}   "
+    f"{'declared':>16}   verdict"
+)
 print("-" * 92)
 for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress"):
     gv, bv = float(g[m]), float(b[m])
@@ -62,21 +64,38 @@ for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress
         f"{'higher=better' if declared else 'lower=better':>16}   {'ok' if ok else '*** INVERTED ***'}"
     )
 
-inverted = [m for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress")
-            if (float(g[m]) > float(b[m])) != HIGHER_IS_BETTER[m]]
+inverted = [
+    m
+    for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress")
+    if (float(g[m]) > float(b[m])) != HIGHER_IS_BETTER[m]
+]
 
 print()
 print("A good embedding scores HIGHER than a bad one on both MRRE terms, so they are")
-print("higher-is-better. HIGHER_IS_BETTER used to declare them lower-is-better, which flipped")
-print("win_rate and rank_biserial in h1a_summary.csv while median_delta (computed without the")
-print("map) stayed right -- which is why the SHIPPED summaries contain rows whose two effect")
+print(
+    "higher-is-better. HIGHER_IS_BETTER used to declare them lower-is-better, which flipped"
+)
+print(
+    "win_rate and rank_biserial in h1a_summary.csv while median_delta (computed without the"
+)
+print(
+    "map) stayed right -- which is why the SHIPPED summaries contain rows whose two effect"
+)
 print("sizes disagree in sign, e.g.:")
-print("  Breast cancer (Low) PCA hier_leaf mrre_false   median_delta=+0.094339  win_rate=0.023  rbc=-0.955")
-print("  Breast cancer (Low) PCA hier_leaf mrre_missing median_delta=+0.072784  win_rate=0.000  rbc=-1.000")
+print(
+    "  Breast cancer (Low) PCA hier_leaf mrre_false   median_delta=+0.094339  win_rate=0.023  rbc=-0.955"
+)
+print(
+    "  Breast cancer (Low) PCA hier_leaf mrre_missing median_delta=+0.072784  win_rate=0.000  rbc=-1.000"
+)
 print()
 if inverted:
     print(f"*** STILL INVERTED: {inverted} -- B2 is not (or no longer) applied. ***")
 else:
-    print("B2 applied: every declared direction now matches the measured one, so a re-derived")
+    print(
+        "B2 applied: every declared direction now matches the measured one, so a re-derived"
+    )
     print("summary agrees with itself. The shipped CSVs above are corrected by")
-    print("`python -m src_research.rederive` (see outputs/experiments/*/rederived_*/DELTAS.md).")
+    print(
+        "`python -m src_research.rederive` (see outputs/experiments/*/rederived_*/DELTAS.md)."
+    )

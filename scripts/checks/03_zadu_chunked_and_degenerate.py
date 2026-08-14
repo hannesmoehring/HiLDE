@@ -16,7 +16,11 @@ MEAS = ["stress", "trustworthiness", "continuity", "mrre_false", "mrre_missing"]
 
 def zadu_ref(orig, emb, k):
     z = ZADU(
-        [{"id": "stress"}, {"id": "tnc", "params": {"k": k}}, {"id": "mrre", "params": {"k": k}}],
+        [
+            {"id": "stress"},
+            {"id": "tnc", "params": {"k": k}},
+            {"id": "mrre", "params": {"k": k}},
+        ],
         orig=orig,
     ).measure(emb)
     return {
@@ -43,21 +47,27 @@ for cb in (orig_bytes, 48 * n * 37, 48 * n * 7, 48 * n * 1):
     diffs = {m: abs(float(got[m]) - float(ref[m])) for m in MEAS}
     worst = max(diffs.values())
     nchunks = -(-n // step)
-    print(f"  step={step:>4} ({nchunks:>3} chunks)  worst_diff={worst:.3e}  {'OK' if worst < 1e-9 else 'MISMATCH ' + str(diffs)}")
+    print(
+        f"  step={step:>4} ({nchunks:>3} chunks)  worst_diff={worst:.3e}  {'OK' if worst < 1e-9 else 'MISMATCH ' + str(diffs)}"
+    )
 nm.CHUNK_BYTES = orig_bytes
 
 print()
-print("=== B. duplicate points (argsort ties -> is column 0 still the point itself?) ===")
+print(
+    "=== B. duplicate points (argsort ties -> is column 0 still the point itself?) ==="
+)
 base = rng.normal(size=(40, 4))
-orig_d = np.vstack([base, base])          # every point has an exact duplicate
+orig_d = np.vstack([base, base])  # every point has an exact duplicate
 emb_d = np.vstack([rng.normal(size=(40, 2))] * 2)
 k = 5
 got = nm.neighbor_scores(orig_d, emb_d, k)
 ref = zadu_ref(orig_d, emb_d, k)
 for m in MEAS:
     diff = abs(float(got[m]) - float(ref[m]))
-    print(f"  {m:<16} repo={float(got[m]):>12.8f} zadu={float(ref[m]):>12.8f} diff={diff:.2e} "
-          f"{'OK' if diff < 1e-9 else 'MISMATCH'}")
+    print(
+        f"  {m:<16} repo={float(got[m]):>12.8f} zadu={float(ref[m]):>12.8f} diff={diff:.2e} "
+        f"{'OK' if diff < 1e-9 else 'MISMATCH'}"
+    )
 
 print()
 print("=== C. all-identical points (stress denominator == 0) ===")

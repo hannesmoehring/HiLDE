@@ -10,7 +10,9 @@ from src.evaluation.neighbor_metrics import neighbor_scores
 
 warnings.filterwarnings("ignore")
 
-print(f"{'n':>5} {'d':>3} {'k':>3} | {'measure':<16} {'repo':>12} {'zadu':>12} {'absdiff':>11}  ok")
+print(
+    f"{'n':>5} {'d':>3} {'k':>3} | {'measure':<16} {'repo':>12} {'zadu':>12} {'absdiff':>11}  ok"
+)
 print("-" * 78)
 
 worst = 0.0
@@ -22,8 +24,8 @@ for seed, n, d, k in [
     (3, 200, 4, 1),
     (4, 200, 4, 2),
     (5, 300, 16, 20),
-    (6, 61, 3, 20),   # k = (n-1)//2 boundary
-    (7, 10, 5, 4),    # smallest node that gets neighbour metrics
+    (6, 61, 3, 20),  # k = (n-1)//2 boundary
+    (7, 10, 5, 4),  # smallest node that gets neighbour metrics
 ]:
     rng = np.random.default_rng(seed)
     orig = rng.normal(size=(n, d))
@@ -31,7 +33,11 @@ for seed, n, d, k in [
 
     repo = neighbor_scores(orig, emb, k)
     z = ZADU(
-        [{"id": "stress"}, {"id": "tnc", "params": {"k": k}}, {"id": "mrre", "params": {"k": k}}],
+        [
+            {"id": "stress"},
+            {"id": "tnc", "params": {"k": k}},
+            {"id": "mrre", "params": {"k": k}},
+        ],
         orig=orig,
     ).measure(emb)
     ref = {
@@ -48,7 +54,9 @@ for seed, n, d, k in [
         ok = diff < 1e-9
         if not ok:
             bad.append((n, d, k, m, a, b, diff))
-        print(f"{n:>5} {d:>3} {k:>3} | {m:<16} {a:>12.8f} {b:>12.8f} {diff:>11.2e}  {'OK' if ok else 'MISMATCH'}")
+        print(
+            f"{n:>5} {d:>3} {k:>3} | {m:<16} {a:>12.8f} {b:>12.8f} {diff:>11.2e}  {'OK' if ok else 'MISMATCH'}"
+        )
     print()
 
 print(f"worst absolute difference across all cases: {worst:.3e}")
