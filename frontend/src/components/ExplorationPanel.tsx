@@ -406,7 +406,7 @@ export function ExplorationPanel({
             rowIds={node.row_indices}
             method={config.method}
             interactiveGroup={interactiveGroup}
-            onSelect={interactive ? () => {} : setSelected}
+            onSelect={filtering ? () => {} : setSelected}
             selected={filtering ? [] : selected}
             toolbarExtra={
               showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
