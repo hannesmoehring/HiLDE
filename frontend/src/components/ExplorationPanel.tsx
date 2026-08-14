@@ -461,7 +461,13 @@ export function ExplorationPanel({
                 ranges={ranges}
                 matched={filtering ? selected.length : null}
                 narrowing={clauses.length}
-                onActive={setFilterCols}
+                onActive={(cols) => {
+                  setFilterCols(cols);
+                  // Drop the window with the column. Keeping it made re-ticking restore
+                  // a band the user removed — the selection would jump back to it with
+                  // nothing on screen saying why the window is not full-width.
+                  setRanges((prev) => dropRanges(prev, new Set(cols)));
+                }}
                 onRange={(c, r) => setRanges((prev) => ({ ...prev, [c]: r }))}
                 onClear={() => {
                   setFilterCols([]);
