@@ -125,7 +125,9 @@ export function ExplorationPanel({
 
   // Column-range filter state. The tab *is* the mode — there is no separate flag that
   // could drift out of step with which panel is on screen.
-  const [rangeData, setRangeData] = useState<RangeData | null>(null);
+  // Tagged with the node it was fetched for: the tag is what keeps the previous node's
+  // values from being read positionally against the new node's points.
+  const [rangeData, setRangeData] = useState<{ nodeId: string; data: RangeData } | null>(null);
   const [rangeNote, setRangeNote] = useState<string | null>(null); // why there is no data
   const [filterCols, setFilterCols] = useState<string[]>([]);
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
@@ -205,7 +207,11 @@ export function ExplorationPanel({
     let cancelled = false;
     setRangeNote(null);
     fetchRows(dataset, node.row_indices, tableCols)
-      .then((r) => !cancelled && setRangeData(collectRangeData(tableCols, targetCols, r.rows)))
+      .then(
+        (r) =>
+          !cancelled &&
+          setRangeData({ nodeId: node.id, data: collectRangeData(tableCols, targetCols, r.rows) }),
+      )
       .catch((e) => {
         if (cancelled) return;
         setRangeData(null);
@@ -225,12 +231,18 @@ export function ExplorationPanel({
   // `rangeData` without it and drops its clause. A `filtering` flag read off
   // `filterCols` would then let an empty conjunction — `[].every(...)` is true for every
   // row — hand the whole node back as if it were a filter result.
+  // …and only when they were fetched for the node on screen. React 18 runs passive
+  // effects after paint, so on the render that swaps the node `setRangeData(null)` has
+  // not landed and the memo's other deps are unchanged: without this the cached array
+  // from node A is handed to node B's scatter and applied positionally for one frame.
+  const nodeRange = rangeData && rangeData.nodeId === node.id ? rangeData.data : null;
+
   const clauses = useMemo(() => {
-    if (!interactive || !rangeData) return [];
+    if (!interactive || !nodeRange) return [];
     return filterCols
       .map((c) => {
-        const j = rangeData.cols.indexOf(c);
-        const bounds = rangeData.bounds[j] ?? ([NaN, NaN] as [number, number]);
+        const j = nodeRange.cols.indexOf(c);
+        const bounds = nodeRange.bounds[j] ?? ([NaN, NaN] as [number, number]);
         const [lo, hi] = settledRanges[c] ?? bounds;
         return { j, lo, hi, bounds };
       })
@@ -244,19 +256,19 @@ export function ExplorationPanel({
           // the whole node and refetch it in full to say "N of N points match 1 range".
           !(c.lo <= c.bounds[0] && c.hi >= c.bounds[1]),
       );
-  }, [interactive, rangeData, filterCols, settledRanges]);
+  }, [interactive, nodeRange, node.id, filterCols, settledRanges]);
   const filtering = clauses.length > 0;
 
   // "Matches filters" / "Other" per point (ranges tab only). The column positions are
   // resolved once rather than per point: on a wide dataset this runs over cols x rows.
   const interactiveGroup = useMemo(() => {
-    if (!filtering || !rangeData) return null;
-    return rangeData.values.map((row) =>
+    if (!filtering || !nodeRange) return null;
+    return nodeRange.values.map((row) =>
       clauses.every(({ j, lo, hi }) => row[j] >= lo && row[j] <= hi)
         ? "Matches filters"
         : "Other",
     );
-  }, [filtering, rangeData, clauses]);
+  }, [filtering, nodeRange, node.id, clauses]);
 
   // While the ranges tab is filtering, the filter *is* the selection (drives the
   // table, the target bands, and — once you switch tabs — the predicate).
@@ -443,7 +455,7 @@ export function ExplorationPanel({
           <div className="exploration__view" role="tabpanel">
             {view === "ranges" ? (
               <RangeFilters
-                data={rangeData}
+                data={nodeRange}
                 note={rangeNote}
                 active={filterCols}
                 ranges={ranges}
