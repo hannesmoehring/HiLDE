@@ -175,10 +175,20 @@ export function ExplorationPanel({
     return filterCols
       .map((c) => {
         const j = rangeData.cols.indexOf(c);
-        const [lo, hi] = settledRanges[c] ?? rangeData.bounds[j] ?? [NaN, NaN];
-        return { j, lo, hi };
+        const bounds = rangeData.bounds[j] ?? ([NaN, NaN] as [number, number]);
+        const [lo, hi] = settledRanges[c] ?? bounds;
+        return { j, lo, hi, bounds };
       })
-      .filter((c) => c.j >= 0 && Number.isFinite(c.lo) && Number.isFinite(c.hi));
+      .filter(
+        (c) =>
+          c.j >= 0 &&
+          Number.isFinite(c.lo) &&
+          Number.isFinite(c.hi) &&
+          // A window still at the column's own [min, max] admits every row that has a
+          // value there, so ticking a column is not by itself a filter: it would select
+          // the whole node and refetch it in full to say "N of N points match 1 range".
+          !(c.lo <= c.bounds[0] && c.hi >= c.bounds[1]),
+      );
   }, [interactive, rangeData, filterCols, settledRanges]);
   const filtering = clauses.length > 0;
 
