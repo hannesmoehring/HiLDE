@@ -294,6 +294,13 @@ export function ExplorationPanel({
     } else {
       setPredicate(null);
     }
+    // Clear first, as LayerSide and PointImage already do: a slider drag emits a new
+    // selection every 120 ms, and the table renders generation-A *values* under
+    // `node.row_indices[selected[i]]` from generation B — so a row click opens the image
+    // of a point whose values are not the ones on screen. On MNIST the refetch (167 ms)
+    // outruns the debounce, which makes that the steady state rather than a flash.
+    setTargets(null);
+    setRows(null);
     if (targetCols.length > 0) {
       fetchTargets({
         dataset,
