@@ -26,4 +26,12 @@ wheels/
 
 .wtest
 
+# Bundle the wine CSVs (the default dataset) with the repo. Both lines are
+# required: `datasets/*` above excludes the parent directory, and git cannot
+# re-include a path under an excluded directory, so the directory has to be
+# un-excluded first. The redundant .zip (same CSVs) stays ignored.
+!datasets/wine_quality/
 !datasets/wine_quality/**
+datasets/wine_quality/wine+quality.zip
+datasets/wine_quality/wine+quality/winequality.names
+datasets/wine_quality/.DS_Store
