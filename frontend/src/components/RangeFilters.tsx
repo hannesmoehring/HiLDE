@@ -136,13 +136,24 @@ export function RangeFilters({ data, active, ranges, matched, narrowing, onActiv
             <div className="range-filters__group-head">{g.key}</div>
             {g.cols.map((c) => {
               const on = active.includes(c);
-              // [NaN, NaN] = the column holds nothing numeric in this cluster.
-              const usable = Number.isFinite(data.bounds[data.cols.indexOf(c)][0]);
+              const [lo, hi] = data.bounds[data.cols.indexOf(c)];
+              // [NaN, NaN] = the column holds nothing numeric in this cluster. min ===
+              // max is just as unfilterable: neither thumb can move (step falls back to
+              // 1 on a zero span), every bin sits outside the highlight, and the clause
+              // would be true for every row — one click on roughly a quarter of the
+              // columns MNIST offers on a cluster-sized node.
+              const usable = Number.isFinite(lo) && lo < hi;
               return (
                 <label
                   key={c}
                   className={on ? undefined : "is-off"}
-                  title={usable ? c : `${c} — no numeric values in this cluster`}
+                  title={
+                    usable
+                      ? c
+                      : Number.isFinite(lo)
+                        ? `${c} — every row in this cluster has the same value (${fmt(lo)})`
+                        : `${c} — no numeric values in this cluster`
+                  }
                 >
                   <input
                     type="checkbox"
