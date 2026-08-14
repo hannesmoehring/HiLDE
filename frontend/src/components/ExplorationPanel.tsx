@@ -1,7 +1,7 @@
 // Leaf exploration: scatter + selection -> predicate bands + selected-points table,
 // plus an interactive column-range filter (the "Ranges" tab).
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchRows, fetchSelectionCharacteristics, fetchTargets, runPredicate } from "../api";
 import { CharacteristicsBar } from "../charts/CharacteristicsBar";
 import { PcaVarianceBar } from "../charts/PcaVarianceBar";
@@ -109,6 +109,11 @@ export function ExplorationPanel({
   charNonFeatureOnly,
 }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
+  // Which node's positions `selected` holds. Only that node can resolve them, and
+  // "Explore entire layer" swaps in an *ancestor* — whose row_indices is a strict
+  // superset, so every stale index is in range and a length test never fires. The panel
+  // has no key and does not remount, so identity is what has to be compared.
+  const [selectedNode, setSelectedNode] = useState(node.id);
   const [view, setView] = useState<View>("predicate");
   const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
@@ -127,9 +132,19 @@ export function ExplorationPanel({
   const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
   const interactive = view === "ranges";
 
+  /** Every selection records the node it was made in. */
+  const selectPoints = useCallback(
+    (idx: number[]) => {
+      setSelected(idx);
+      setSelectedNode(node.id);
+    },
+    [node.id],
+  );
+
   // Reset everything when the explored node changes.
   useEffect(() => {
     setSelected([]);
+    setSelectedNode(node.id);
     setPredicate(null);
     setCharSel(null);
     setTargets(null);
@@ -240,19 +255,20 @@ export function ExplorationPanel({
   // table, the target bands, and — once you switch tabs — the predicate).
   useEffect(() => {
     if (interactiveGroup) {
-      setSelected(
+      selectPoints(
         interactiveGroup.flatMap((g, i) =>
           g === "Matches filters" ? [i] : [],
         ),
       );
     }
-  }, [interactiveGroup]);
+  }, [interactiveGroup, selectPoints]);
 
   // A selection indexes into the node it was made in. On the render that swaps the
   // node, the reset effect above has not been applied yet, so `selected` still holds
   // the previous node's positions — mapping those through the new node's row_indices
   // yields rows nobody asked for. Sit the round out; the reset lands next render.
-  const staleSelection = selected.some((i) => i >= node.row_indices.length);
+  const staleSelection =
+    selectedNode !== node.id || selected.some((i) => i >= node.row_indices.length);
 
   // A selection that *is* the node answers nothing: the predicate separates it from
   // itself, and the characteristics endpoint z-scores it against itself, which is where
@@ -530,7 +546,7 @@ export function ExplorationPanel({
             rowIds={node.row_indices}
             method={builtMethod}
             interactiveGroup={interactiveGroup}
-            onSelect={filtering ? () => {} : setSelected}
+            onSelect={filtering ? () => {} : selectPoints}
             selected={filtering ? [] : selected}
             toolbarExtra={
               showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
