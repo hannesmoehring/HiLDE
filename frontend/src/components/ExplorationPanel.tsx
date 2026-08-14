@@ -356,7 +356,11 @@ export function ExplorationPanel({
     return () => {
       cancelled = true;
     };
-  }, [selected, staleSelection, wholeNodeSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config]);
+    // `config.normalize` rather than `config`: it is the only field /api/predicate
+    // reads (app.py:244), the other two endpoints read none of it, and the whole object
+    // is minted fresh on every config keystroke — which re-ran this, at whole-node
+    // scale, for knobs that cannot change the answer.
+  }, [selected, staleSelection, wholeNodeSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config.normalize]);
 
   // Selection -> characteristics, on its own so the cost is only paid while the tab
   // is open. Unlike the predicate this holds in interactive mode too: the filtered
