@@ -69,13 +69,14 @@ interface Props {
   data: RangeData | null;
   active: string[]; // chosen columns, in pick order
   ranges: Record<string, [number, number]>;
-  matched: number | null; // null = nothing picked yet, so nothing is being filtered
+  matched: number | null; // null = nothing is being filtered, whatever is picked
+  narrowing: number; // picked columns that actually contribute a clause
   onActive: (cols: string[]) => void;
   onRange: (col: string, range: [number, number]) => void;
   onClear: () => void;
 }
 
-export function RangeFilters({ data, active, ranges, matched, onActive, onRange, onClear }: Props) {
+export function RangeFilters({ data, active, ranges, matched, narrowing, onActive, onRange, onClear }: Props) {
   const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
@@ -100,12 +101,20 @@ export function RangeFilters({ data, active, ranges, matched, onActive, onRange,
       </p>
 
       <div className="range-filters__head">
+        {/* The count speaks about the clauses that are actually applied, never about
+            the picked columns: a pick whose column has left the table, or whose window
+            still spans the whole column, filters nothing and must not be counted as if
+            it did. */}
         {matched === null ? (
-          <span className="range-filters__count">No ranges yet</span>
+          <span className="range-filters__count">
+            {active.length === 0
+              ? "No ranges yet"
+              : "No range narrows this cluster yet — every window still spans its whole column"}
+          </span>
         ) : (
           <span className="range-filters__count">
-            <b>{matched}</b> of {data.values.length} points match {active.length}{" "}
-            {active.length === 1 ? "range" : "ranges"}
+            <b>{matched}</b> of {data.values.length} points match {narrowing}{" "}
+            {narrowing === 1 ? "range" : "ranges"}
           </span>
         )}
         <button onClick={onClear} disabled={active.length === 0}>

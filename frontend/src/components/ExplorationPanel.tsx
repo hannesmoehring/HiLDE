@@ -54,6 +54,19 @@ function cellClass(col: string, targets: Set<string>, first: string | undefined)
   return col === first ? "is-target is-target-first" : "is-target";
 }
 
+/** `ranges` minus every column not in `keep`. Returns the same object when nothing is
+ *  dropped, so the state update bails out instead of re-rendering. */
+function dropRanges(
+  prev: Record<string, [number, number]>,
+  keep: Set<string>,
+): Record<string, [number, number]> {
+  const gone = Object.keys(prev).filter((c) => !keep.has(c));
+  if (gone.length === 0) return prev;
+  const next = { ...prev };
+  for (const c of gone) delete next[c];
+  return next;
+}
+
 function toCsv(rows: RowsResponse): string {
   const header = rows.columns.join(",");
   const body = rows.rows
@@ -90,10 +103,6 @@ export function ExplorationPanel({
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
   const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
   const interactive = view === "ranges";
-  // Until a column is picked the conjunction is empty, i.e. it matches the whole node.
-  // Reading that as a selection would silently throw away whatever the lasso captured
-  // just because somebody clicked the tab, so filtering only starts at one column.
-  const filtering = interactive && filterCols.length > 0;
 
   // Reset everything when the explored node changes.
   useEffect(() => {
@@ -119,6 +128,17 @@ export function ExplorationPanel({
   const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
   const firstTarget = targetCols[0];
 
+  // A filtered column can leave the table — unticked in the feature picker, or all of
+  // them at once via "None". Drop the pick and its window with it, so the tab badge and
+  // the range rows keep describing the same set of columns.
+  useEffect(() => {
+    const keep = new Set(tableCols);
+    setFilterCols((prev) =>
+      prev.every((c) => keep.has(c)) ? prev : prev.filter((c) => keep.has(c)),
+    );
+    setRanges((prev) => dropRanges(prev, keep));
+  }, [tableCols]);
+
   // Fetch the node's raw feature + target values while the ranges tab is open.
   useEffect(() => {
     if (!interactive) {
@@ -134,23 +154,35 @@ export function ExplorationPanel({
     };
   }, [interactive, node.id, dataset, tableCols, targetCols]);
 
-  // "Matches filters" / "Other" per point (ranges tab only). The column positions are
-  // resolved once rather than per point: on a wide dataset this runs over cols x rows.
-  const interactiveGroup = useMemo(() => {
-    if (!filtering || !rangeData) return null;
-    const clauses = filterCols
+  // The clauses the conjunction actually runs over: a picked column that is present in
+  // the fetched values with a finite window. `filtering` is derived from *these* rather
+  // than from the picked columns, because the two can disagree — unticking a column in
+  // the feature picker (or the one-click "None") takes it out of `tableCols`, refetches
+  // `rangeData` without it and drops its clause. A `filtering` flag read off
+  // `filterCols` would then let an empty conjunction — `[].every(...)` is true for every
+  // row — hand the whole node back as if it were a filter result.
+  const clauses = useMemo(() => {
+    if (!interactive || !rangeData) return [];
+    return filterCols
       .map((c) => {
         const j = rangeData.cols.indexOf(c);
         const [lo, hi] = settledRanges[c] ?? rangeData.bounds[j] ?? [NaN, NaN];
         return { j, lo, hi };
       })
       .filter((c) => c.j >= 0 && Number.isFinite(c.lo) && Number.isFinite(c.hi));
+  }, [interactive, rangeData, filterCols, settledRanges]);
+  const filtering = clauses.length > 0;
+
+  // "Matches filters" / "Other" per point (ranges tab only). The column positions are
+  // resolved once rather than per point: on a wide dataset this runs over cols x rows.
+  const interactiveGroup = useMemo(() => {
+    if (!filtering || !rangeData) return null;
     return rangeData.values.map((row) =>
       clauses.every(({ j, lo, hi }) => row[j] >= lo && row[j] <= hi)
         ? "Matches filters"
         : "Other",
     );
-  }, [filtering, rangeData, filterCols, settledRanges]);
+  }, [filtering, rangeData, clauses]);
 
   // While the ranges tab is filtering, the filter *is* the selection (drives the
   // table, the target bands, and — once you switch tabs — the predicate).
@@ -310,6 +342,7 @@ export function ExplorationPanel({
                 active={filterCols}
                 ranges={ranges}
                 matched={filtering ? selected.length : null}
+                narrowing={clauses.length}
                 onActive={setFilterCols}
                 onRange={(c, r) => setRanges((prev) => ({ ...prev, [c]: r }))}
                 onClear={() => {
