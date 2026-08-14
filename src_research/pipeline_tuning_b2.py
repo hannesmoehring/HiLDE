@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import pandas as pd
 
@@ -66,22 +65,45 @@ def main() -> None:
         run = DatasetRun(dataset=dataset)
         for i in range(N_BASELINE_BUILDS):
             m = build(dataset, {"hclust_umap_n_components": 2})
-            m |= {"dataset": dataset, "arm": "baseline_b2", "build_index": i, "split": "select" if i < 5 else "test"}
+            m |= {
+                "dataset": dataset,
+                "arm": "baseline_b2",
+                "build_index": i,
+                "split": "select" if i < 5 else "test",
+            }
             run.baseline.append(m)
-            _log(f"  b2 {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} ari={m.get('ari')} {m.get('build_seconds', 0):.0f}s")
+            _log(
+                f"  b2 {i + 1}/{N_BASELINE_BUILDS}: dbcv={m.get('dbcv_leaf')} tnc={m.get('tnc_mean')} leaves={m.get('n_leaves')} ari={m.get('ari')} {m.get('build_seconds', 0):.0f}s"
+            )
 
         val = pd.read_csv(run_dir / f"validation_{_slug(dataset)}.csv")
-        run.validation = val[val["arm"] == "preset"].where(pd.notna(val), None).to_dict("records")
+        pre = val[val["arm"] == "preset"]
+        # `.where(..., None)` cannot put None in a float64 column - it leaves NaN - so the
+        # rehydrated `exception` was NaN, `not nan` is False, and A4_reliable was False for
+        # every dataset regardless of the data. `_vals` was poisoned the same way: NaN is
+        # `is not None`, so a missing dbcv_leaf survived the filter and NaN'd the mean.
+        # Casting to object first is what actually lets None land in the records.
+        run.validation = (
+            pre.astype(object).where(pd.notna(pre), None).to_dict("records")
+        )
 
         verdict = judge(dataset, run, cfg, v["feature_cols"])
         verdict["baseline_variant"] = "B2 (hclust_umap_n_components=2)"
         verdicts.append(verdict)
-        (run_dir / f"verdict_b2_{_slug(dataset)}.json").write_text(json.dumps(verdict, indent=2, default=str))
-        pd.DataFrame(run.baseline).to_csv(run_dir / f"baseline_b2_{_slug(dataset)}.csv", index=False)
-        _log(f"  VERDICT(B2) {dataset}: {'ADOPTED' if verdict['adopted'] else 'defaults retained'}")
+        (run_dir / f"verdict_b2_{_slug(dataset)}.json").write_text(
+            json.dumps(verdict, indent=2, default=str)
+        )
+        pd.DataFrame(run.baseline).to_csv(
+            run_dir / f"baseline_b2_{_slug(dataset)}.csv", index=False
+        )
+        _log(
+            f"  VERDICT(B2) {dataset}: {'ADOPTED' if verdict['adopted'] else 'defaults retained'}"
+        )
 
     pd.DataFrame(verdicts).to_csv(run_dir / "verdicts_b2.csv", index=False)
-    _log(f"done. adopted under B2: {[v['dataset'] for v in verdicts if v['adopted']] or 'none'}")
+    _log(
+        f"done. adopted under B2: {[v['dataset'] for v in verdicts if v['adopted']] or 'none'}"
+    )
 
 
 if __name__ == "__main__":

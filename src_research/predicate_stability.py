@@ -17,7 +17,8 @@ point exists. Decomposed:
         (negative control on ourselves).
 
 Selections come from a simulated user: hierarchy leaves on wine (the tree is rebuilt per
-seed; UMAP is unseeded, so seeds act as replicates) and planted clusters on synthetic data
+seed, with the seed threaded into UMAP's ``random_state``, so seeds are distinct-but-
+reproducible tree-rebuild replicates) and planted clusters on synthetic data
 (no tree needed - keeps recovery scoring independent of tree quality). Perturbation is
 boundary jitter: drop a fraction delta of the selection, add the same number from the
 K_NN-nearest non-selected neighbours of its members in the standardised full space.
@@ -66,7 +67,13 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed, parallel_config
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
@@ -74,6 +81,7 @@ from src.analysis.analysis_routine import compute_analysis_tree
 from src.analysis.predicate_generator import _f1, generate_predicate
 from src.config_defaults import init_state
 from src.types import Config
+from src_research import predicate_stability_analysis as psa
 
 # Lift the shared helpers from the sibling RQ1 harness rather than reimplement them
 # (importing the module is side-effect-safe: it only runs the experiment under __main__).
@@ -83,18 +91,29 @@ from src_research.hierarchical_vs_flat import (
     prepare_dataset,
     standardised_X,
 )
-from src_research import predicate_stability_analysis as psa
 
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this block to change the experiment.                          #
 # --------------------------------------------------------------------------- #
 
 SEED = 42  # root entropy for the per-selection perturbation RNGs
-SEEDS_WINE = list(range(5))  # tree-rebuild replicates (tree builds dominate cost)
-SEEDS_SYNTH = list(range(20))  # generator replicates (cheap; matches the RQ1-S standard)
+SEEDS_WINE = list(
+    range(5)
+)  # tree-rebuild replicates, threaded into the DR seed (tree builds dominate cost)
+SEEDS_SYNTH = list(
+    range(20)
+)  # generator replicates (cheap; matches the RQ1-S standard)
 
-T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the thesis - do not add levels after seeing results
-METHODS = ["threshold", "db"]  # threshold = primary; db = DimBridge-style baseline (secondary)
+T_GRID = [
+    1.0,
+    0.95,
+    0.9,
+    0.8,
+]  # pre-specified in the thesis - do not add levels after seeing results
+METHODS = [
+    "threshold",
+    "db",
+]  # threshold = primary; db = DimBridge-style baseline (secondary)
 SPLITS = ["severity", "symmetric"]  # H2c ablation arms of the tail split
 DELTAS = [0.1, 0.05, 0.2]  # perturbation strength; 0.1 = pre-registered headline
 M_REPLICATES = 20  # perturbed re-selections per (selection, delta)
@@ -102,7 +121,7 @@ K_NN = 10  # neighbours per member forming the boundary-jitter candidate pool
 MIN_SEL = 20  # quantiles on fewer points are noise (design SS4); sizes are reported
 
 WINE_DATASET = "Wine quality (Low)"
-DR_METHOD = "UMAP"  # UI default; drives the (stochastic) tree builds on wine
+DR_METHOD = "UMAP"  # UI default; drives the per-seed tree builds on wine
 HIER_LAYERS = 2  # matches the RQ1 headline depth
 
 # Axis-parallel generator, fixed headline (design SS3): D = C*r + d_noise = 27 features.
@@ -112,7 +131,11 @@ D_NOISE = 15  # dims that are noise for every cluster
 N_PER = 60  # points per planted cluster (= selection size)
 SIGMA_REL = 0.5  # within-cluster spread on relevant dims
 SKEW_SIGMA = 0.75  # lognormal shape (moderate skew ~2.9)
-BIMODAL_WEIGHT, BIMODAL_SHIFT, BIMODAL_SIGMA = 0.15, 3.0, 0.35  # adversarial shape params
+BIMODAL_WEIGHT, BIMODAL_SHIFT, BIMODAL_SIGMA = (
+    0.15,
+    3.0,
+    0.35,
+)  # adversarial shape params
 
 SYNTH_ARMS: dict[str, dict] = {
     "synth-sym-wide": {"skew": "gaussian", "margin": 4.0},
@@ -122,7 +145,9 @@ SYNTH_ARMS: dict[str, dict] = {
     "synth-bimodal-tight": {"skew": "bimodal", "margin": 1.5},  # exploratory (SS9.3)
 }
 
-RUN_SEED_PERTURBATION = True  # pass (b), wine only - first thing cut under time pressure (SS9)
+RUN_SEED_PERTURBATION = (
+    True  # pass (b), wine only - first thing cut under time pressure (SS9)
+)
 PARALLEL_JOBS = -1  # grid cells run concurrently; 1 = serial, -1 = all cores
 OUTPUT_ROOT = Path("outputs/experiments")
 
@@ -152,12 +177,16 @@ def _within_cluster(rng: np.random.Generator, n: int, skew: str) -> np.ndarray:
         minor = rng.random(n) < BIMODAL_WEIGHT
         v = BIMODAL_SIGMA * rng.standard_normal(n) - BIMODAL_SHIFT * minor
         mean = -BIMODAL_WEIGHT * BIMODAL_SHIFT
-        var = BIMODAL_SIGMA**2 + BIMODAL_WEIGHT * (1 - BIMODAL_WEIGHT) * BIMODAL_SHIFT**2
+        var = (
+            BIMODAL_SIGMA**2 + BIMODAL_WEIGHT * (1 - BIMODAL_WEIGHT) * BIMODAL_SHIFT**2
+        )
         return (v - mean) / np.sqrt(var)
     raise ValueError(f"Unknown skew shape: {skew}")
 
 
-def make_axis_parallel(skew: str, margin: float, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def make_axis_parallel(
+    skew: str, margin: float, seed: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Single-level axis-aligned planted clusters (no nesting - RQ2 needs recoverable boxes).
 
     Returns ``(X, y, rel)``: the raw feature matrix, planted membership (0..C-1), and the
@@ -194,7 +223,9 @@ def knn_pool(X_all: np.ndarray, sel_idx: np.ndarray) -> np.ndarray:
     return np.unique(outside[neigh.ravel()])
 
 
-def perturb(sel_idx: np.ndarray, pool: np.ndarray, delta: float, rng: np.random.Generator) -> np.ndarray:
+def perturb(
+    sel_idx: np.ndarray, pool: np.ndarray, delta: float, rng: np.random.Generator
+) -> np.ndarray:
     """One perturbed re-selection: drop round(delta*n) members uniformly at random, add the
     same number from the kNN boundary pool (mimics a user lassoing slightly differently -
     moves the boundary, not the core)."""
@@ -205,7 +236,14 @@ def perturb(sel_idx: np.ndarray, pool: np.ndarray, delta: float, rng: np.random.
     return np.concatenate([sel_idx[keep], added])
 
 
-def build_predicate(method: str, split: str, t: float, idx: np.ndarray, X_all: np.ndarray, feature_cols: list[str]) -> list[dict]:
+def build_predicate(
+    method: str,
+    split: str,
+    t: float,
+    idx: np.ndarray,
+    X_all: np.ndarray,
+    feature_cols: list[str],
+) -> list[dict]:
     """One calc-layer predicate for the rows ``idx``: background = the shared standardised
     matrix, selection = those rows of it (the app's global predicate scope)."""
     sel_df = pd.DataFrame(X_all[idx], columns=feature_cols)
@@ -219,7 +257,9 @@ def build_predicate(method: str, split: str, t: float, idx: np.ndarray, X_all: n
     )
 
 
-def admitted_mask(rows: list[dict], X_all: np.ndarray, feature_index: dict[str, int]) -> np.ndarray:
+def admitted_mask(
+    rows: list[dict], X_all: np.ndarray, feature_index: dict[str, int]
+) -> np.ndarray:
     """Membership of every dataset row under the predicate: AND over interval clauses.
     Threshold rows all apply (the conjunction over all features); db rows apply only when
     the greedy step selected them (``in_predicate``) - a clause-less db predicate is the
@@ -255,8 +295,13 @@ def mean_pairwise_mask_jaccard(masks: np.ndarray) -> float:
 def mean_pairwise_clause_jaccard(rep_rows: list[list[dict]]) -> float:
     """db only: mean pairwise Jaccard of the greedily selected clause sets - the metric the
     greedy step puts genuinely at risk (one moved point can reroute the greedy path)."""
-    sets = [frozenset(i for i, r in enumerate(rows) if r["in_predicate"]) for rows in rep_rows]
-    vals = [len(a & b) / len(a | b) if (a | b) else 1.0 for a, b in combinations(sets, 2)]
+    sets = [
+        frozenset(i for i, r in enumerate(rows) if r["in_predicate"])
+        for rows in rep_rows
+    ]
+    vals = [
+        len(a & b) / len(a | b) if (a | b) else 1.0 for a, b in combinations(sets, 2)
+    ]
     return float(np.mean(vals))
 
 
@@ -265,10 +310,14 @@ def bound_sd(rep_rows: list[list[dict]]) -> float:
     *why* the admitted set moves. Rows are in feature order for both methods."""
     mins = np.array([[r["sel_min"] for r in rows] for rows in rep_rows])
     maxs = np.array([[r["sel_max"] for r in rows] for rows in rep_rows])
-    return float((mins.std(axis=0, ddof=1).mean() + maxs.std(axis=0, ddof=1).mean()) / 2)
+    return float(
+        (mins.std(axis=0, ddof=1).mean() + maxs.std(axis=0, ddof=1).mean()) / 2
+    )
 
 
-def dim_recovery(rows: list[dict], rel_dims: np.ndarray, method: str, feature_index: dict[str, int]) -> dict:
+def dim_recovery(
+    rows: list[dict], rel_dims: np.ndarray, method: str, feature_index: dict[str, int]
+) -> dict:
     """Relevant-dimension recovery (synthetic only, design SS2): db reads its clause set
     directly; threshold has no clause selection, so rank features by selectivity
     sel_range/global_range and score precision@r (pre-specified cutoff r = planted count)."""
@@ -277,7 +326,11 @@ def dim_recovery(rows: list[dict], rel_dims: np.ndarray, method: str, feature_in
         found = {feature_index[str(r["feature"])] for r in rows if r["in_predicate"]}
     else:
         ranked = sorted(
-            ((r["sel_max"] - r["sel_min"]) / max(r["global_max"] - r["global_min"], 1e-12), feature_index[str(r["feature"])])
+            (
+                (r["sel_max"] - r["sel_min"])
+                / max(r["global_max"] - r["global_min"], 1e-12),
+                feature_index[str(r["feature"])],
+            )
             for r in rows
         )
         found = {j for _, j in ranked[: len(truth)]}
@@ -285,7 +338,12 @@ def dim_recovery(rows: list[dict], rel_dims: np.ndarray, method: str, feature_in
     precision = tp / len(found) if found else 0.0
     recall = tp / len(truth)
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-    return {"dim_precision": precision, "dim_recall": recall, "dim_f1": f1, "n_dims_found": len(found)}
+    return {
+        "dim_precision": precision,
+        "dim_recall": recall,
+        "dim_f1": f1,
+        "n_dims_found": len(found),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -307,14 +365,19 @@ def selection_records(
     y_base[sel_idx] = True
     feature_index = {str(c): j for j, c in enumerate(feature_cols)}
     pool = knn_pool(X_all, sel_idx)
-    reps = {delta: [perturb(sel_idx, pool, delta, rng) for _ in range(M_REPLICATES)] for delta in DELTAS}
+    reps = {
+        delta: [perturb(sel_idx, pool, delta, rng) for _ in range(M_REPLICATES)]
+        for delta in DELTAS
+    }
 
     records: list[dict] = []
     recovery: list[dict] = []
     for method in METHODS:
         for split in SPLITS:
             for t in T_GRID:
-                base_rows = build_predicate(method, split, t, sel_idx, X_all, feature_cols)
+                base_rows = build_predicate(
+                    method, split, t, sel_idx, X_all, feature_cols
+                )
                 base_mask = admitted_mask(base_rows, X_all, feature_index)
                 f1, precision, recall = _f1(base_mask, y_base)
                 quality = {
@@ -322,7 +385,9 @@ def selection_records(
                     "precision": precision,
                     "recall": recall,
                     "coverage": float(base_mask.mean()),
-                    "length": int(sum(bool(r.get("in_predicate")) for r in base_rows)) if method == "db" else len(feature_cols),
+                    "length": int(sum(bool(r.get("in_predicate")) for r in base_rows))
+                    if method == "db"
+                    else len(feature_cols),
                 }
                 if rel_dims is not None:
                     recovery.append(
@@ -337,8 +402,13 @@ def selection_records(
                         }
                     )
                 for delta in DELTAS:
-                    rep_rows = [build_predicate(method, split, t, r, X_all, feature_cols) for r in reps[delta]]
-                    rep_masks = np.array([admitted_mask(rw, X_all, feature_index) for rw in rep_rows])
+                    rep_rows = [
+                        build_predicate(method, split, t, r, X_all, feature_cols)
+                        for r in reps[delta]
+                    ]
+                    rep_masks = np.array(
+                        [admitted_mask(rw, X_all, feature_index) for rw in rep_rows]
+                    )
                     rep_f1 = [_f1(mask, y_base)[0] for mask in rep_masks]
                     records.append(
                         {
@@ -351,7 +421,9 @@ def selection_records(
                             "jaccard_admitted": mean_pairwise_mask_jaccard(rep_masks),
                             "f1_sd": float(np.std(rep_f1, ddof=1)),
                             "bound_sd": bound_sd(rep_rows),
-                            "jaccard_clauses": mean_pairwise_clause_jaccard(rep_rows) if method == "db" else float("nan"),
+                            "jaccard_clauses": mean_pairwise_clause_jaccard(rep_rows)
+                            if method == "db"
+                            else float("nan"),
                             **quality,
                         }
                     )
@@ -363,17 +435,25 @@ def selection_records(
 # --------------------------------------------------------------------------- #
 
 
-def run_cell(arm: str, seed: int) -> tuple[list[dict], list[dict], list[np.ndarray] | None]:
+def run_cell(
+    arm: str, seed: int
+) -> tuple[list[dict], list[dict], list[np.ndarray] | None]:
     """Build selections for one (arm, seed) and sweep them. Wine: tree leaves (the tree is
-    the stochastic element - UMAP is unseeded). Synthetic: planted clusters, no tree.
-    Returns (records, recovery_rows, wine_leaf_indices-or-None) - the leaf index sets feed
-    the seed-perturbation pass (b) in the driver."""
+    the varying element - the seed is threaded into UMAP's random_state). Synthetic: planted
+    clusters, no tree. Returns (records, recovery_rows, wine_leaf_indices-or-None) - the leaf
+    index sets feed the seed-perturbation pass (b) in the driver."""
     _silence_noise()  # re-assert in worker processes
     if arm == "wine":
         df, feature_cols, _y = prepare_dataset(WINE_DATASET)
         cfg: Config = init_state(init_streamlit=False)
         cfg["method"] = DR_METHOD
         cfg["hierarchical_layers"] = HIER_LAYERS
+        # Without this the seed reaches nothing: `init_state` hardcodes 42 for all three
+        # reducers, so all SEEDS_WINE "rebuilds" would be one tree and pass (b) would
+        # compare a leaf against itself.
+        cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg[
+            "mds_random_state"
+        ] = seed
         tree = compute_analysis_tree(df, feature_cols, cfg)
         X_all = standardised_X(df, feature_cols, tree)
         leaf_idx = [np.asarray(leaf["row_indices"]) for leaf in collect_leaves(tree)]
@@ -399,8 +479,17 @@ def run_cell(arm: str, seed: int) -> tuple[list[dict], list[dict], list[np.ndarr
         if len(sel_idx) < MIN_SEL or len(X_all) - len(sel_idx) < K_NN:
             continue
         rng = np.random.default_rng([SEED, zlib.crc32(arm.encode()), seed, pos])
-        common = {"arm": arm, **meta, "seed": seed, "sel_id": sel_id, "n_sel": int(len(sel_idx)), "n_all": len(X_all)}
-        rec, rcv = selection_records(common, sel_idx, X_all, feature_cols, rel_by_sel.get(sel_id), rng)
+        common = {
+            "arm": arm,
+            **meta,
+            "seed": seed,
+            "sel_id": sel_id,
+            "n_sel": len(sel_idx),
+            "n_all": len(X_all),
+        }
+        rec, rcv = selection_records(
+            common, sel_idx, X_all, feature_cols, rel_by_sel.get(sel_id), rng
+        )
         records.extend(rec)
         recovery.extend(rcv)
     return records, recovery, leaf_idx
@@ -411,12 +500,16 @@ def run_cell(arm: str, seed: int) -> tuple[list[dict], list[dict], list[np.ndarr
 # --------------------------------------------------------------------------- #
 
 
-def greedy_match(leaves_a: list[tuple[int, np.ndarray]], leaves_b: list[tuple[int, np.ndarray]]) -> list[tuple]:
+def greedy_match(
+    leaves_a: list[tuple[int, np.ndarray]], leaves_b: list[tuple[int, np.ndarray]]
+) -> list[tuple]:
     """One-to-one leaf matching across two rebuilds by member-set Jaccard, greedy on the
     best remaining pair. Returns [((pos_a, idx_a), (pos_b, idx_b), jaccard), ...]."""
     sets_a = [set(idx.tolist()) for _, idx in leaves_a]
     sets_b = [set(idx.tolist()) for _, idx in leaves_b]
-    jac = np.array([[len(a & b) / len(a | b) if (a | b) else 0.0 for b in sets_b] for a in sets_a])
+    jac = np.array(
+        [[len(a & b) / len(a | b) if (a | b) else 0.0 for b in sets_b] for a in sets_a]
+    )
     matches: list[tuple] = []
     while jac.size and jac.max() > 0:
         ia, ib = np.unravel_index(int(jac.argmax()), jac.shape)
@@ -435,14 +528,19 @@ def seed_perturbation_records(leaf_sets: dict[int, list[np.ndarray]]) -> pd.Data
     # Fresh scaler on the same rows == the root scaler every tree fits (normalize=True).
     X_all = StandardScaler().fit_transform(df[feature_cols].to_numpy(dtype=np.float64))
     feature_index = {str(c): j for j, c in enumerate(feature_cols)}
-    eligible = {s: [(i, idx) for i, idx in enumerate(leaves) if len(idx) >= MIN_SEL] for s, leaves in leaf_sets.items()}
+    eligible = {
+        s: [(i, idx) for i, idx in enumerate(leaves) if len(idx) >= MIN_SEL]
+        for s, leaves in leaf_sets.items()
+    }
 
     masks: dict[tuple, np.ndarray] = {}
     for s, leaves in eligible.items():
         for i, idx in leaves:
             for method in METHODS:
                 for t in T_GRID:
-                    rows = build_predicate(method, "severity", t, idx, X_all, feature_cols)
+                    rows = build_predicate(
+                        method, "severity", t, idx, X_all, feature_cols
+                    )
                     masks[(s, i, method, t)] = admitted_mask(rows, X_all, feature_index)
 
     out: list[dict] = []
@@ -463,7 +561,9 @@ def seed_perturbation_records(leaf_sets: dict[int, list[np.ndarray]]) -> pd.Data
                             "n_b": len(idx_b),
                             "method": method,
                             "t": t,
-                            "jaccard_admitted": int(np.count_nonzero(ma & mb)) / union if union else 1.0,
+                            "jaccard_admitted": int(np.count_nonzero(ma & mb)) / union
+                            if union
+                            else 1.0,
                             "weak_match": match < 0.5,
                         }
                     )
@@ -478,7 +578,9 @@ def seed_perturbation_records(leaf_sets: dict[int, list[np.ndarray]]) -> pd.Data
 def build_cells() -> list[tuple[str, int]]:
     """Enumerate (arm, seed) cells - all independent. Wine first: its tree builds dominate
     wall-clock, so they should start earliest."""
-    return [("wine", s) for s in SEEDS_WINE] + [(arm, s) for arm in SYNTH_ARMS for s in SEEDS_SYNTH]
+    return [("wine", s) for s in SEEDS_WINE] + [
+        (arm, s) for arm in SYNTH_ARMS for s in SEEDS_SYNTH
+    ]
 
 
 def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
@@ -495,7 +597,9 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
         console=console,
     )
     with progress:
-        task = progress.add_task(f"Running grid (jobs={PARALLEL_JOBS})", total=len(cells))
+        task = progress.add_task(
+            f"Running grid (jobs={PARALLEL_JOBS})", total=len(cells)
+        )
         if PARALLEL_JOBS == 1:
             results = []
             for arm, seed in cells:
@@ -520,7 +624,9 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
 
     seedpass = None
     if RUN_SEED_PERTURBATION and len(wine_leaves) >= 2:
-        console.print("Seed-perturbation pass (b): matching leaves across wine tree rebuilds ...")
+        console.print(
+            "Seed-perturbation pass (b): matching leaves across wine tree rebuilds ..."
+        )
         seedpass = seed_perturbation_records(wine_leaves)
     return pd.DataFrame(records), pd.DataFrame(recovery), seedpass
 
@@ -543,7 +649,9 @@ def main() -> None:
     if seedpass is not None:
         seedpass.to_csv(out_dir / "seed_stability.csv", index=False)
 
-    psa.check_records(records)  # t=1.0 split-invariance: catches a mis-threaded tail_split (records are already on disk)
+    psa.check_records(
+        records
+    )  # t=1.0 split-invariance: catches a mis-threaded tail_split (records are already on disk)
 
     results = psa.analyse(records, recovery, seedpass)
     psa.save_outputs(results, out_dir)

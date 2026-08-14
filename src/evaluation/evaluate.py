@@ -6,8 +6,14 @@ import numpy as np
 import pandas as pd
 from zadu.zadu import ZADU
 
-from src.analysis.analysis_routine import AnalysisObject, HierarchyObject, NodeScores, compute_analysis_tree
-from src.evaluation import metrics
+from src.analysis.analysis_routine import (
+    AnalysisObject,
+    HierarchyObject,
+    NodeScores,
+    compute_analysis_tree,
+)
+from src.evaluation.neighbor_metrics import neighbor_scores
+
 from src.types import Config
 from src.util import console as clog
 
@@ -20,7 +26,9 @@ MIN_PTS_FOR_EMBED = 2
 CADI_RANDOM_SEED = 42
 
 
-def start_evaluation(df: pd.DataFrame, feature_cols: list[str], config: Config) -> AnalysisObject:
+def start_evaluation(
+    df: pd.DataFrame, feature_cols: list[str], config: Config
+) -> AnalysisObject:
     clog.build_banner(config.get("dataset_choice", "?"), feature_cols, config)
     tree = compute_analysis_tree(df, feature_cols, config)
     clog.phase("Evaluating embedding quality (ZADU)")
@@ -41,15 +49,27 @@ def _count_tree(node: AnalysisObject) -> tuple[int, int]:
     return nodes, leaves
 
 
-def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[str], scaler: StandardScaler | None) -> None:
+def _attach_scores(
+    node: AnalysisObject,
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    scaler: StandardScaler | None,
+) -> None:
     # Reuse the embedding the tree already computed (the one the UI displays) and the
     # scaler fit once at the root, so scores measure exactly what is shown.
     X = df.iloc[node["row_indices"]][feature_cols].to_numpy()
     if scaler is not None:
         X = scaler.transform(X)
 
+    # `None` = the node was never projected (too small, or the reducer raised). There
+    # are no coordinates to score, and scoring fabricated ones publishes DR quality
+    # for a projection that does not exist.
     emb = node["embedding_original"]
-    if emb.shape[0] < MIN_PTS_FOR_EMBED or emb.shape[1] < MIN_PTS_FOR_EMBED:
+    if (
+        emb is None
+        or emb.shape[0] < MIN_PTS_FOR_EMBED
+        or emb.shape[1] < MIN_PTS_FOR_EMBED
+    ):
         emb = None
 
     if "is_leaf" in node:
@@ -61,7 +81,9 @@ def _attach_scores(node: AnalysisObject, df: pd.DataFrame, feature_cols: list[st
         _attach_scores(child, df, feature_cols, scaler)
 
 
-def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None) -> NodeScores:
+def _score_node(
+    X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
+) -> NodeScores:
     scores = NodeScores(
         n_points=X.shape[0],
         k=None,
@@ -76,28 +98,26 @@ def _score_node(X: np.ndarray, emb: np.ndarray | None, labels: np.ndarray | None
         return scores
 
     n = X.shape[0]
-
-    # stress + tnc + mrre come from `metrics`, not ZADU: ZADU holds three n x n
-    # arrays per space, which a full-size node cannot fit. Same values, computed
-    # in row blocks. CADI below stays on ZADU — it samples triplets, so it is O(n).
     k = None
     if n >= MIN_PTS_FOR_NEIGHBORS:
         k = min(EVAL_K, (n - 1) // 2)
-        if k >= 1:
-            scores["k"] = k
-        else:
+        if k < 1:
             k = None
 
     try:
-        results = metrics.node_scores(X, emb, k)
-        scores["stress"] = results["stress"]
-        if k is not None:
-            scores["trustworthiness"] = results["trustworthiness"]
-            scores["continuity"] = results["continuity"]
-            scores["mrre_false"] = results["mrre_false"]
-            scores["mrre_missing"] = results["mrre_missing"]
-    except Exception:
-        pass
+        # stress + tnc + mrre in one pass, sharing the distance and ranking work.
+        # `neighbor_metrics` reproduces ZADU's formulas without its N×N allocations,
+        # which a root node of tens of thousands of points cannot afford.
+        scores.update(neighbor_scores(X, emb, k))  # type: ignore[typeddict-item]
+    except Exception as exc:
+        # `k` stays None so the node reads as unscored rather than advertising a
+        # neighbourhood size for five missing numbers. MemoryError lands here too —
+        # the one failure the chunked rewrite exists to prevent — so say so.
+        clog.warn(
+            f"Scoring failed for a node of {n} points: {type(exc).__name__}: {exc}"
+        )
+    else:
+        scores["k"] = k
 
     if labels is not None:
         scores["cadi"] = _cadi(X, emb, labels)

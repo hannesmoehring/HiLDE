@@ -7,12 +7,11 @@ services:
       - "8000:8000"
     environment:
       - PORT=8000
-      # Persist scikit-learn downloads (MNIST/Fashion-MNIST/Olivetti) to the mounted cache
-      - SCIKIT_LEARN_DATA=/app/.cache/sklearn
+      # Persist scikit-learn downloads (MNIST/Fashion-MNIST/Olivetti) alongside the rest
+      - SCIKIT_LEARN_DATA=/app/datasets/sklearn
     volumes:
-      # Local datasets (wine CSVs, MNIST raw IDX) without baking them into the image
-      - ./datasets:/app/datasets:ro
-      # Persist downloaded datasets across container restarts
-      - ./.cache/sklearn:/app/.cache/sklearn
+      # Local datasets (wine CSVs, MNIST raw IDX) plus anything a loader downloads
+      # on first use (QM9, the sklearn cache) — writable so it can populate itself
+      - ./datasets:/app/datasets
       # Persist completed analysis runs (hosting-mode cache)
       - ./.cache/hilde_runs:/app/.cache/hilde_runs

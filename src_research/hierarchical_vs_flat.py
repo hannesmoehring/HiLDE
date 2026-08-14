@@ -30,10 +30,23 @@ Two robustness factors from the design are exposed in the CONFIG block:
       classes (independent of the hierarchy), answering the "self-selected regions" caveat.
     * Depth sweep (SS8.3): ``HIER_LAYERS`` is a list.
 
-Reproducibility caveat: ``reduce_dimensionality`` does not thread a seed into UMAP / t-SNE,
-so those embeddings are stochastic. The subsample is seeded (fixed across runs), so the
-``SEEDS`` loop functions as *replicates* that capture embedding variance - the unit of the
-paired H1a test is a (region x seed) pair. PCA replicates are ~identical (deterministic).
+Reproducibility: ``reduce_dimensionality`` threads ``config["*_random_state"]`` into UMAP /
+t-SNE / MDS, so ``run_cell`` writes the replicate id into those three keys - each replicate
+draws a *different but reproducible* embedding. The subsample is seeded (fixed across runs),
+so the ``SEEDS`` loop functions as *replicates* that capture embedding variance - the unit of
+the paired H1a test is a (region x seed) pair.
+
+Which methods actually vary across replicates (measured, ``review_repro/05``):
+    * UMAP, MDS - yes, the seed reaches the embedding.
+    * PCA - no. ``_pca`` takes no ``random_state`` and is deterministic on these shapes.
+    * t-SNE - **no**, even though the seed is threaded: ``_tsne`` passes no ``init`` and
+      sklearn's default is ``init="pca"``, under which the embedding never consults
+      ``random_state`` (verified on sklearn 1.9: two ``random_state`` values give
+      max|diff| = 0.0; with ``init="random"``, 18.2).
+So PCA and t-SNE rows carry no replicate variance, and their ``SEEDS`` levels are repeats
+rather than replicates. That is a property of ``src/analysis/dim_reducer`` (frozen), not of
+this harness; report those two arms as single-draw, or read only their UMAP/MDS siblings as
+replicated.
 
 Outputs (written to ``outputs/experiments/<timestamp>/``):
     * h1a_regions.csv   - one row per (dataset, method, seed, region, condition, region_def).
@@ -64,30 +77,45 @@ import pandas as pd
 import seaborn as sns
 from joblib import Parallel, delayed, parallel_config
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 from scipy.stats import wilcoxon
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
-from streamlit import logger as streamlit_logger
 
-from src.analysis.analysis_routine import AnalysisObject, ExplorationObject, _embed_original
+from src.analysis.analysis_routine import (
+    AnalysisObject,
+    ExplorationObject,
+    _embed_original,
+)
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import reduce_dimensionality
+from src.config_defaults import init_state
+from src.datasets import DATASETS
 from src.evaluation.evaluate import _score_node, start_evaluation
 from src.types import Config
-from src.datasets import DATASETS
-from src.config_defaults import init_state
 
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this block to change the experiment.                          #
 # --------------------------------------------------------------------------- #
 
 SEED = 42  # seeds the subsample (fixed across replicates)
-SUBSAMPLE_CAP = 1000  # cap rows per dataset (seeded) to keep t-SNE/UMAP + O(n^2) measures tractable
-SEEDS = list(range(5))  # replicate ids - capture stochastic-embedding variance (unit of the paired test)
+SUBSAMPLE_CAP = (
+    1000  # cap rows per dataset (seeded) to keep t-SNE/UMAP + O(n^2) measures tractable
+)
+SEEDS = list(
+    range(5)
+)  # replicate ids - capture stochastic-embedding variance (unit of the paired test)
 DR_METHODS = ["UMAP", "t-SNE", "PCA", "MDS"]  # DR method as a factor (SS8.2)
 HIER_LAYERS = [2]  # depth sweep (SS8.3); a single value = headline. Default tree depth.
-RUN_NEUTRAL_REGIONS = True  # SS8.1 method-neutral H1a variant (regions = ground-truth classes)
+RUN_NEUTRAL_REGIONS = (
+    True  # SS8.1 method-neutral H1a variant (regions = ground-truth classes)
+)
 
 DATASETS_TO_RUN = [
     "Concentric rings (Low)",  # non-convex nested density - the case the hierarchy should win (H1a + H1b)
@@ -101,9 +129,23 @@ PARALLEL_JOBS = -1  # grid cells run concurrently; 1 = serial, -1 = all cores
 OUTPUT_ROOT = Path("outputs/experiments")
 
 # Metrics scored per region (keys of NodeScores we carry into the CSVs).
-H1A_METRIC_KEYS = ["trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress"]
-# Higher-is-better metrics: T&C improve when up, MRRE/stress are errors (improve when down).
-HIGHER_IS_BETTER = {"trustworthiness": True, "continuity": True, "mrre_false": False, "mrre_missing": False, "stress": False}
+H1A_METRIC_KEYS = [
+    "trustworthiness",
+    "continuity",
+    "mrre_false",
+    "mrre_missing",
+    "stress",
+]
+# Higher-is-better metrics. Both MRRE terms arrive already inverted into a [0, 1] similarity
+# (`neighbor_metrics` computes 1 - mrre/norm, exactly as ZADU does), so they read like T&C, not
+# like an error. Only `stress` is a genuine error and improves when down.
+HIGHER_IS_BETTER = {
+    "trustworthiness": True,
+    "continuity": True,
+    "mrre_false": True,
+    "mrre_missing": True,
+    "stress": False,
+}
 PRIMARY_METRICS = ["trustworthiness", "continuity"]  # pre-registered primary (SS9)
 
 # --------------------------------------------------------------------------- #
@@ -113,11 +155,9 @@ PRIMARY_METRICS = ["trustworthiness", "continuity"]  # pre-registered primary (S
 
 def _silence_noise() -> None:
     """Mute third-party chatter. Re-asserted in each worker process, since loky children
-    re-import the module and Streamlit/Optuna reconfigure their loggers lazily on first use.
-    Identical to the tuning harness; see its docstring for the Streamlit-logger rationale.
+    re-import the module and Optuna reconfigures its logger lazily on first use.
     """
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    streamlit_logger.set_log_level("error")
     warnings.filterwarnings("ignore")
 
 
@@ -130,7 +170,9 @@ console = Console()
 # --------------------------------------------------------------------------- #
 
 
-def prepare_dataset(display_name: str) -> tuple[pd.DataFrame, list[str], np.ndarray | None]:
+def prepare_dataset(
+    display_name: str,
+) -> tuple[pd.DataFrame, list[str], np.ndarray | None]:
     """Load a registry dataset; return (df, feature_cols, y).
 
     Every label column in the registry is named ``target_*``, so features are always
@@ -143,11 +185,15 @@ def prepare_dataset(display_name: str) -> tuple[pd.DataFrame, list[str], np.ndar
     """
     df = DATASETS[display_name]()
     target_cols = [c for c in df.columns if c.startswith("target_")]
-    feature_cols = [c for c in df.columns if c != "row_id" and not c.startswith("target_")]
+    feature_cols = [
+        c for c in df.columns if c != "row_id" and not c.startswith("target_")
+    ]
 
     if "target_is_red" in df.columns:  # wine quality
         y = df["target_is_red"].to_numpy().astype(int)
-    elif "target_manifold_position" in df.columns:  # swiss roll - continuous, no classes
+    elif (
+        "target_manifold_position" in df.columns
+    ):  # swiss roll - continuous, no classes
         y = None
     elif target_cols:
         y = df[target_cols].to_numpy().argmax(axis=1)
@@ -169,7 +215,9 @@ def prepare_dataset(display_name: str) -> tuple[pd.DataFrame, list[str], np.ndar
 # --------------------------------------------------------------------------- #
 
 
-def standardised_X(df: pd.DataFrame, feature_cols: list[str], tree: AnalysisObject) -> np.ndarray:
+def standardised_X(
+    df: pd.DataFrame, feature_cols: list[str], tree: AnalysisObject
+) -> np.ndarray:
     """The exact feature space the tree's leaves and ``_score_node`` operate in: the root
     scaler applied to the raw features (raw features if ``normalize`` is off)."""
     X = df[feature_cols].to_numpy(dtype=np.float64)
@@ -195,7 +243,9 @@ def clustering_space(X_all: np.ndarray, config: Config) -> np.ndarray:
         n_comp = min(umap_n_comp, X_all.shape[1], len(X_all) - 1)
         config["hclust_umap_n_components"] = n_comp
         config["umap_n_neighbors"] = min(config["umap_n_neighbors"], len(X_all) - 1)
-        return reduce_dimensionality("UMAP", X=X_all, n_components=n_comp, config=config)
+        return reduce_dimensionality(
+            "UMAP", X=X_all, n_components=n_comp, config=config
+        )
     return X_all
 
 
@@ -239,15 +289,35 @@ def _score(X_r: np.ndarray, emb: np.ndarray) -> dict:
     return dict(_score_node(X_r, e, None))
 
 
-def _region_rows(cell: dict, region_id: str, region_def: str, n: int, X_r: np.ndarray, emb_h: np.ndarray, emb_f: np.ndarray) -> list[dict]:
+def _region_rows(
+    cell: dict,
+    region_id: str,
+    region_def: str,
+    n: int,
+    X_r: np.ndarray,
+    emb_h: np.ndarray,
+    emb_f: np.ndarray,
+) -> list[dict]:
     """Paired (hierarchical, flat) rows for one region. Asserts the neighbourhood k matches:
     equal n => equal k, the invariant that makes the comparison fair."""
     s_h = _score(X_r, emb_h)
     s_f = _score(X_r, emb_f)
-    assert s_h["k"] == s_f["k"], f"k mismatch ({region_id}): hier={s_h['k']} flat={s_f['k']}"
+    assert s_h["k"] == s_f["k"], (
+        f"k mismatch ({region_id}): hier={s_h['k']} flat={s_f['k']}"
+    )
     rows = []
     for cond, s in (("hier", s_h), ("flat", s_f)):
-        rows.append({**cell, "region": region_id, "region_def": region_def, "cond": cond, "n": n, "k": s["k"], **{m: s[m] for m in H1A_METRIC_KEYS}})
+        rows.append(
+            {
+                **cell,
+                "region": region_id,
+                "region_def": region_def,
+                "cond": cond,
+                "n": n,
+                "k": s["k"],
+                **{m: s[m] for m in H1A_METRIC_KEYS},
+            }
+        )
     return rows
 
 
@@ -262,16 +332,26 @@ def run_cell(
     dr_method: str,
     seed: int,
     layers: int,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Build the hierarchy + the flat global embedding once, then run H1a (paired regions)
-    and H1b (structure recovery). Returns (h1a_rows, h1b_rows).
+    and H1b (structure recovery). Returns (h1a_rows, h1b_rows, skip_rows).
+
+    ``_embed_original`` returns ``None`` for a region it could not project (it used to
+    fabricate an all-zeros embedding, which scored ~0.55 and was published as a real
+    result). An unprojectable region has no hierarchical arm, so it cannot enter a paired
+    test - it is dropped from H1a and recorded in ``skip_rows``, which the driver counts
+    and writes out. Never silently, and never by killing the whole grid.
 
     ``data`` is the preloaded ``(df, feature_cols, y)`` for this dataset (prepared once in
     the driver, not per cell) so workers neither reload nor re-subsample it."""
-    _silence_noise()  # re-assert before init_state touches streamlit in a worker process
+    _silence_noise()  # re-assert third-party logger muting in a worker process
     cfg: Config = init_state(init_streamlit=False)
     cfg["method"] = dr_method
     cfg["hierarchical_layers"] = layers
+    # The replicate id must reach the reducers themselves; `init_state` hardcodes 42 for all
+    # three, so without this every "replicate" of a cell is byte-identical and the paired
+    # Wilcoxon below sees R distinct deltas repeated len(SEEDS) times.
+    cfg["umap_random_state"] = cfg["tsne_random_state"] = cfg["mds_random_state"] = seed
 
     df, feature_cols, y = data
     cell = {"dataset": dataset, "method": dr_method, "seed": seed, "layers": layers}
@@ -285,24 +365,87 @@ def run_cell(
     E_global, _ = _embed_original(X_all, cfg)
 
     h1a: list[dict] = []
+    skips: list[dict] = []
 
-    # H1a primary: hierarchy-leaf regions (paired, same points, same k).
-    for i, leaf in enumerate(leaves):
-        idx = leaf["row_indices"]
-        h1a.extend(_region_rows(cell, f"leaf{i}", "hier_leaf", len(idx), X_all[idx], leaf["embedding_original"], E_global[idx]))
+    if E_global is None:
+        # No flat arm at all, so no region in this cell is pairable. H1b does not use the
+        # embedding, so it still runs.
+        skips.append(
+            {
+                **cell,
+                "region": "*",
+                "region_def": "*",
+                "n": len(X_all),
+                "reason": "flat_global_embedding_failed",
+            }
+        )
+    else:
+        # H1a primary: hierarchy-leaf regions (paired, same points, same k).
+        for i, leaf in enumerate(leaves):
+            idx = leaf["row_indices"]
+            emb_h = leaf["embedding_original"]
+            if emb_h is None:
+                skips.append(
+                    {
+                        **cell,
+                        "region": f"leaf{i}",
+                        "region_def": "hier_leaf",
+                        "n": len(idx),
+                        "reason": "leaf_not_projected",
+                    }
+                )
+                continue
+            h1a.extend(
+                _region_rows(
+                    cell,
+                    f"leaf{i}",
+                    "hier_leaf",
+                    len(idx),
+                    X_all[idx],
+                    emb_h,
+                    E_global[idx],
+                )
+            )
 
-    # H1a robustness: method-neutral regions = ground-truth classes (SS8.1).
-    if RUN_NEUTRAL_REGIONS and y is not None:
-        for cls in np.unique(y):
-            idx = np.where(y == cls)[0]
-            emb_h, _ = _embed_original(X_all[idx], cfg)  # local re-embed of the class
-            h1a.extend(_region_rows(cell, f"class{cls}", "gt_class", len(idx), X_all[idx], emb_h, E_global[idx]))
+        # H1a robustness: method-neutral regions = ground-truth classes (SS8.1).
+        if RUN_NEUTRAL_REGIONS and y is not None:
+            for cls in np.unique(y):
+                idx = np.where(y == cls)[0]
+                emb_h, _ = _embed_original(
+                    X_all[idx], cfg
+                )  # local re-embed of the class
+                if emb_h is None:
+                    skips.append(
+                        {
+                            **cell,
+                            "region": f"class{cls}",
+                            "region_def": "gt_class",
+                            "n": len(idx),
+                            "reason": "class_reembedding_failed",
+                        }
+                    )
+                    continue
+                h1a.extend(
+                    _region_rows(
+                        cell,
+                        f"class{cls}",
+                        "gt_class",
+                        len(idx),
+                        X_all[idx],
+                        emb_h,
+                        E_global[idx],
+                    )
+                )
 
     # ---- H1b: structure recovery (needs labels) ----
     h1b: list[dict] = []
     if y is not None:
         part_h = leaf_partition(leaves, len(df))
-        part_f = np.asarray(compute_clusters(clustering_space(X_all, cfg), method="HDBSCAN", config=cfg)[0])
+        part_f = np.asarray(
+            compute_clusters(
+                clustering_space(X_all, cfg), method="HDBSCAN", config=cfg
+            )[0]
+        )
         # Exclude noise consistently: score only rows non-noise in BOTH partitions.
         keep = (part_h != -1) & (part_f != -1)
         ari_h = nmi_h = ari_f = nmi_f = None
@@ -324,7 +467,7 @@ def run_cell(
             }
         )
 
-    return h1a, h1b
+    return h1a, h1b, skips
 
 
 # --------------------------------------------------------------------------- #
@@ -334,20 +477,27 @@ def run_cell(
 
 def build_cells() -> list[tuple[str, str, int, int]]:
     """Enumerate (dataset, dr_method, seed, layers) grid cells - all independent."""
-    return [(ds, dr, seed, layers) for ds in DATASETS_TO_RUN for dr in DR_METHODS for seed in SEEDS for layers in HIER_LAYERS]
+    return [
+        (ds, dr, seed, layers)
+        for ds in DATASETS_TO_RUN
+        for dr in DR_METHODS
+        for seed in SEEDS
+        for layers in HIER_LAYERS
+    ]
 
 
-def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Run the full grid, returning (h1a_df, h1b_df)."""
+def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Run the full grid, returning (h1a_df, h1b_df, skipped_df)."""
     cells = build_cells()
-    # Prepare each dataset once (load + seeded subsample), not per cell: avoids redundant
-    # reloads and concentrates the streamlit cache warnings in the driver process.
+    # Prepare each dataset once (load + seeded subsample), not per cell: avoids
+    # redundant reloads.
     datasets = {name: prepare_dataset(name) for name in DATASETS_TO_RUN}
     for name, (df, _, y) in datasets.items():
         note = "no ground truth" if y is None else f"{len(set(y.tolist()))} classes"
         console.print(f"  loaded [bold]{name}[/]: {len(df)} rows, {note}")
     h1a_rows: list[dict] = []
     h1b_rows: list[dict] = []
+    skip_rows: list[dict] = []
     progress = Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -356,25 +506,36 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
         console=console,
     )
     with progress:
-        task = progress.add_task(f"Running grid (jobs={PARALLEL_JOBS})", total=len(cells))
+        task = progress.add_task(
+            f"Running grid (jobs={PARALLEL_JOBS})", total=len(cells)
+        )
         if PARALLEL_JOBS == 1:
             for ds, dr, seed, layers in cells:
-                progress.update(task, description=f"{ds} / {dr} / s{seed} / L{layers}"[:48])
-                a, b = run_cell(ds, datasets[ds], dr, seed, layers)
+                progress.update(
+                    task, description=f"{ds} / {dr} / s{seed} / L{layers}"[:48]
+                )
+                a, b, s = run_cell(ds, datasets[ds], dr, seed, layers)
                 h1a_rows.extend(a)
                 h1b_rows.extend(b)
+                skip_rows.extend(s)
                 progress.advance(task)
         else:
             # Cells are independent -> worker processes. inner_max_num_threads=1 stops each
             # worker's UMAP/BLAS pools oversubscribing the cores. Generator keeps the bar live.
-            jobs = (delayed(run_cell)(ds, datasets[ds], dr, seed, layers) for ds, dr, seed, layers in cells)
+            jobs = (
+                delayed(run_cell)(ds, datasets[ds], dr, seed, layers)
+                for ds, dr, seed, layers in cells
+            )
             with parallel_config(backend="loky", inner_max_num_threads=1):
-                for a, b in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(jobs):
+                for a, b, s in Parallel(n_jobs=PARALLEL_JOBS, return_as="generator")(
+                    jobs
+                ):
                     h1a_rows.extend(a)
                     h1b_rows.extend(b)
+                    skip_rows.extend(s)
                     progress.advance(task)
 
-    return pd.DataFrame(h1a_rows), pd.DataFrame(h1b_rows)
+    return pd.DataFrame(h1a_rows), pd.DataFrame(h1b_rows), pd.DataFrame(skip_rows)
 
 
 # --------------------------------------------------------------------------- #
@@ -382,9 +543,15 @@ def run_experiment() -> tuple[pd.DataFrame, pd.DataFrame]:
 # --------------------------------------------------------------------------- #
 
 
-def _paired_deltas(h1a: pd.DataFrame, dataset: str, method: str, region_def: str, metric: str) -> np.ndarray:
+def _paired_deltas(
+    h1a: pd.DataFrame, dataset: str, method: str, region_def: str, metric: str
+) -> np.ndarray:
     """Per-(region x seed) delta = hier - flat for one metric, dropping pairs with any NaN."""
-    sub = h1a[(h1a["dataset"] == dataset) & (h1a["method"] == method) & (h1a["region_def"] == region_def)]
+    sub = h1a[
+        (h1a["dataset"] == dataset)
+        & (h1a["method"] == method)
+        & (h1a["region_def"] == region_def)
+    ]
     wide = sub.pivot_table(index=["seed", "region"], columns="cond", values=metric)
     if "hier" not in wide or "flat" not in wide:
         return np.array([])
@@ -397,7 +564,9 @@ def h1a_summary(h1a: pd.DataFrame) -> pd.DataFrame:
     rank-biserial effect size. 'Win' is direction-aware (lower-is-better for MRRE/stress).
     Regions are NOT pooled across datasets (scales differ)."""
     rows: list[dict] = []
-    for (dataset, method, region_def), _ in h1a.groupby(["dataset", "method", "region_def"]):
+    for (dataset, method, region_def), _ in h1a.groupby(
+        ["dataset", "method", "region_def"]
+    ):
         for metric in H1A_METRIC_KEYS:
             d = _paired_deltas(h1a, dataset, method, region_def, metric)
             if d.size == 0:
@@ -406,9 +575,17 @@ def h1a_summary(h1a: pd.DataFrame) -> pd.DataFrame:
             wins = d > 0 if higher else d < 0  # "hierarchical better than flat"
             # Wilcoxon needs at least one non-zero delta and n>=1; guard degenerate cases.
             nz = d[d != 0]
-            p = float(wilcoxon(nz).pvalue) if nz.size >= 1 and not np.allclose(d, 0) else float("nan")
+            p = (
+                float(wilcoxon(nz).pvalue)
+                if nz.size >= 1 and not np.allclose(d, 0)
+                else float("nan")
+            )
             # matched-pairs rank-biserial = (#favourable - #unfavourable) / #non-zero pairs
-            rbc = float((np.sum(wins) - np.sum(~wins & (d != 0))) / nz.size) if nz.size else float("nan")
+            rbc = (
+                float((np.sum(wins) - np.sum(~wins & (d != 0))) / nz.size)
+                if nz.size
+                else float("nan")
+            )
             rows.append(
                 {
                     "dataset": dataset,
@@ -431,11 +608,19 @@ def h1a_summary(h1a: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 
 
-def save_outputs(h1a: pd.DataFrame, h1b: pd.DataFrame, summary: pd.DataFrame, out_dir: Path) -> None:
+def save_outputs(
+    h1a: pd.DataFrame,
+    h1b: pd.DataFrame,
+    summary: pd.DataFrame,
+    skipped: pd.DataFrame,
+    out_dir: Path,
+) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     h1a.to_csv(out_dir / "h1a_regions.csv", index=False)
     summary.to_csv(out_dir / "h1a_summary.csv", index=False)
     h1b.to_csv(out_dir / "h1b_recovery.csv", index=False)
+    # Always written, even empty: "no file" and "no skips" must not look the same.
+    skipped.to_csv(out_dir / "h1a_skipped_regions.csv", index=False)
 
 
 def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
@@ -451,51 +636,150 @@ def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
     for (dataset, method), _ in leaf.groupby(["dataset", "method"]):
         for metric in PRIMARY_METRICS:
             for d in _paired_deltas(leaf, dataset, method, "hier_leaf", metric):
-                delta_rows.append({"dataset": dataset, "method": method, "metric": metric, "delta": d})
+                delta_rows.append(
+                    {"dataset": dataset, "method": method, "metric": metric, "delta": d}
+                )
     dd = pd.DataFrame(delta_rows)
     if not dd.empty:
-        g = sns.catplot(data=dd, x="method", y="delta", col="dataset", row="metric", kind="box", height=3, aspect=1.1, sharey=False)
+        g = sns.catplot(
+            data=dd,
+            x="method",
+            y="delta",
+            col="dataset",
+            row="metric",
+            kind="box",
+            height=3,
+            aspect=1.1,
+            sharey=False,
+        )
         for ax in g.axes.flat:
             ax.axhline(0, color="grey", lw=0.8, ls="--")
-        g.figure.suptitle("H1a: paired delta (hierarchical local - flat global), leaf regions", y=1.02)
+        g.figure.suptitle(
+            "H1a: paired delta (hierarchical local - flat global), leaf regions", y=1.02
+        )
         g.savefig(plots / "h1a_paired_deltas.png", dpi=150, bbox_inches="tight")
         plt.close(g.figure)
 
     # fig:rq1-h1b - mean ARI hierarchical vs flat per dataset (averaged over seeds), per method.
     if not h1b.empty and {"ari_h", "ari_f"} <= set(h1b.columns):
-        long = h1b.melt(id_vars=["dataset", "method"], value_vars=["ari_h", "ari_f"], var_name="condition", value_name="ari")
-        long["condition"] = long["condition"].map({"ari_h": "hierarchical", "ari_f": "flat"})
-        g = sns.catplot(data=long, x="dataset", y="ari", hue="condition", col="method", kind="bar", height=4, aspect=1.0, errorbar="sd")
+        long = h1b.melt(
+            id_vars=["dataset", "method"],
+            value_vars=["ari_h", "ari_f"],
+            var_name="condition",
+            value_name="ari",
+        )
+        long["condition"] = long["condition"].map(
+            {"ari_h": "hierarchical", "ari_f": "flat"}
+        )
+        g = sns.catplot(
+            data=long,
+            x="dataset",
+            y="ari",
+            hue="condition",
+            col="method",
+            kind="bar",
+            height=4,
+            aspect=1.0,
+            errorbar="sd",
+        )
         for ax in g.axes.flat:
             ax.tick_params(axis="x", rotation=30)
-        g.figure.suptitle("H1b: ground-truth recovery (ARI), hierarchical vs flat", y=1.02)
+        g.figure.suptitle(
+            "H1b: ground-truth recovery (ARI), hierarchical vs flat", y=1.02
+        )
         g.savefig(plots / "h1b_ari.png", dpi=150, bbox_inches="tight")
         plt.close(g.figure)
+
+
+def print_skips(skipped: pd.DataFrame) -> None:
+    """Regions dropped from H1a because a projection failed. Loud by design: a shrinking
+    denominator is not a neutral event, and the old all-zeros fallback used to hide it."""
+    if skipped.empty:
+        console.print("[dim]Skipped regions: 0 (every region was projectable).[/]")
+        return
+    console.print(
+        f"[bold yellow]Skipped regions: {len(skipped)}[/] — dropped from H1a, see h1a_skipped_regions.csv"
+    )
+    table = Table(title="Unprojectable regions (excluded from every paired test)")
+    for col in ["dataset", "method", "seed", "region_def", "reason", "count"]:
+        table.add_column(col, justify="right" if col == "count" else "left")
+    grouped = (
+        skipped.groupby(["dataset", "method", "seed", "region_def", "reason"])
+        .size()
+        .reset_index(name="count")
+    )
+    for _, r in grouped.iterrows():
+        table.add_row(
+            str(r["dataset"]),
+            str(r["method"]),
+            str(r["seed"]),
+            str(r["region_def"]),
+            str(r["reason"]),
+            str(r["count"]),
+        )
+    console.print(table)
 
 
 def print_summary(summary: pd.DataFrame, h1b: pd.DataFrame) -> None:
     """Render the primary H1a summary (T&C) and the H1b recovery means."""
     prim = summary[summary["primary"]] if not summary.empty else summary
     if not prim.empty:
-        table = Table(title="H1a (primary: trustworthiness & continuity) - delta = hierarchical - flat")
-        for col in ["dataset", "method", "region_def", "metric", "median_delta", "win_rate", "wilcoxon_p"]:
-            table.add_column(col, justify="right" if col in {"median_delta", "win_rate", "wilcoxon_p"} else "left")
-        for _, r in prim.sort_values(["dataset", "method", "region_def", "metric"]).iterrows():
+        table = Table(
+            title="H1a (primary: trustworthiness & continuity) - delta = hierarchical - flat"
+        )
+        for col in [
+            "dataset",
+            "method",
+            "region_def",
+            "metric",
+            "median_delta",
+            "win_rate",
+            "wilcoxon_p",
+        ]:
+            table.add_column(
+                col,
+                justify="right"
+                if col in {"median_delta", "win_rate", "wilcoxon_p"}
+                else "left",
+            )
+        for _, r in prim.sort_values(
+            ["dataset", "method", "region_def", "metric"]
+        ).iterrows():
             md = r["median_delta"]
-            md_str = f"[green]{md:+.3f}[/]" if md > 0 else (f"[red]{md:+.3f}[/]" if md < 0 else f"{md:+.3f}")
+            md_str = (
+                f"[green]{md:+.3f}[/]"
+                if md > 0
+                else (f"[red]{md:+.3f}[/]" if md < 0 else f"{md:+.3f}")
+            )
             p = r["wilcoxon_p"]
-            table.add_row(r["dataset"], r["method"], r["region_def"], r["metric"], md_str, f"{r['win_rate']:.2f}", "-" if pd.isna(p) else f"{p:.3g}")
+            table.add_row(
+                r["dataset"],
+                r["method"],
+                r["region_def"],
+                r["metric"],
+                md_str,
+                f"{r['win_rate']:.2f}",
+                "-" if pd.isna(p) else f"{p:.3g}",
+            )
         console.print(table)
 
     if not h1b.empty:
-        agg = h1b.groupby(["dataset", "method"])[["ari_h", "ari_f"]].mean().reset_index()
+        agg = (
+            h1b.groupby(["dataset", "method"])[["ari_h", "ari_f"]].mean().reset_index()
+        )
         table = Table(title="H1b - mean ARI vs ground truth (hierarchical vs flat)")
         for col in ["dataset", "method", "ari_h", "ari_f"]:
             table.add_column(col, justify="right" if col.startswith("ari") else "left")
         for _, r in agg.iterrows():
             ah, af = r["ari_h"], r["ari_f"]
-            ah_str = f"[green]{ah:.3f}[/]" if pd.notna(ah) and pd.notna(af) and ah > af else (f"{ah:.3f}" if pd.notna(ah) else "-")
-            table.add_row(r["dataset"], r["method"], ah_str, "-" if pd.isna(af) else f"{af:.3f}")
+            ah_str = (
+                f"[green]{ah:.3f}[/]"
+                if pd.notna(ah) and pd.notna(af) and ah > af
+                else (f"{ah:.3f}" if pd.notna(ah) else "-")
+            )
+            table.add_row(
+                r["dataset"], r["method"], ah_str, "-" if pd.isna(af) else f"{af:.3f}"
+            )
         console.print(table)
 
 
@@ -506,15 +790,16 @@ def main() -> None:
         f"datasets={len(DATASETS_TO_RUN)}  DR={DR_METHODS}  seeds={len(SEEDS)}  layers={HIER_LAYERS}  neutral_regions={RUN_NEUTRAL_REGIONS}\n"
     )
 
-    h1a, h1b = run_experiment()
+    h1a, h1b, skipped = run_experiment()
     summary = h1a_summary(h1a)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     out_dir = OUTPUT_ROOT / timestamp
-    save_outputs(h1a, h1b, summary, out_dir)
+    save_outputs(h1a, h1b, summary, skipped, out_dir)
     make_plots(h1a, h1b, out_dir)
 
     console.print()
+    print_skips(skipped)
     print_summary(summary, h1b)
     console.print(f"\n[bold green]Done.[/] Results + plots in [underline]{out_dir}[/]")
 

@@ -1,53 +1,91 @@
 // Leaf exploration: scatter + selection -> predicate bands + selected-points table,
-// plus an interactive feature-range filter mode.
+// plus an interactive column-range filter (the "Ranges" tab).
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
-import { useEffect, useMemo, useState } from "react";
-import { fetchRows, runPredicate } from "../api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchRows, fetchSelectionCharacteristics, fetchTargets, runPredicate } from "../api";
 import { CharacteristicsBar } from "../charts/CharacteristicsBar";
 import { PcaVarianceBar } from "../charts/PcaVarianceBar";
 import { PredicateBands } from "../charts/PredicateBands";
 import { ProjectionScatter } from "../charts/ProjectionScatter";
 import { ScoreTiles } from "../charts/ScoreTiles";
+import { TargetBands } from "../charts/TargetBands";
+import { useDebounced } from "../hooks/useDebounced";
 import type {
   AnalysisConfig,
+  Characteristic,
+  ImageSpec,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
+  TargetsResponse,
   TreeNode,
 } from "../types";
+import { PointImage } from "./PointImage";
+import { collectRangeData, RangeFilters } from "./RangeFilters";
+import type { RangeData } from "./RangeFilters";
 
 interface Props {
   dataset: string;
   featureCols: string[];
+  targetCols: string[]; // `target_*` label columns — reported, never predicated on
   config: AnalysisConfig;
+  // The DR method the shown embedding was actually computed with, off the run's own
+  // meta — NOT the live rail knob, which the user can flip without rebuilding.
+  builtMethod: string;
   node: TreeNode;
   pathLabel: string;
-  nonFeatureOnly: boolean;
+  imageSpec: ImageSpec | null; // non-null = table rows can be opened as images
+  // The layer above already reports this node's scores in its side column, so they
+  // are shown here only when there is no layer above — i.e. the root is a leaf.
+  showScores: boolean;
+  charNonFeatureOnly: boolean;
 }
 
-// Per-feature standardized (z-score) matrix for the node's rows, computed in the
-// browser — mirrors the fresh StandardScaler in Streamlit's compute_data_layer.
-interface ZData {
-  cols: string[];
-  Z: number[][];
-  bounds: [number, number][]; // [min,max] of each standardized column
+// The predicate describes the current selection; the characteristics describe the
+// whole node; the ranges *make* a selection rather than explain one. Three questions
+// about three point sets, so they take turns in one viewport rather than stacking.
+type View = "predicate" | "characteristics" | "ranges";
+
+// How long a slider drag settles before the node is re-scanned and the selected rows
+// refetched. Long enough to swallow a drag, short enough to feel like a live filter.
+const RANGE_SETTLE_MS = 120;
+
+// Shown instead of a predicate or a characteristics chart when the selection covers
+// every row of the explored node. Both endpoints compare the selection against that
+// node, so the answer would be a comparison of the node with itself: an F1 of 1.00
+// over 0 clauses, and z-scores that are exactly 0 with a standard deviation of exactly
+// 1. Saying so is more use than drawing it.
+// The ranges tab fetches every row x every offered column of the node to compute
+// bounds and 28-bin histograms. `/api/rows` answers in `records` orient, which repeats
+// every column name in every row: the MNIST root at 70000 x 794 is an 807 MB body,
+// past V8's ~537 MB string cap, produced in 10.5 s and 5.3 GB of server RSS and then
+// discarded. Refuse to ask for more cells than a browser can hold rather than hang the
+// tab on a response it cannot decode. A cluster-sized node (3000 x 794 = 2.4 M) is well
+// inside this; only whole layers of a wide dataset are not.
+const RANGE_CELL_BUDGET = 5_000_000;
+
+const WHOLE_NODE_HINT =
+  "The selection is the entire node, so the comparison would be self-referential — " +
+  "every bar would read 0 by construction. Narrow it with a range or a lasso.";
+
+// Target columns sit at the right of the selected-points table, fenced off from
+// the feature columns so nobody reads a label as something the predicate used.
+function cellClass(col: string, targets: Set<string>, first: string | undefined): string | undefined {
+  if (!targets.has(col)) return undefined;
+  return col === first ? "is-target is-target-first" : "is-target";
 }
 
-function standardize(cols: string[], rows: Record<string, unknown>[]): ZData {
-  const n = rows.length || 1;
-  const raw = rows.map((r) => cols.map((c) => Number(r[c]) || 0));
-  const mean = cols.map((_, j) => raw.reduce((s, row) => s + row[j], 0) / n);
-  const std = cols.map((_, j) => {
-    const m = mean[j];
-    const v = raw.reduce((s, row) => s + (row[j] - m) ** 2, 0) / n;
-    return Math.sqrt(v) || 1;
-  });
-  const Z = raw.map((row) => row.map((v, j) => (v - mean[j]) / std[j]));
-  const bounds = cols.map((_, j) => {
-    const col = Z.map((r) => r[j]);
-    return [Math.min(...col), Math.max(...col)] as [number, number];
-  });
-  return { cols, Z, bounds };
+/** `ranges` minus every column not in `keep`. Returns the same object when nothing is
+ *  dropped, so the state update bails out instead of re-rendering. */
+function dropRanges(
+  prev: Record<string, [number, number]>,
+  keep: Set<string>,
+): Record<string, [number, number]> {
+  const gone = Object.keys(prev).filter((c) => !keep.has(c));
+  if (gone.length === 0) return prev;
+  const next = { ...prev };
+  for (const c of gone) delete next[c];
+  return next;
 }
 
 function toCsv(rows: RowsResponse): string {
@@ -61,77 +99,218 @@ function toCsv(rows: RowsResponse): string {
 export function ExplorationPanel({
   dataset,
   featureCols,
+  targetCols,
   config,
+  builtMethod,
   node,
   pathLabel,
-  nonFeatureOnly,
+  imageSpec,
+  showScores,
+  charNonFeatureOnly,
 }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
+  // Which node's positions `selected` holds. Only that node can resolve them, and
+  // "Explore entire layer" swaps in an *ancestor* — whose row_indices is a strict
+  // superset, so every stale index is in range and a length test never fires. The panel
+  // has no key and does not remount, so identity is what has to be compared.
+  const [selectedNode, setSelectedNode] = useState(node.id);
+  const [view, setView] = useState<View>("predicate");
   const [scope, setScope] = useState<PredicateScope>("global");
   const [predicate, setPredicate] = useState<PredicateResponse | null>(null);
+  const [charSel, setCharSel] = useState<Characteristic[] | null>(null);
+  const [charFailed, setCharFailed] = useState(false);
+  const [targets, setTargets] = useState<TargetsResponse | null>(null);
   const [rows, setRows] = useState<RowsResponse | null>(null);
+  const [imageRow, setImageRow] = useState<number | null>(null); // dataframe row id, not a table position
 
-  // Interactive feature-range filter mode.
-  const [interactive, setInteractive] = useState(false);
-  const [zData, setZData] = useState<ZData | null>(null);
-  const [filterFeatures, setFilterFeatures] = useState<string[]>([]);
+  // Column-range filter state. The tab *is* the mode — there is no separate flag that
+  // could drift out of step with which panel is on screen.
+  // Tagged with the node it was fetched for: the tag is what keeps the previous node's
+  // values from being read positionally against the new node's points.
+  const [rangeData, setRangeData] = useState<{ nodeId: string; data: RangeData } | null>(null);
+  const [rangeNote, setRangeNote] = useState<string | null>(null); // why there is no data
+  const [filterCols, setFilterCols] = useState<string[]>([]);
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
+  const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
+  const interactive = view === "ranges";
+
+  /** Every selection records the node it was made in. A move that changes no point's
+   *  membership keeps the previous array, so React bails out instead of re-rendering:
+   *  `interactiveGroup` is a fresh array on every settle and `Object.is` fails on it
+   *  even when the contents are identical, which otherwise refetched the whole table
+   *  and closed the open point image on a nudge that changed nothing. Widening a slider
+   *  through a gap in the histogram is the everyday case. */
+  const selectPoints = useCallback(
+    (idx: number[]) => {
+      setSelected((prev) =>
+        prev.length === idx.length && prev.every((v, i) => v === idx[i]) ? prev : idx,
+      );
+      setSelectedNode(node.id);
+    },
+    [node.id],
+  );
 
   // Reset everything when the explored node changes.
   useEffect(() => {
     setSelected([]);
+    setSelectedNode(node.id);
     setPredicate(null);
+    setCharSel(null);
+    setTargets(null);
     setRows(null);
-    setZData(null);
-    setFilterFeatures([]);
+    setRangeData(null);
+    setFilterCols([]);
     setRanges({});
   }, [node.id]);
 
-  // Fetch + standardize the node's feature values when interactive mode is on.
+  // A new selection rebuilds the table, so the row the image was opened from is gone.
+  useEffect(() => {
+    setImageRow(null);
+  }, [selected]);
+
+  // The table shows the features the predicate speaks about, then the labels it
+  // deliberately ignores — same order the header/CSV are marked up in. The ranges tab
+  // offers exactly this set too: it filters, so a label is a fair thing to slice on.
+  const tableCols = useMemo(() => [...featureCols, ...targetCols], [featureCols, targetCols]);
+  const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
+  const firstTarget = targetCols[0];
+
+  // A filtered column can leave the table — unticked in the feature picker, or all of
+  // them at once via "None". Drop the pick and its window with it, so the tab badge and
+  // the range rows keep describing the same set of columns.
+  useEffect(() => {
+    const keep = new Set(tableCols);
+    setFilterCols((prev) =>
+      prev.every((c) => keep.has(c)) ? prev : prev.filter((c) => keep.has(c)),
+    );
+    setRanges((prev) => dropRanges(prev, keep));
+  }, [tableCols]);
+
+  // Fetch the node's raw feature + target values while the ranges tab is open.
   useEffect(() => {
     if (!interactive) {
-      setZData(null);
+      setRangeData(null);
+      setRangeNote(null);
+      return;
+    }
+    const cells = node.row_indices.length * tableCols.length;
+    if (cells > RANGE_CELL_BUDGET) {
+      setRangeData(null);
+      setRangeNote(
+        `This node is too large for client-side ranges — ${node.row_indices.length.toLocaleString()} rows ` +
+          `× ${tableCols.length} columns is ${(cells / 1e6).toFixed(1)} M values, over the ` +
+          `${RANGE_CELL_BUDGET / 1e6} M a browser can hold. Drill deeper into a cluster, or filter ` +
+          `on fewer columns, and the ranges will load.`,
+      );
       return;
     }
     let cancelled = false;
-    fetchRows(dataset, node.row_indices, featureCols)
-      .then((r) => !cancelled && setZData(standardize(featureCols, r.rows)))
-      .catch(() => !cancelled && setZData(null));
+    setRangeNote(null);
+    fetchRows(dataset, node.row_indices, tableCols)
+      .then(
+        (r) =>
+          !cancelled &&
+          setRangeData({ nodeId: node.id, data: collectRangeData(tableCols, targetCols, r.rows) }),
+      )
+      .catch((e) => {
+        if (cancelled) return;
+        setRangeData(null);
+        // Never leave the spinner up on a failure: it is indistinguishable from a
+        // fetch still in flight, and this one can fail on size alone.
+        setRangeNote(`Could not load this node's column values: ${e}`);
+      });
     return () => {
       cancelled = true;
     };
-  }, [interactive, node.id, dataset, featureCols]);
+  }, [interactive, node.id, dataset, tableCols, targetCols]);
 
-  // "Matches filters" / "Other" per point (interactive mode only).
-  const interactiveGroup = useMemo(() => {
-    if (!interactive || !zData) return null;
-    return zData.Z.map((row) =>
-      filterFeatures.every((f) => {
-        const j = zData.cols.indexOf(f);
-        if (j < 0) return true;
-        const [lo, hi] = ranges[f] ?? zData.bounds[j];
-        return row[j] >= lo && row[j] <= hi;
+  // The clauses the conjunction actually runs over: a picked column that is present in
+  // the fetched values with a finite window. `filtering` is derived from *these* rather
+  // than from the picked columns, because the two can disagree — unticking a column in
+  // the feature picker (or the one-click "None") takes it out of `tableCols`, refetches
+  // `rangeData` without it and drops its clause. A `filtering` flag read off
+  // `filterCols` would then let an empty conjunction — `[].every(...)` is true for every
+  // row — hand the whole node back as if it were a filter result.
+  // …and only when they were fetched for the node on screen. React 18 runs passive
+  // effects after paint, so on the render that swaps the node `setRangeData(null)` has
+  // not landed and the memo's other deps are unchanged: without this the cached array
+  // from node A is handed to node B's scatter and applied positionally for one frame.
+  const nodeRange = rangeData && rangeData.nodeId === node.id ? rangeData.data : null;
+
+  const clauses = useMemo(() => {
+    if (!interactive || !nodeRange) return [];
+    return filterCols
+      .map((c) => {
+        const j = nodeRange.cols.indexOf(c);
+        const bounds = nodeRange.bounds[j] ?? ([NaN, NaN] as [number, number]);
+        const [lo, hi] = settledRanges[c] ?? bounds;
+        return { j, lo, hi, bounds };
       })
+      .filter(
+        (c) =>
+          c.j >= 0 &&
+          Number.isFinite(c.lo) &&
+          Number.isFinite(c.hi) &&
+          // A window still at the column's own [min, max] admits every row that has a
+          // value there, so ticking a column is not by itself a filter: it would select
+          // the whole node and refetch it in full to say "N of N points match 1 range".
+          !(c.lo <= c.bounds[0] && c.hi >= c.bounds[1]),
+      );
+  }, [interactive, nodeRange, node.id, filterCols, settledRanges]);
+  const filtering = clauses.length > 0;
+
+  // "Matches filters" / "Other" per point (ranges tab only). The column positions are
+  // resolved once rather than per point: on a wide dataset this runs over cols x rows.
+  const interactiveGroup = useMemo(() => {
+    if (!filtering || !nodeRange) return null;
+    return nodeRange.values.map((row) =>
+      clauses.every(({ j, lo, hi }) => row[j] >= lo && row[j] <= hi)
         ? "Matches filters"
         : "Other",
     );
-  }, [interactive, zData, filterFeatures, ranges]);
+  }, [filtering, nodeRange, node.id, clauses]);
 
-  // In interactive mode the filter *is* the selection (drives the table).
+  // While the ranges tab is filtering, the filter *is* the selection (drives the
+  // table, the target bands, and — once you switch tabs — the predicate).
   useEffect(() => {
-    if (interactive && interactiveGroup) {
-      setSelected(
+    if (interactiveGroup) {
+      selectPoints(
         interactiveGroup.flatMap((g, i) =>
           g === "Matches filters" ? [i] : [],
         ),
       );
     }
-  }, [interactive, interactiveGroup]);
+  }, [interactiveGroup, selectPoints]);
 
-  // Selection -> predicate (skipped in interactive mode) + selected-rows table.
+  // A selection indexes into the node it was made in. On the render that swaps the
+  // node, the reset effect above has not been applied yet, so `selected` still holds
+  // the previous node's positions — mapping those through the new node's row_indices
+  // yields rows nobody asked for. Sit the round out; the reset lands next render.
+  const staleSelection =
+    selectedNode !== node.id || selected.some((i) => i >= node.row_indices.length);
+
+  // A selection that *is* the node answers nothing: the predicate separates it from
+  // itself, and the characteristics endpoint z-scores it against itself, which is where
+  // the exactly-zero bars under "Selection characteristics — vs. {node}" came from. A
+  // strict subset is the intended workflow (narrow in Ranges, inspect in Characteristics)
+  // and is carried across tabs untouched; only the whole node is refused.
+  const wholeNodeSelection = selected.length > 0 && selected.length === node.row_indices.length;
+
+  // …and refusing it would strand the user on the Ranges tab with a selection they
+  // cannot use, so leaving that tab drops it. A whole-node lasso made on another tab is
+  // the user's own doing and stays put, hint and all.
   useEffect(() => {
-    if (selected.length === 0) {
+    if (interactive) return;
+    setSelected((prev) =>
+      prev.length > 0 && prev.length === node.row_indices.length ? [] : prev,
+    );
+  }, [interactive, node.row_indices.length]);
+
+  // Selection -> predicate (skipped in interactive mode) + target values + rows table.
+  useEffect(() => {
+    if (selected.length === 0 || staleSelection || wholeNodeSelection) {
       setPredicate(null);
+      setTargets(null);
       setRows(null);
       return;
     }
@@ -150,21 +329,74 @@ export function ExplorationPanel({
     } else {
       setPredicate(null);
     }
+    // Clear first, as LayerSide and PointImage already do: a slider drag emits a new
+    // selection every 120 ms, and the table renders generation-A *values* under
+    // `node.row_indices[selected[i]]` from generation B — so a row click opens the image
+    // of a point whose values are not the ones on screen. On MNIST the refetch (167 ms)
+    // outruns the debounce, which makes that the steady state rather than a flash.
+    setTargets(null);
+    setRows(null);
+    if (targetCols.length > 0) {
+      fetchTargets({
+        dataset,
+        target_cols: targetCols,
+        row_indices: node.row_indices,
+        selected_local_indices: selected,
+      })
+        .then((t) => !cancelled && setTargets(t))
+        .catch(() => !cancelled && setTargets(null));
+    }
     fetchRows(
       dataset,
       selected.map((i) => node.row_indices[i]),
-      featureCols,
+      tableCols,
     )
       .then((r) => !cancelled && setRows(r))
       .catch(() => !cancelled && setRows(null));
     return () => {
       cancelled = true;
     };
-  }, [selected, scope, interactive, node.id, dataset, featureCols, config]);
+    // `config.normalize` rather than `config`: it is the only field /api/predicate
+    // reads (app.py:244), the other two endpoints read none of it, and the whole object
+    // is minted fresh on every config keystroke — which re-ran this, at whole-node
+    // scale, for knobs that cannot change the answer.
+  }, [selected, staleSelection, wholeNodeSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config.normalize]);
+
+  // Selection -> characteristics, on its own so the cost is only paid while the tab
+  // is open. Unlike the predicate this holds in interactive mode too: the filtered
+  // points are a selection like any other. Clearing first matters even when the tab
+  // is hidden, or reopening it flashes the previous selection's numbers.
+  useEffect(() => {
+    setCharSel(null);
+    setCharFailed(false);
+    if (view !== "characteristics" || selected.length === 0 || staleSelection || wholeNodeSelection)
+      return;
+    let cancelled = false;
+    fetchSelectionCharacteristics({
+      dataset,
+      feature_cols: featureCols,
+      config,
+      row_indices: node.row_indices,
+      selected_local_indices: selected,
+    })
+      .then((c) => !cancelled && setCharSel(c.characteristics))
+      .catch(() => !cancelled && setCharFailed(true));
+    return () => {
+      cancelled = true;
+    };
+    // `config.normalize` rather than `config`: it is the only field the endpoint
+    // reads, and the whole object is minted fresh on every config keystroke.
+  }, [view, selected, staleSelection, wholeNodeSelection, node.id, dataset, featureCols, config.normalize]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
   );
+  // Both the axis labels and the variance strip describe *these* coordinates, so they
+  // follow the run that produced them. Off the live knob, flipping Method UMAP -> PCA
+  // relabelled UMAP coordinates "PC1/PC2" with nothing on screen to tell — the variance
+  // strip, which used to be the tell, is absent under the UMAP default because the
+  // backend only ever emits explained_variance_ratio for PCA.
+  const showVariance = builtMethod === "PCA" && variance.length > 0;
 
   function exportCsv() {
     if (!rows) return;
@@ -183,195 +415,232 @@ export function ExplorationPanel({
         <span className="kicker">Exploration</span>
         <span className="panel__title">{pathLabel}</span>
       </h2>
-      <div className="exploration__summary">
-        <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
-        {config.method === "PCA" && variance.length > 0 && (
-          <PcaVarianceBar explainedVariance={variance} />
-        )}
-      </div>
+      {showScores && (
+        <div className="exploration__summary">
+          <ScoreTiles scores={node.scores} title="DR quality — this cluster" />
+        </div>
+      )}
 
       <div className="exploration__cols">
         <div className="exploration__analysis">
-          <label className="field--check" style={{ marginBottom: "0.75rem" }}>
-            <input
-              type="checkbox"
-              checked={interactive}
-              onChange={(e) => setInteractive(e.target.checked)}
-            />
-            <span>Interactive feature ranges</span>
-          </label>
+          <div className="tabs" role="tablist" aria-label="Selection view">
+            <button
+              role="tab"
+              aria-selected={view === "predicate"}
+              className={view === "predicate" ? "is-active" : undefined}
+              onClick={() => setView("predicate")}
+            >
+              Predicate
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === "characteristics"}
+              className={view === "characteristics" ? "is-active" : undefined}
+              onClick={() => setView("characteristics")}
+            >
+              Characteristics
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === "ranges"}
+              className={view === "ranges" ? "is-active" : undefined}
+              onClick={() => setView("ranges")}
+            >
+              Ranges
+              {filterCols.length > 0 && (
+                <span className="tabs__badge">{filterCols.length}</span>
+              )}
+            </button>
+          </div>
 
-          {interactive ? (
-            <InteractiveFilters
-              zData={zData}
-              features={filterFeatures}
-              ranges={ranges}
-              onFeatures={setFilterFeatures}
-              onRange={(f, r) => setRanges((prev) => ({ ...prev, [f]: r }))}
-              matched={selected.length}
-            />
-          ) : selected.length === 0 ? (
-            <p className="hint">
-              Use lasso or box selection in the plot to capture points.
-            </p>
-          ) : (
-            <>
-              <div className="scope-toggle">
-                <label>
-                  <input
-                    type="radio"
-                    checked={scope === "global"}
-                    onChange={() => setScope("global")}
-                  />
-                  Whole dataset (global)
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    checked={scope === "local"}
-                    onChange={() => setScope("local")}
-                  />
-                  This cluster (local)
-                </label>
-              </div>
-              {predicate?.summary && (
-                <div className="predicate-summary">
-                  <span>
-                    Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
-                  </span>
-                  <span>
-                    Features used: {predicate.summary.n_features_used} /{" "}
-                    {predicate.summary.n_features_total}
-                  </span>
-                  <span>Selected: {predicate.summary.n_selected}</span>
-                </div>
-              )}
-              {predicate && (
-                <PredicateBands
-                  full={predicate.full}
-                  trimmed={predicate.trimmed}
+          {/* One bounded viewport for all three tabs. A wide dataset yields a band
+              (and a pickable column) per feature — 784 of them on MNIST — which would
+              otherwise run the page on for thousands of pixels below the plot. */}
+          <div className="exploration__view" role="tabpanel">
+            {view === "ranges" ? (
+              <RangeFilters
+                data={nodeRange}
+                note={rangeNote}
+                active={filterCols}
+                ranges={ranges}
+                matched={filtering ? selected.length : null}
+                narrowing={clauses.length}
+                onActive={(cols) => {
+                  setFilterCols(cols);
+                  // Drop the window with the column. Keeping it made re-ticking restore
+                  // a band the user removed — the selection would jump back to it with
+                  // nothing on screen saying why the window is not full-width.
+                  setRanges((prev) => dropRanges(prev, new Set(cols)));
+                }}
+                onRange={(c, r) => setRanges((prev) => ({ ...prev, [c]: r }))}
+                onClear={() => {
+                  setFilterCols([]);
+                  setRanges({});
+                  // The filter *was* the selection; leaving it ringed after clearing
+                  // would leave a selection with nothing on screen explaining it, and
+                  // Clear disables itself so it could not be pressed again.
+                  setSelected([]);
+                }}
+              />
+            ) : view === "characteristics" ? (
+              selected.length === 0 ? (
+                <p className="hint">
+                  Use lasso or box selection in the plot to capture points.
+                </p>
+              ) : wholeNodeSelection ? (
+                <p className="hint">{WHOLE_NODE_HINT}</p>
+              ) : charFailed ? (
+                <p className="hint">Could not compute characteristics for this selection.</p>
+              ) : charSel === null ? (
+                <p className="hint">Computing characteristics…</p>
+              ) : (
+                <CharacteristicsBar
+                  data={charSel}
+                  title={`Selection characteristics — vs. ${pathLabel}`}
+                  nonFeatureOnly={charNonFeatureOnly}
                 />
-              )}
-            </>
+              )
+            ) : selected.length === 0 ? (
+              <p className="hint">
+                Use lasso or box selection in the plot to capture points.
+              </p>
+            ) : wholeNodeSelection ? (
+              <p className="hint">{WHOLE_NODE_HINT}</p>
+            ) : (
+              <>
+                <div className="scope-toggle">
+                  <label>
+                    <input
+                      type="radio"
+                      checked={scope === "global"}
+                      onChange={() => setScope("global")}
+                    />
+                    Whole dataset (global)
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      checked={scope === "local"}
+                      onChange={() => setScope("local")}
+                    />
+                    This cluster (local)
+                  </label>
+                </div>
+                {/* An empty conjunction matches everything, so its F1 is reported
+                    as 1.00 over 0 clauses — "Predicate F1: 1.00 · Features used:
+                    0 / 2" reads as a perfect explanation of nothing. LayerSide
+                    already says so instead of drawing it. */}
+                {predicate?.summary && predicate.summary.n_features_used === 0 ? (
+                  <p className="hint">
+                    No feature range separates this selection from the rest of the{" "}
+                    {scope === "global" ? "dataset" : "cluster"}.
+                  </p>
+                ) : (
+                  <>
+                    {predicate?.summary && (
+                      <div className="predicate-summary">
+                        <span>
+                          Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
+                        </span>
+                        <span>
+                          Features used: {predicate.summary.n_features_used} /{" "}
+                          {predicate.summary.n_features_total}
+                        </span>
+                        <span>Selected: {predicate.summary.n_selected}</span>
+                      </div>
+                    )}
+                    {predicate && (
+                      <PredicateBands
+                        full={predicate.full}
+                        trimmed={predicate.trimmed}
+                      />
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {targets && targets.targets.length > 0 && selected.length > 0 && (
+            <div className="target-values">
+              <h4>Target values — selection</h4>
+              <TargetBands targets={targets.targets} nSelected={targets.n_selected} />
+            </div>
           )}
-          <CharacteristicsBar
-            data={node.rel_characteristics}
-            title="Cluster characteristics"
-            nonFeatureOnly={nonFeatureOnly}
-          />
         </div>
 
         <div className="exploration__plot">
           <ProjectionScatter
-            points={node.embedding_original}
+            points={node.embedding_original ?? []}
             rowIds={node.row_indices}
-            method={config.method}
-            interactiveGroup={interactive ? interactiveGroup : null}
-            onSelect={interactive ? () => {} : setSelected}
-            selected={interactive ? [] : selected}
+            method={builtMethod}
+            interactiveGroup={interactiveGroup}
+            onSelect={filtering ? () => {} : selectPoints}
+            selected={filtering ? [] : selected}
+            toolbarExtra={
+              showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
+            }
           />
         </div>
       </div>
 
       <div className="exploration__table">
         <h3>Selected points: {selected.length}</h3>
+        {/* The table is empty in this state because nothing was requested for it; say
+            why here too, since the Ranges tab has no room for the hint above. */}
+        {wholeNodeSelection && <p className="hint">{WHOLE_NODE_HINT}</p>}
         {rows && rows.rows.length > 0 && (
           <>
             <button onClick={exportCsv}>Export selected points to CSV</button>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {rows.columns.map((c) => (
-                      <th key={c}>{c}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.rows.slice(0, 50).map((r, i) => (
-                    <tr key={i}>
+            {imageSpec && (
+              <p className="hint">Click a row to see the image behind that point.</p>
+            )}
+            <div className="exploration__rows">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
                       {rows.columns.map((c) => (
-                        <td key={c}>{String(r[c])}</td>
+                        <th key={c} className={cellClass(c, targetSet, firstTarget)}>
+                          {c}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {/* Row i of the table is selected[i] of the node, i.e. dataframe row
+                        node.row_indices[selected[i]] — the id /api/rows was asked for. */}
+                    {rows.rows.slice(0, 50).map((r, i) => {
+                      const rowId = node.row_indices[selected[i]];
+                      const active = imageSpec != null && imageRow === rowId;
+                      return (
+                        <tr
+                          key={i}
+                          className={imageSpec ? (active ? "is-pickable is-active" : "is-pickable") : undefined}
+                          onClick={imageSpec ? () => setImageRow(active ? null : rowId) : undefined}
+                        >
+                          {rows.columns.map((c) => (
+                            <td key={c} className={cellClass(c, targetSet, firstTarget)}>
+                              {String(r[c])}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {imageSpec && imageRow != null && (
+                <PointImage
+                  dataset={dataset}
+                  rowId={imageRow}
+                  onClose={() => setImageRow(null)}
+                />
+              )}
             </div>
           </>
         )}
       </div>
     </section>
-  );
-}
-
-function InteractiveFilters(props: {
-  zData: ZData | null;
-  features: string[];
-  ranges: Record<string, [number, number]>;
-  onFeatures: (f: string[]) => void;
-  onRange: (f: string, r: [number, number]) => void;
-  matched: number;
-}) {
-  const { zData, features, ranges, onFeatures, onRange, matched } = props;
-  if (!zData) return <p className="hint">Loading feature values…</p>;
-
-  return (
-    <div className="interactive-filters">
-      <p className="hint">
-        Standardized (z-score) ranges. Matching points are highlighted in the
-        plot — {matched} match.
-      </p>
-      <label className="field">
-        <span>Features to filter</span>
-        <select
-          multiple
-          value={features}
-          size={Math.min(6, zData.cols.length)}
-          onChange={(e) =>
-            onFeatures(Array.from(e.target.selectedOptions, (o) => o.value))
-          }
-        >
-          {zData.cols.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      {features.map((f) => {
-        const j = zData.cols.indexOf(f);
-        const [bMin, bMax] = zData.bounds[j] ?? [-3, 3];
-        const [lo, hi] = ranges[f] ?? [bMin, bMax];
-        return (
-          <div key={f} className="range-row">
-            <span className="range-row__label">{f}</span>
-            <input
-              type="range"
-              min={bMin}
-              max={bMax}
-              step={(bMax - bMin) / 100 || 0.01}
-              value={lo}
-              onChange={(e) =>
-                onRange(f, [Math.min(Number(e.target.value), hi), hi])
-              }
-            />
-            <input
-              type="range"
-              min={bMin}
-              max={bMax}
-              step={(bMax - bMin) / 100 || 0.01}
-              value={hi}
-              onChange={(e) =>
-                onRange(f, [lo, Math.max(Number(e.target.value), lo)])
-              }
-            />
-            <span className="range-row__vals">
-              [{lo.toFixed(2)}, {hi.toFixed(2)}]
-            </span>
-          </div>
-        );
-      })}
-    </div>
   );
 }

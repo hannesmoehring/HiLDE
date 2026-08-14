@@ -26,7 +26,12 @@ _DEFAULT_DIR = Path(__file__).resolve().parents[1] / ".cache" / "hilde_runs"
 
 
 def is_hosting() -> bool:
-    return os.environ.get(HOSTING_ENV, "").strip().lower() not in ("", "0", "false", "no")
+    return os.environ.get(HOSTING_ENV, "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+    )
 
 
 def cache_dir() -> Path:
@@ -47,8 +52,12 @@ def load(key: str) -> dict[str, Any] | None:
     try:
         with gzip.open(path, "rt", encoding="utf-8") as fh:
             return json.load(fh)
-    except (OSError, ValueError):
+    except (OSError, ValueError, EOFError):
         # A truncated/corrupt entry must never break a request — just recompute.
+        # gzip raises EOFError on truncation, which is not an OSError, so that case
+        # used to 500 every request for this config; delete it so the next build
+        # replaces it instead of hitting the same file forever.
+        path.unlink(missing_ok=True)
         return None
 
 

@@ -26,12 +26,16 @@ def compute_cluster_characteristics(
     if extra_cols:
         extra_order = sorted(extra_cols)
         g_mean = df[extra_order].mean()
-        g_std = df[extra_order].std().replace(0, 1)
+        # ddof=0 throughout, so an extra column is standardized exactly like a feature
+        # column (StandardScaler uses the population std); the two are drawn together.
+        g_std = df[extra_order].std(ddof=0).replace(0, 1)
         c_mean = df.loc[in_cluster, extra_order].mean()
         extra_rows = pd.DataFrame(
             {
                 "z_mean": (c_mean - g_mean) / g_std,
-                "z_std": df.loc[in_cluster, extra_order].std(),
+                # /g_std, like z_mean above: the chart draws z_mean ± z_std on one
+                # z-score axis, and a raw-unit std there sets the whole y-domain.
+                "z_std": df.loc[in_cluster, extra_order].std(ddof=0) / g_std,
                 "raw_mean": c_mean,
                 "is_feature": False,
             },
@@ -47,6 +51,8 @@ def fit_cluster_decision_tree(
     in_cluster: pd.Series,
     tree_depth: int = 3,
 ) -> str:
-    tree = DecisionTreeClassifier(max_depth=tree_depth, class_weight="balanced", random_state=0)
+    tree = DecisionTreeClassifier(
+        max_depth=tree_depth, class_weight="balanced", random_state=0
+    )
     tree.fit(df[feature_cols].to_numpy(), in_cluster.to_numpy().astype(int))
     return export_text(tree, feature_names=list(feature_cols))

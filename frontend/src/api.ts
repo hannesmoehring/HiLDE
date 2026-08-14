@@ -3,12 +3,15 @@ import type {
   AnalysisConfig,
   AnalysisJob,
   AnalysisResponse,
+  CharacteristicsResponse,
   DatasetColumns,
   DatasetInfo,
+  ImagePixels,
   ModeInfo,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
+  TargetsResponse,
 } from "./types";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -40,6 +43,11 @@ export function listDatasets(): Promise<DatasetInfo[]> {
 
 export function datasetColumns(key: string): Promise<DatasetColumns> {
   return get(`/api/datasets/${encodeURIComponent(key)}/columns`);
+}
+
+/** Pixels of one row — only for datasets whose `image` spec is non-null. */
+export function fetchPointImage(key: string, rowId: number): Promise<ImagePixels> {
+  return get(`/api/datasets/${encodeURIComponent(key)}/image/${rowId}`);
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -78,6 +86,26 @@ export function runPredicate(args: {
   scope: PredicateScope;
 }): Promise<PredicateResponse> {
   return post("/api/predicate", args);
+}
+
+/** Characteristics of a selection, on the same z-score baseline as the tree. */
+export function fetchSelectionCharacteristics(args: {
+  dataset: string;
+  feature_cols: string[];
+  config: Partial<AnalysisConfig>; // only `normalize` is read, as on /api/predicate
+  row_indices: number[];
+  selected_local_indices: number[];
+}): Promise<CharacteristicsResponse> {
+  return post("/api/characteristics", args);
+}
+
+export function fetchTargets(args: {
+  dataset: string;
+  target_cols: string[];
+  row_indices: number[];
+  selected_local_indices: number[];
+}): Promise<TargetsResponse> {
+  return post("/api/targets", args);
 }
 
 export function fetchRows(

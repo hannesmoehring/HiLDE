@@ -2,7 +2,8 @@
 
 The calc layer (`src/analysis`, `src/evaluation`) returns a nested tree of
 TypedDicts carrying numpy arrays and pandas DataFrames — not JSON-serializable.
-This module walks that tree and emits the `Node` schema documented in PLAN.md.
+This module walks that tree and emits the `Node` schema; its TypeScript counterpart
+is `frontend/src/types.ts`.
 
 Nothing here mutates the calc layer; it only reads from it.
 """
@@ -54,7 +55,7 @@ def _pair(pos: tuple[float, float] | None) -> list[float | None] | None:
     return [_finite(pos[0]), _finite(pos[1])]
 
 
-def _characteristics(rc: pd.DataFrame | list[Any] | None) -> list[dict[str, Any]]:
+def characteristic_records(rc: pd.DataFrame | list[Any] | None) -> list[dict[str, Any]]:
     """rel_characteristics DataFrame (index = feature, cols z_mean/z_std/raw_mean)
     -> list of records. Empty/None -> [].
     """
@@ -105,12 +106,14 @@ def serialize_node(node: dict[str, Any], node_id: str, depth: int) -> dict[str, 
         "id": node_id,
         "is_leaf": is_leaf,
         "depth": int(node["depth"]) if is_leaf else depth,
-        "n_points": int(len(node["row_indices"])),
+        "n_points": len(node["row_indices"]),
         "row_indices": _int_list(node["row_indices"]),
         "embedding_original": _xy_list(node["embedding_original"]),
-        "embedding_original_variance": _float_list(node.get("embedding_original_variance")),
+        "embedding_original_variance": _float_list(
+            node.get("embedding_original_variance")
+        ),
         "rel_position": _pair(node["rel_position"]),
-        "rel_characteristics": _characteristics(node["rel_characteristics"]),
+        "rel_characteristics": characteristic_records(node["rel_characteristics"]),
         "scores": _scores(node.get("scores")),
     }
     if is_leaf:
@@ -120,7 +123,8 @@ def serialize_node(node: dict[str, Any], node_id: str, depth: int) -> dict[str, 
         out["outlier_scores"] = _float_list(node.get("outlier_scores"))
         children = node.get("next_object_layer") or []
         out["children"] = [
-            serialize_node(child, f"{node_id}/{i}", depth + 1) for i, child in enumerate(children)
+            serialize_node(child, f"{node_id}/{i}", depth + 1)
+            for i, child in enumerate(children)
         ]
     return out
 

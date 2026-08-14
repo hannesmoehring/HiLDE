@@ -12,11 +12,21 @@ def generate_predicate(
 ) -> object:
     match method:
         case "hm":
-            return _predicate_hm(df, X_scaled, threshold=threshold, tail_split=tail_split)
+            return _predicate_hm(
+                df, X_scaled, threshold=threshold, tail_split=tail_split
+            )
         case "threshold":
-            return _predicate_threshold(df, X_scaled, threshold=threshold, tail_split=tail_split)
+            return _predicate_threshold(
+                df, X_scaled, threshold=threshold, tail_split=tail_split
+            )
         case "db":
-            return _predicate_db(df, X_scaled, threshold=threshold, selected_indices=selected_indices, tail_split=tail_split)
+            return _predicate_db(
+                df,
+                X_scaled,
+                threshold=threshold,
+                selected_indices=selected_indices,
+                tail_split=tail_split,
+            )
         case _:
             raise ValueError(f"Unknown predicate generation method: {method}")
 
@@ -119,7 +129,8 @@ def _predicate_db(
 
     # Per-feature clause membership over the full dataset.
     clause_masks = [
-        (X_scaled_full[:, j] >= rows[j]["sel_min"]) & (X_scaled_full[:, j] <= rows[j]["sel_max"])
+        (X_scaled_full[:, j] >= rows[j]["sel_min"])
+        & (X_scaled_full[:, j] <= rows[j]["sel_max"])
         for j in range(len(rows))
     ]
 
@@ -173,12 +184,22 @@ def _predicate_db(
     return rows
 
 
-def _predicate_hm(df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9, tail_split: str = "severity") -> list[dict[str, object]]:
-    return _predicate_threshold(df, X_scaled_full, threshold=threshold, tail_split=tail_split)
+def _predicate_hm(
+    df: pd.DataFrame,
+    X_scaled_full: np.ndarray,
+    threshold: float = 0.9,
+    tail_split: str = "severity",
+) -> list[dict[str, object]]:
+    return _predicate_threshold(
+        df, X_scaled_full, threshold=threshold, tail_split=tail_split
+    )
 
 
 def _predicate_threshold(
-    df: pd.DataFrame, X_scaled_full: np.ndarray, threshold: float = 0.9, tail_split: str = "severity"
+    df: pd.DataFrame,
+    X_scaled_full: np.ndarray,
+    threshold: float = 0.9,
+    tail_split: str = "severity",
 ) -> list[dict[str, object]]:
     _validate_threshold(threshold)
     df = df.copy()

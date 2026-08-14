@@ -1,4 +1,4 @@
-// Data contract shared with the Python backend (see PLAN.md "Data Contract").
+// Data contract shared with the Python backend.
 // Mirrors backend/serialize.py output and the FastAPI request/response shapes.
 
 export interface NodeScores {
@@ -27,7 +27,7 @@ export interface TreeNode {
   depth: number;
   n_points: number;
   row_indices: number[]; // indices into the source dataframe
-  embedding_original: [number | null, number | null][]; // Nx2 projection
+  embedding_original: [number | null, number | null][] | null; // Nx2 projection; null = not projectable
   embedding_original_variance: (number | null)[] | null; // PCA only
   rel_position: [number | null, number | null] | null; // MDS centroid in sibling layout
   rel_characteristics: Characteristic[];
@@ -73,6 +73,17 @@ export interface DatasetColumns {
   n_rows: number;
   columns: string[];
   default_feature_cols: string[];
+  image: ImageSpec | null; // non-null = every row is an image of these dimensions
+}
+
+// Datasets whose rows are images (Digits, Olivetti faces, MNIST, Fashion-MNIST).
+export interface ImageSpec {
+  width: number;
+  height: number;
+}
+
+export interface ImagePixels extends ImageSpec {
+  pixels: number[]; // 0..255 greyscale, row-major
 }
 
 // ── Predicate (selection-time) ──────────────────────────────────────────────
@@ -91,6 +102,12 @@ export interface PredicateRow {
   predicate_f1: number;
 }
 
+// Characteristics of a lasso selection rather than of a whole node: same records as
+// TreeNode.rel_characteristics, but z-scored within the node being explored.
+export interface CharacteristicsResponse {
+  characteristics: Characteristic[];
+}
+
 export interface PredicateSummary {
   predicate_f1: number;
   n_features_used: number;
@@ -105,6 +122,24 @@ export interface PredicateResponse {
 }
 
 export type PredicateScope = "local" | "global";
+
+// ── Target columns (the `target_*` labels, kept out of the feature space) ────
+// Reported for a selection alongside the predicate, never as part of it.
+export interface TargetStat {
+  feature: string;
+  is_boolean: boolean; // one-hot label column — its mean is a class share, not a magnitude
+  sel_min: number | null;
+  sel_max: number | null;
+  sel_mean: number | null;
+  global_min: number | null;
+  global_max: number | null;
+  global_mean: number | null;
+}
+
+export interface TargetsResponse {
+  n_selected: number;
+  targets: TargetStat[];
+}
 
 export interface RowsResponse {
   columns: string[];

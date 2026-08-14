@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.characteristics import compute_cluster_characteristics, fit_cluster_decision_tree
+from src.analysis.characteristics import (
+    compute_cluster_characteristics,
+)
 from src.analysis.clustering import compute_clusters
 from src.analysis.dim_reducer import fit_dimensionality_reducer, reduce_dimensionality
 from src.types import Config
@@ -45,7 +47,7 @@ class HierarchyObject(TypedDict):
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     cluster_points: np.ndarray
-    embedding_original: np.ndarray
+    embedding_original: np.ndarray | None  # None = this node could not be projected
     embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     outlier_scores: np.ndarray | None
@@ -60,7 +62,7 @@ class ExplorationObject(TypedDict):  # add embedded points
     rel_characteristics: pd.DataFrame
     rel_position: tuple[float, float] | None
     exploration_points: np.ndarray
-    embedding_original: np.ndarray
+    embedding_original: np.ndarray | None  # None = this node could not be projected
     embedding_original_variance: np.ndarray | None
     row_indices: np.ndarray
     scores: NotRequired[NodeScores]
@@ -70,18 +72,27 @@ class ExplorationObject(TypedDict):  # add embedded points
 type AnalysisObject = HierarchyObject | ExplorationObject
 
 
-def _embed_original(X_orig: np.ndarray, config: Config) -> tuple[np.ndarray, np.ndarray | None]:
+def _embed_original(
+    X_orig: np.ndarray, config: Config
+) -> tuple[np.ndarray | None, np.ndarray | None]:
     """2D projection of a node's original (normalized) features, plus PCA explained
-    variance when applicable. Falls back to a zero embedding for nodes too small to
-    project so every point still has 2D coordinates for the scatter.
+    variance when applicable. Returns `None` when the node cannot be projected — too
+    small, or the reducer raised. A zero embedding was fabricated here before, and an
+    (n, 2) array of origins passes every downstream shape check, so a failed
+    projection was scored and published as a real DR-quality result.
     """
     n = X_orig.shape[0]
     if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:
-        return np.zeros((n, 2), dtype=float), None
+        return None, None
     try:
-        result = fit_dimensionality_reducer(method=config["method"], X=X_orig, n_components=2, config=config)
-    except Exception:
-        return np.zeros((n, 2), dtype=float), None
+        result = fit_dimensionality_reducer(
+            method=config["method"], X=X_orig, n_components=2, config=config
+        )
+    except Exception as exc:
+        clog.warn(
+            f"Projection failed for a node of {n} points ({type(exc).__name__}: {exc}) — left unembedded"
+        )
+        return None, None
     return result.embedding, result.explained_variance_ratio
 
 
@@ -103,7 +114,9 @@ def compute_analysis_tree(
     nonfeat_cols = [
         str(c)
         for c in df.columns
-        if c not in feature_cols and c != "row_id" and pd.api.types.is_numeric_dtype(df[c])
+        if c not in feature_cols
+        and c != "row_id"
+        and pd.api.types.is_numeric_dtype(df[c])
     ]
     X_nonfeat = df[nonfeat_cols].to_numpy() if nonfeat_cols else np.empty((len(df), 0))
 
@@ -111,8 +124,12 @@ def compute_analysis_tree(
     if umap_n_comp and umap_n_comp < X.shape[1]:
         config["hclust_umap_n_components"] = min(umap_n_comp, X.shape[1], len(X) - 1)
         config["umap_n_neighbors"] = min(config["umap_n_neighbors"], len(X) - 1)
-        clog.substep(f"Pre-clustering UMAP: {X.shape[1]}D → {config['hclust_umap_n_components']}D  ({len(X)} points)")
-        X_reduced = reduce_dimensionality("UMAP", X=X, n_components=config["hclust_umap_n_components"], config=config)
+        clog.substep(
+            f"Pre-clustering UMAP: {X.shape[1]}D → {config['hclust_umap_n_components']}D  ({len(X)} points)"
+        )
+        X_reduced = reduce_dimensionality(
+            "UMAP", X=X, n_components=config["hclust_umap_n_components"], config=config
+        )
     else:
         X_reduced = X
 
@@ -131,12 +148,17 @@ def compute_analysis_tree(
             nonfeat_cols=nonfeat_cols,
         ),
     )
-    root["scaler"] = scaler  # fit once; reused by scoring and the global predicate scope
+    root["scaler"] = (
+        scaler  # fit once; reused by scoring and the global predicate scope
+    )
     return root
 
 
 def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
-    if ctx.depth >= config["hierarchical_layers"] or len(X) < config["hclust_min_cluster_size"] * 2:
+    if (
+        ctx.depth >= config["hierarchical_layers"]
+        or len(X) < config["hclust_min_cluster_size"] * 2
+    ):
         emb_orig, emb_var = _embed_original(ctx.X_orig, config)
         return ExplorationObject(
             is_leaf=True,
@@ -178,9 +200,12 @@ def _build_next(X: np.ndarray, config: Config, ctx: _NodeCtx) -> AnalysisObject:
         X_reduced_df["cluster"] = labels
         centroids = X_reduced_df.loc[mask, reduced_cols].groupby(labels[mask]).mean()
 
-        centroids_2d = reduce_dimensionality("MDS", X=centroids.values, n_components=2, config=config)
+        centroids_2d = reduce_dimensionality(
+            "MDS", X=centroids.values, n_components=2, config=config
+        )
         rel_positions: dict[int, tuple[float, float]] = {
-            cluster_id: (centroids_2d[i, 0], centroids_2d[i, 1]) for i, cluster_id in enumerate(centroids.index)
+            cluster_id: (centroids_2d[i, 0], centroids_2d[i, 1])
+            for i, cluster_id in enumerate(centroids.index)
         }
 
         rel_characteristics_dict: dict[int, pd.DataFrame] = {
@@ -239,8 +264,15 @@ def print_tree(node: AnalysisObject, prefix: str = "", *, is_last: bool = True) 
         pos = leaf["rel_position"]
         pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
         rc = leaf["rel_characteristics"]
-        char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
-        print(f"{prefix}{connector}[LEAF] depth={leaf['depth']}  pts={pts}  pos={pos_str}  {char_str}")
+        char_str = (
+            "char=yes"
+            if (isinstance(rc, pd.DataFrame) and not rc.empty)
+            or (isinstance(rc, list) and rc)
+            else "char=no"
+        )
+        print(
+            f"{prefix}{connector}[LEAF] depth={leaf['depth']}  pts={pts}  pos={pos_str}  {char_str}"
+        )
     else:
         hier: HierarchyObject = node  # type: ignore[assignment]
         children = hier["next_object_layer"] or []
@@ -248,9 +280,18 @@ def print_tree(node: AnalysisObject, prefix: str = "", *, is_last: bool = True) 
         pos = hier["rel_position"]
         pos_str = f"({pos[0]:.2f}, {pos[1]:.2f})" if pos else "N/A"
         scores = hier["outlier_scores"]
-        outlier_str = f"  outlier_mean={scores.mean():.3f}" if scores is not None else ""
+        outlier_str = (
+            f"  outlier_mean={scores.mean():.3f}" if scores is not None else ""
+        )
         rc = hier["rel_characteristics"]
-        char_str = "char=yes" if (isinstance(rc, pd.DataFrame) and not rc.empty) or (isinstance(rc, list) and rc) else "char=no"
-        print(f"{prefix}{connector}[NODE] pts={pts}  children={len(children)}  pos={pos_str}{outlier_str}  {char_str}")
+        char_str = (
+            "char=yes"
+            if (isinstance(rc, pd.DataFrame) and not rc.empty)
+            or (isinstance(rc, list) and rc)
+            else "char=no"
+        )
+        print(
+            f"{prefix}{connector}[NODE] pts={pts}  children={len(children)}  pos={pos_str}{outlier_str}  {char_str}"
+        )
         for i, child in enumerate(children):
             print_tree(child, prefix=child_prefix, is_last=(i == len(children) - 1))

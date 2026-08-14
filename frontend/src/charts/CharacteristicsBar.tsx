@@ -7,6 +7,7 @@ import { scaleBand, scaleLinear, format } from "d3";
 import { useResize } from "../hooks/useResize";
 import { theme } from "./theme";
 import type { CharacteristicsBarProps } from "./props";
+import type { Characteristic } from "../types";
 
 const CRIMSON = theme.divNeg; // negative z_mean
 const STEELBLUE = theme.divPos; // positive (>= 0) z_mean
@@ -36,6 +37,22 @@ function maxLabelChars(rot: number): number {
   return Math.max(4, Math.floor(usable / (TICK_FONT * 0.58))); // 0.58em ≈ mean advance
 }
 const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
+
+const SHELL_PAD = 8; // `shell` padding: hover x/y are border-box, CSS insets are padding-box
+const TIP_CHAR_W = 7; // ≈ mean advance of the 13px tooltip face
+
+// Rough width of the tooltip about to be drawn, from its longest line. This only
+// picks which SIDE the tooltip opens on — the flipped one is anchored by its right
+// edge, so a poor estimate costs an early or late flip, never a clipped tooltip.
+function tipWidth(d: Characteristic): number {
+  const widest = Math.max(
+    d.feature.length + (d.is_feature === false ? " · not a feature".length : 0),
+    `z-mean: ${fmtNum(d.z_mean)}`.length,
+    `z-std: ${fmtNum(d.z_std)}`.length,
+    `raw mean: ${fmtNum(d.raw_mean)}`.length,
+  );
+  return widest * TIP_CHAR_W + 18; // + horizontal padding and border
+}
 
 interface Hover {
   i: number;
@@ -128,6 +145,17 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
     if (!rect) return;
     setHover({ i, x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
+
+  // The tooltip opens to the right of the cursor, and to its left when that would
+  // run past the panel edge — the column clips with overflow: hidden, so the
+  // rightmost features would otherwise lose half their tooltip.
+  // `hover` indexes into `shown`, which shrinks when `nonFeatureOnly` flips — and
+  // React fires no mouseleave when the hit rect unmounts under a stationary pointer,
+  // so the index can outlive its bar. Resolve it once, and draw nothing if it is gone.
+  const hovered = hover != null ? shown[hover.i] : undefined;
+  const outerW = size.width + SHELL_PAD * 2;
+  const flipTip =
+    hover != null && hovered != null && hover.x + 12 + SHELL_PAD + tipWidth(hovered) > outerW;
 
   return (
     <div ref={ref} style={shell}>
@@ -248,11 +276,13 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
         </svg>
       </div>
 
-      {hover && (
+      {hover && hovered && (
         <div
           style={{
             position: "absolute",
-            left: hover.x + 12,
+            // Flipped: anchor the tooltip's RIGHT edge 12px left of the cursor, so
+            // it can never spill past the panel however wide it turns out to be.
+            ...(flipTip ? { right: outerW - hover.x + 12 } : { left: hover.x + 12 }),
             top: hover.y + 12,
             background: theme.surface,
             border: `1px solid ${theme.textPrimary}`,
@@ -266,19 +296,19 @@ export function CharacteristicsBar({ data, title, nonFeatureOnly = false }: Char
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 2 }}>
-            {shown[hover.i].feature}
-            {shown[hover.i].is_feature === false && (
+            {hovered.feature}
+            {hovered.is_feature === false && (
               <span style={{ color: NONFEAT, fontWeight: 500 }}> · not a feature</span>
             )}
           </div>
           <div style={{ color: MUTED }}>
-            z-mean: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].z_mean)}</span>
+            z-mean: <span style={{ color: TEXT }}>{fmtNum(hovered.z_mean)}</span>
           </div>
           <div style={{ color: MUTED }}>
-            z-std: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].z_std)}</span>
+            z-std: <span style={{ color: TEXT }}>{fmtNum(hovered.z_std)}</span>
           </div>
           <div style={{ color: MUTED }}>
-            raw mean: <span style={{ color: TEXT }}>{fmtNum(shown[hover.i].raw_mean)}</span>
+            raw mean: <span style={{ color: TEXT }}>{fmtNum(hovered.raw_mean)}</span>
           </div>
         </div>
       )}

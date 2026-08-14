@@ -10,6 +10,7 @@ import { theme } from "./theme";
 const HEIGHT = 480;
 const MARGIN = { top: 16, right: 16, bottom: 40, left: 48 };
 const ACCENT = theme.accent;
+const SELECTION = theme.selection;
 const OTHER = theme.other;
 const BG = theme.surface;
 const TEXT = theme.textPrimary;
@@ -48,6 +49,7 @@ export function ProjectionScatter({
   interactiveGroup,
   onSelect,
   selected,
+  toolbarExtra,
 }: ProjectionScatterProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const [mode, setMode] = useState<Mode>("lasso");
@@ -199,13 +201,22 @@ export function ProjectionScatter({
 
   return (
     <div ref={ref} style={{ width: "100%", color: TEXT }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
         <button type="button" style={btn("lasso")} onClick={() => setMode("lasso")}>
           Lasso
         </button>
         <button type="button" style={btn("box")} onClick={() => setMode("box")}>
           Box
         </button>
+        {toolbarExtra}
       </div>
 
       <svg width={size.width} height={HEIGHT} style={{ background: BG, border: `1px solid ${theme.border}`, display: "block" }}>
@@ -243,25 +254,32 @@ export function ProjectionScatter({
                 {yLabel}
               </text>
 
-              {/* points — selected ones carry a surface halo under the ink ring so
-                  the selection reads whatever the fill is, including near-black */}
-              {geom.plotted.map((p) => {
-                const sel = selectedSet.has(p.li);
-                return (
+              {/* Points, in two passes: a selected point in a dense region would
+                  otherwise be painted over by whichever unselected neighbour comes
+                  later in plot order, which is exactly where the selection matters. */}
+              {geom.plotted
+                .filter((p) => !selectedSet.has(p.li))
+                .map((p) => (
+                  <circle key={p.li} cx={p.px} cy={p.py} r={4} fill={p.color} fillOpacity={0.85} />
+                ))}
+              {/* Selected: the selection hue, over a surface halo that separates it
+                  from whatever it overlaps, under an ink ring. */}
+              {geom.plotted
+                .filter((p) => selectedSet.has(p.li))
+                .map((p) => (
                   <g key={p.li}>
-                    {sel && <circle cx={p.px} cy={p.py} r={6} fill="none" stroke={BG} strokeWidth={4} />}
+                    <circle cx={p.px} cy={p.py} r={6} fill="none" stroke={BG} strokeWidth={4} />
                     <circle
                       cx={p.px}
                       cy={p.py}
-                      r={sel ? 6 : 4}
-                      fill={p.color}
-                      fillOpacity={0.85}
-                      stroke={sel ? TEXT : "none"}
-                      strokeWidth={sel ? 1.5 : 0}
+                      r={6}
+                      fill={SELECTION}
+                      fillOpacity={0.95}
+                      stroke={TEXT}
+                      strokeWidth={1.5}
                     />
                   </g>
-                );
-              })}
+                ))}
 
               {/* interaction layer — exactly one active at a time */}
               {mode === "box" ? (

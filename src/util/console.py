@@ -40,7 +40,14 @@ def build_banner(dataset: str, feature_cols: list[str], config: Config) -> None:
         if key in config:
             table.add_row(label, str(config[key]))  # type: ignore[literal-required]
     console.print()
-    console.print(Panel(table, title="[bold]Starting build with selected config[/bold]", border_style="cyan", expand=False))
+    console.print(
+        Panel(
+            table,
+            title="[bold]Starting build with selected config[/bold]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
 
 
 def phase(message: str) -> None:
@@ -53,7 +60,14 @@ def substep(message: str) -> None:
     console.print(f"  [dim]· {message}[/dim]")
 
 
+def warn(message: str) -> None:
+    """Something was skipped or fell back — worth seeing, not fatal."""
+    console.print(f"[bold yellow]![/bold yellow] {message}")
+
+
 def success(message: str, **stats: Any) -> None:
     """A completed step, optionally with `key=value` stats appended."""
     tail = "  ".join(f"[cyan]{k}[/cyan]=[bold]{v}[/bold]" for k, v in stats.items())
-    console.print(f"[bold green]✓[/bold green] {message}" + (f"   {tail}" if tail else ""))
+    console.print(
+        f"[bold green]✓[/bold green] {message}" + (f"   {tail}" if tail else "")
+    )

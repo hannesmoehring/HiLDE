@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
-import { CharacteristicsBar } from "./charts/CharacteristicsBar";
 import { ClusterScatter } from "./charts/ClusterScatter";
-import { ScoreTiles } from "./charts/ScoreTiles";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
+import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { getNodeAtPath } from "./treeNav";
-import type { AnalysisConfig, AnalysisResponse, DatasetColumns, DatasetInfo, ModeInfo } from "./types";
+import type {
+  AnalysisConfig,
+  AnalysisResponse,
+  DatasetColumns,
+  DatasetInfo,
+  ImageSpec,
+  ModeInfo,
+} from "./types";
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -20,8 +26,17 @@ export default function App() {
 
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [treePath, setTreePath] = useState<number[]>([]);
+  // Explore the node at the end of `treePath` whole, instead of waiting for a drill
+  // into one of its clusters. Every navigation goes through `navigate` so the flag
+  // can never outlive the path it was set for.
+  const [exploreWhole, setExploreWhole] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function navigate(path: number[], whole = false) {
+    setTreePath(path);
+    setExploreWhole(whole);
+  }
 
   // The config rail collapses to a 38px strip so the analysis canvas can widen.
   const [configOpen, setConfigOpen] = useState(true);
@@ -50,7 +65,7 @@ export default function App() {
     if (!datasetKey) return;
     setColumns(null);
     setAnalysis(null);
-    setTreePath([]);
+    navigate([]);
     datasetColumns(datasetKey)
       .then((c) => {
         setColumns(c);
@@ -68,6 +83,14 @@ export default function App() {
 
   const maxDims = useMemo(() => Math.max(2, featureCols.length), [featureCols]);
 
+  // Label columns held out of the feature space (see backend default_feature_cols).
+  // A `target_*` column the user checked in as a feature is not one: it is in the
+  // predicate now, and reporting it twice would say otherwise.
+  const targetCols = useMemo(
+    () => (columns?.columns ?? []).filter((c) => c.startsWith("target_") && !featureCols.includes(c)),
+    [columns, featureCols],
+  );
+
   function patchConfig(patch: Partial<AnalysisConfig>) {
     setConfig((c) => ({ ...c, ...patch }));
   }
@@ -81,7 +104,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setAnalysis(null);
-    setTreePath([]);
+    navigate([]);
     try {
       const res = await runAnalysis(datasetKey, featureCols, config, useCache);
       setAnalysis(res);
@@ -91,6 +114,12 @@ export default function App() {
       setLoading(false);
     }
   }
+
+  // Picking a new dataset clears `analysis`, but only in an effect — so one render
+  // pairs the new dataset key with the previous dataset's tree. The panels below key
+  // their requests off both, and row indices from a 6497-row tree sent against a
+  // 150-row dataset are a 500, not an empty result. Never hand them a mismatched pair.
+  const shownAnalysis = analysis && analysis.meta.dataset === datasetKey ? analysis : null;
 
   const runMeta = [datasetKey || "no dataset", `${featureCols.length} features`, config.method]
     .filter(Boolean)
@@ -222,7 +251,7 @@ export default function App() {
             </div>
           )}
 
-          {mode?.hosting && analysis?.cached && (
+          {mode?.hosting && shownAnalysis?.cached && (
             <div className="banner">
               <strong>Cached</strong>
               <span>
@@ -234,19 +263,22 @@ export default function App() {
 
           {loading && <div className="empty">Reducing, clustering and scoring …</div>}
 
-          {analysis && (
+          {shownAnalysis && (
             <Navigation
-              analysis={analysis}
+              analysis={shownAnalysis}
               treePath={treePath}
-              setTreePath={setTreePath}
+              exploreWhole={exploreWhole}
+              navigate={navigate}
               dataset={datasetKey}
               featureCols={featureCols}
+              targetCols={targetCols}
               config={config}
               charNonFeatureOnly={charNonFeatureOnly}
+              imageSpec={columns?.image ?? null}
             />
           )}
 
-          {!analysis && !loading && (
+          {!shownAnalysis && !loading && (
             <div className="empty">Pick features and press Build &amp; Apply to compute a run.</div>
           )}
         </main>
@@ -258,15 +290,23 @@ export default function App() {
 function Navigation(props: {
   analysis: AnalysisResponse;
   treePath: number[];
-  setTreePath: (p: number[]) => void;
+  exploreWhole: boolean;
+  navigate: (path: number[], whole?: boolean) => void;
   dataset: string;
   featureCols: string[];
+  targetCols: string[];
   config: AnalysisConfig;
   charNonFeatureOnly: boolean;
+  imageSpec: ImageSpec | null;
 }) {
-  const { analysis, treePath, setTreePath, dataset, featureCols, config, charNonFeatureOnly } = props;
+  const { analysis, treePath, exploreWhole, navigate, dataset, featureCols, targetCols, config, charNonFeatureOnly, imageSpec } =
+    props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
+  // What the shown embedding was computed with. The rail's Method knob can be changed
+  // without rebuilding, so it describes the *next* run, not the coordinates on screen.
+  const builtMethod =
+    typeof analysis.meta.config.method === "string" ? analysis.meta.config.method : config.method;
 
   // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
   // One at a time across layers, cleared whenever we drill in or out.
@@ -289,6 +329,10 @@ function Navigation(props: {
     }
     const selectedChild = treePath.length >= L ? treePath[L - 1] : null;
     const child = selectedChild != null ? node.children![selectedChild] : null;
+    // Whole-layer exploration lands on the layer whose own node the path ends at —
+    // the deepest one rendered, i.e. the one that would otherwise be waiting for a
+    // cluster click. `node` here *is* that node, so it is what gets explored.
+    const exploringHere = exploreWhole && treePath.length === L - 1;
     layerViews.push(
       <section className="panel layer" key={`layer-${L}`}>
         <div className="panel__head">
@@ -305,22 +349,48 @@ function Navigation(props: {
             <ClusterScatter
               node={node}
               selectedChild={selectedChild}
-              onSelectCluster={(i) => setTreePath([...parentPath, i])}
+              onSelectCluster={(i) => navigate([...parentPath, i])}
               highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
             />
+            {/* The projection above is what this acts on, so the action sits under it
+                rather than in the side column, which is about the selected child. */}
+            <div className="layer__explore">
+              <p className="hint">
+                {exploringHere
+                  ? "Exploring every point in this layer — its clusters are not split up."
+                  : "Or take the layer whole, without drilling into one cluster."}
+              </p>
+              <button
+                className={exploringHere ? "primary" : undefined}
+                aria-pressed={exploringHere}
+                onClick={() => navigate(parentPath, !exploringHere)}
+                title={
+                  exploringHere
+                    ? "Go back to picking a cluster to drill into"
+                    : `Open the exploration panel on all ${node.row_indices.length} points of this layer`
+                }
+              >
+                {exploringHere ? "Exploring entire layer" : "Explore entire layer"}
+              </button>
+            </div>
           </div>
           <div className="layer__side">
             {child ? (
-              <>
-                <ScoreTiles scores={child.scores} title={`C${selectedChild} — DR quality`} />
-                <CharacteristicsBar
-                  data={child.rel_characteristics}
-                  title={`C${selectedChild} characteristics`}
-                  nonFeatureOnly={charNonFeatureOnly}
-                />
-              </>
+              <LayerSide
+                parent={node}
+                child={child}
+                childIndex={selectedChild!}
+                dataset={dataset}
+                featureCols={featureCols}
+                config={config}
+                charNonFeatureOnly={charNonFeatureOnly}
+              />
             ) : (
-              <p className="hint">Select a cluster to see its DR quality and characteristics.</p>
+              <p className="hint">
+                {exploringHere
+                  ? "The whole layer is being explored below. Select a cluster to drill into one instead."
+                  : "Select a cluster to see its DR quality, characteristics and predicate."}
+              </p>
             )}
           </div>
         </div>
@@ -332,6 +402,10 @@ function Navigation(props: {
         />
       </section>,
     );
+    if (exploringHere) {
+      explorationPath = parentPath;
+      break;
+    }
     if (treePath.length < L) {
       waiting = true;
       break;
@@ -342,6 +416,13 @@ function Navigation(props: {
 
   const explorationNode = explorationPath !== null ? getNodeAtPath(root, explorationPath) : null;
   const pathLabel = explorationPath && explorationPath.length ? explorationPath.map((c) => `C${c}`).join(" → ") : "root";
+  // The explored node is whatever the deepest layer holds as its selected child, so
+  // that layer already reports its scores. A non-empty path says so either way: under
+  // "explore entire layer" the node is the layer's own, but a layer's own node is the
+  // layer above's selected child, and that side column reports it. Only an empty path
+  // has nothing above it — a leaf root, or the whole of layer 1 — and there the
+  // exploration panel is the only place the scores can appear.
+  const scoresShownByLayer = explorationPath !== null && explorationPath.length > 0;
 
   return (
     <>
@@ -351,10 +432,14 @@ function Navigation(props: {
         <ExplorationPanel
           dataset={dataset}
           featureCols={featureCols}
+          targetCols={targetCols}
           config={config}
+          builtMethod={builtMethod}
           node={explorationNode}
           pathLabel={pathLabel}
-          nonFeatureOnly={charNonFeatureOnly}
+          imageSpec={imageSpec}
+          showScores={!scoresShownByLayer}
+          charNonFeatureOnly={charNonFeatureOnly}
         />
       )}
     </>
