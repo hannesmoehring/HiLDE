@@ -132,10 +132,17 @@ export function ExplorationPanel({
   const settledRanges = useDebounced(ranges, RANGE_SETTLE_MS);
   const interactive = view === "ranges";
 
-  /** Every selection records the node it was made in. */
+  /** Every selection records the node it was made in. A move that changes no point's
+   *  membership keeps the previous array, so React bails out instead of re-rendering:
+   *  `interactiveGroup` is a fresh array on every settle and `Object.is` fails on it
+   *  even when the contents are identical, which otherwise refetched the whole table
+   *  and closed the open point image on a nudge that changed nothing. Widening a slider
+   *  through a gap in the histogram is the everyday case. */
   const selectPoints = useCallback(
     (idx: number[]) => {
-      setSelected(idx);
+      setSelected((prev) =>
+        prev.length === idx.length && prev.every((v, i) => v === idx[i]) ? prev : idx,
+      );
       setSelectedNode(node.id);
     },
     [node.id],
