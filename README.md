@@ -1,7 +1,7 @@
 # HiLDE — Hierarchical Local Decomposition and Explanation
 [![hilde.3m0.de](https://img.shields.io/website?url=https%3A%2F%2Fhilde.3m0.de&label=hilde.3m0.de&up_message=online&down_message=offline)](https://hilde.3m0.de)
 
-**Live instance:** [hilde.3m0.de](https://hilde.3m0.de) · **Thesis:** PDF coming soon!<!-- [PDF](./thesis.pdf) -->
+**Live instance:** [hilde.3m0.de](https://hilde.3m0.de) · **Intro video:** [watch on YouTube](https://youtu.be/BHsBJ5zTIYA) · **Thesis:** PDF coming soon!<!-- [PDF](./thesis.pdf) -->
 
 Interactive explorer for high-dimensional tabular data. It recursively partitions a
 dataset with HDBSCAN, computes a separate dimensionality reduction inside each region,
