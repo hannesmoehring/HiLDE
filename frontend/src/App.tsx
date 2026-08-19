@@ -87,7 +87,10 @@ export default function App() {
   // A `target_*` column the user checked in as a feature is not one: it is in the
   // predicate now, and reporting it twice would say otherwise.
   const targetCols = useMemo(
-    () => (columns?.columns ?? []).filter((c) => c.startsWith("target_") && !featureCols.includes(c)),
+    () =>
+      (columns?.columns ?? []).filter(
+        (c) => c.startsWith("target_") && !featureCols.includes(c),
+      ),
     [columns, featureCols],
   );
 
@@ -96,7 +99,9 @@ export default function App() {
   }
 
   function toggleFeature(col: string) {
-    setFeatureCols((f) => (f.includes(col) ? f.filter((x) => x !== col) : [...f, col]));
+    setFeatureCols((f) =>
+      f.includes(col) ? f.filter((x) => x !== col) : [...f, col],
+    );
   }
 
   async function build() {
@@ -119,9 +124,14 @@ export default function App() {
   // pairs the new dataset key with the previous dataset's tree. The panels below key
   // their requests off both, and row indices from a 6497-row tree sent against a
   // 150-row dataset are a 500, not an empty result. Never hand them a mismatched pair.
-  const shownAnalysis = analysis && analysis.meta.dataset === datasetKey ? analysis : null;
+  const shownAnalysis =
+    analysis && analysis.meta.dataset === datasetKey ? analysis : null;
 
-  const runMeta = [datasetKey || "no dataset", `${featureCols.length} features`, config.method]
+  const runMeta = [
+    datasetKey || "no dataset",
+    `${featureCols.length} features`,
+    config.method,
+  ]
     .filter(Boolean)
     .join(", ");
   const cfgSummary = [
@@ -135,8 +145,18 @@ export default function App() {
       <header className="topbar">
         <span className="topbar__brand">HiLDE</span>
         <span className="topbar__sub">
-          <b>Hi</b>erarchical <b>L</b>ocal <b>D</b>ecomposition &amp; <b>E</b>xplanation
+          <b>Hi</b>erarchical <b>L</b>ocal <b>D</b>ecomposition &amp; <b>E</b>
+          xplanation
         </span>
+        {/* TODO: swap in the real intro video once it is recorded. */}
+        <a
+          className="topbar__video"
+          href="https://youtu.be/BHsBJ5zTIYA"
+          target="_blank"
+          rel="noreferrer"
+        >
+          ▶ Intro video
+        </a>
         <span className="topbar__meta">{runMeta}</span>
       </header>
 
@@ -157,7 +177,11 @@ export default function App() {
                     <span>Source</span>
                     {/* Locked during a build: swapping datasets mid-run would apply the
                         in-flight tree under the new dataset's key. */}
-                    <select value={datasetKey} onChange={(e) => setDatasetKey(e.target.value)} disabled={loading}>
+                    <select
+                      value={datasetKey}
+                      onChange={(e) => setDatasetKey(e.target.value)}
+                      disabled={loading}
+                    >
                       {datasets.map((d) => (
                         <option key={d.key} value={d.key}>
                           {d.label}
@@ -181,7 +205,13 @@ export default function App() {
                         {featureCols.length}/{columns.columns.length - 1}
                       </span>
                       <div className="cfg__actions">
-                        <button onClick={() => setFeatureCols(columns.default_feature_cols)}>Reset</button>
+                        <button
+                          onClick={() =>
+                            setFeatureCols(columns.default_feature_cols)
+                          }
+                        >
+                          Reset
+                        </button>
                         <button onClick={() => setFeatureCols([])}>None</button>
                       </div>
                     </div>
@@ -189,7 +219,12 @@ export default function App() {
                       {columns.columns
                         .filter((c) => c !== "row_id")
                         .map((c) => (
-                          <label key={c} className={featureCols.includes(c) ? undefined : "is-off"}>
+                          <label
+                            key={c}
+                            className={
+                              featureCols.includes(c) ? undefined : "is-off"
+                            }
+                          >
                             <input
                               type="checkbox"
                               checked={featureCols.includes(c)}
@@ -199,26 +234,43 @@ export default function App() {
                           </label>
                         ))}
                     </div>
-                    <label className="field--check" style={{ marginTop: "0.6rem", marginBottom: 0 }}>
+                    <label
+                      className="field--check"
+                      style={{ marginTop: "0.6rem", marginBottom: 0 }}
+                    >
                       <input
                         type="checkbox"
                         checked={charNonFeatureOnly}
-                        onChange={(e) => setCharNonFeatureOnly(e.target.checked)}
+                        onChange={(e) =>
+                          setCharNonFeatureOnly(e.target.checked)
+                        }
                       />
                       <span>Characteristics: non-feature columns only</span>
                     </label>
                   </section>
                 )}
 
-                <ConfigPanel config={config} maxDims={maxDims} onChange={patchConfig} />
+                <ConfigPanel
+                  config={config}
+                  maxDims={maxDims}
+                  onChange={patchConfig}
+                />
               </div>
 
               <div className="cfg__build">
-                <button className="primary" onClick={build} disabled={loading || featureCols.length === 0}>
+                <button
+                  className="primary"
+                  onClick={build}
+                  disabled={loading || featureCols.length === 0}
+                >
                   {loading ? "Building…" : "Build & Apply"}
                 </button>
                 {mode?.hosting && (
-                  <label className="field--check" style={{ marginBottom: 0 }} title={mode.cache_dir ?? undefined}>
+                  <label
+                    className="field--check"
+                    style={{ marginBottom: 0 }}
+                    title={mode.cache_dir ?? undefined}
+                  >
                     <input
                       type="checkbox"
                       checked={useCache}
@@ -231,7 +283,10 @@ export default function App() {
             </>
           ) : (
             <div className="rail__strip">
-              <button onClick={() => setConfigOpen(true)} title="Show configuration">
+              <button
+                onClick={() => setConfigOpen(true)}
+                title="Show configuration"
+              >
                 ›
               </button>
               <span className="rail__vert">Configuration</span>
@@ -247,7 +302,11 @@ export default function App() {
             <div className="banner banner--error" role="alert">
               <strong>Error</strong>
               <span>{error}</span>
-              {!configOpen && <button onClick={() => setConfigOpen(true)}>Show configuration</button>}
+              {!configOpen && (
+                <button onClick={() => setConfigOpen(true)}>
+                  Show configuration
+                </button>
+              )}
             </div>
           )}
 
@@ -255,13 +314,16 @@ export default function App() {
             <div className="banner">
               <strong>Cached</strong>
               <span>
-                This dataset and configuration were computed before, so the stored run was reused —
-                nothing was recomputed. Uncheck <em>Use cached results</em> and rebuild to force a fresh run.
+                This dataset and configuration were computed before, so the
+                stored run was reused — nothing was recomputed. Uncheck{" "}
+                <em>Use cached results</em> and rebuild to force a fresh run.
               </span>
             </div>
           )}
 
-          {loading && <div className="empty">Reducing, clustering and scoring …</div>}
+          {loading && (
+            <div className="empty">Reducing, clustering and scoring …</div>
+          )}
 
           {shownAnalysis && (
             <Navigation
@@ -279,7 +341,9 @@ export default function App() {
           )}
 
           {!shownAnalysis && !loading && (
-            <div className="empty">Pick features and press Build &amp; Apply to compute a run.</div>
+            <div className="empty">
+              Pick features and press Build &amp; Apply to compute a run.
+            </div>
           )}
         </main>
       </div>
@@ -299,18 +363,33 @@ function Navigation(props: {
   charNonFeatureOnly: boolean;
   imageSpec: ImageSpec | null;
 }) {
-  const { analysis, treePath, exploreWhole, navigate, dataset, featureCols, targetCols, config, charNonFeatureOnly, imageSpec } =
-    props;
+  const {
+    analysis,
+    treePath,
+    exploreWhole,
+    navigate,
+    dataset,
+    featureCols,
+    targetCols,
+    config,
+    charNonFeatureOnly,
+    imageSpec,
+  } = props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
   // What the shown embedding was computed with. The rail's Method knob can be changed
   // without rebuilding, so it describes the *next* run, not the coordinates on screen.
   const builtMethod =
-    typeof analysis.meta.config.method === "string" ? analysis.meta.config.method : config.method;
+    typeof analysis.meta.config.method === "string"
+      ? analysis.meta.config.method
+      : config.method;
 
   // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
   // One at a time across layers, cleared whenever we drill in or out.
-  const [outlierPick, setOutlierPick] = useState<{ layer: number; rowId: number } | null>(null);
+  const [outlierPick, setOutlierPick] = useState<{
+    layer: number;
+    rowId: number;
+  } | null>(null);
   const pathKey = treePath.join(",");
   useEffect(() => {
     setOutlierPick(null);
@@ -338,10 +417,13 @@ function Navigation(props: {
         <div className="panel__head">
           <span className="kicker">Layer {L}</span>
           <span className="panel__title">
-            {L === 1 ? "Cluster projection — root" : `Sub-projection — layer ${L}`}
+            {L === 1
+              ? "Cluster projection — root"
+              : `Sub-projection — layer ${L}`}
           </span>
           <span className="panel__meta">
-            {node.row_indices.length} points, {node.children?.length ?? 0} clusters
+            {node.row_indices.length} points, {node.children?.length ?? 0}{" "}
+            clusters
           </span>
         </div>
         <div className="layer__cols">
@@ -370,7 +452,9 @@ function Navigation(props: {
                     : `Open the exploration panel on all ${node.row_indices.length} points of this layer`
                 }
               >
-                {exploringHere ? "Exploring entire layer" : "Explore entire layer"}
+                {exploringHere
+                  ? "Exploring entire layer"
+                  : "Explore entire layer"}
               </button>
             </div>
           </div>
@@ -398,7 +482,9 @@ function Navigation(props: {
           node={node}
           dataset={dataset}
           selectedRow={outlierPick?.layer === L ? outlierPick.rowId : null}
-          onSelectRow={(rowId) => setOutlierPick(rowId == null ? null : { layer: L, rowId })}
+          onSelectRow={(rowId) =>
+            setOutlierPick(rowId == null ? null : { layer: L, rowId })
+          }
         />
       </section>,
     );
@@ -412,22 +498,32 @@ function Navigation(props: {
     }
   }
 
-  if (!waiting && explorationPath === null) explorationPath = treePath.slice(0, nLayers);
+  if (!waiting && explorationPath === null)
+    explorationPath = treePath.slice(0, nLayers);
 
-  const explorationNode = explorationPath !== null ? getNodeAtPath(root, explorationPath) : null;
-  const pathLabel = explorationPath && explorationPath.length ? explorationPath.map((c) => `C${c}`).join(" → ") : "root";
+  const explorationNode =
+    explorationPath !== null ? getNodeAtPath(root, explorationPath) : null;
+  const pathLabel =
+    explorationPath && explorationPath.length
+      ? explorationPath.map((c) => `C${c}`).join(" → ")
+      : "root";
   // The explored node is whatever the deepest layer holds as its selected child, so
   // that layer already reports its scores. A non-empty path says so either way: under
   // "explore entire layer" the node is the layer's own, but a layer's own node is the
   // layer above's selected child, and that side column reports it. Only an empty path
   // has nothing above it — a leaf root, or the whole of layer 1 — and there the
   // exploration panel is the only place the scores can appear.
-  const scoresShownByLayer = explorationPath !== null && explorationPath.length > 0;
+  const scoresShownByLayer =
+    explorationPath !== null && explorationPath.length > 0;
 
   return (
     <>
       {layerViews}
-      {waiting && <div className="empty">Click a cluster in the projection above to drill in.</div>}
+      {waiting && (
+        <div className="empty">
+          Click a cluster in the projection above to drill in.
+        </div>
+      )}
       {explorationNode && (
         <ExplorationPanel
           dataset={dataset}

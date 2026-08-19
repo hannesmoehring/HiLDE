@@ -102,6 +102,31 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 .topbar__brand { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .topbar__sub { font-size: 12.5px; color: var(--faint); }
 .topbar__sub b { color: var(--ink-2); font-weight: 600; }
+/* Sits clear of the acronym so it reads as its own call to action, and pulses a
+   few times on load so a first-time visitor notices it before it settles into
+   the bar. Three iterations, then it stops for good — no dismiss state to keep. */
+.topbar__video {
+  margin-left: 26px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  animation: topbar-video-attention 1.5s ease-in-out 3;
+}
+.topbar__video:hover { color: var(--ink); border-color: var(--ink); background: var(--hair); }
+
+@keyframes topbar-video-attention {
+  0%, 100% { border-color: var(--border-strong); box-shadow: 0 0 0 0 rgba(31, 102, 153, 0); }
+  35% { border-color: var(--pos); box-shadow: 0 0 0 3px rgba(31, 102, 153, 0.16); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar__video { animation: none; }
+}
 .topbar__meta {
   margin-left: auto;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
