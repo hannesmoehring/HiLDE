@@ -28,7 +28,7 @@ def main() -> None:
         "\n3. internal-vs-external (H12e — the join, and the number that was never persisted)"
     )
     internal_external.main()
-    print("\n4. RQ2 verdicts (H12c — honest n)")
+    print("\n4. RQ2 verdicts (H12c — corrected n)")
     verdicts.main()
 
     print(f"\nDone. Each run directory now carries {REDERIVED_DIRNAME}/DELTAS.md.")

@@ -110,7 +110,7 @@ PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
 ```
 
-`scripts/checks/` holds four regression checks retained from the pre-release adversarial
+`scripts/checks/` holds four regression checks retained from the pre-release code
 review; `scripts/checks/README.md` states what each one proves. They must run from
 outside the repository so no relative dataset path resolves into it:
 
@@ -330,7 +330,7 @@ as one.
   serialization and target statistics, plus the four regression checks in
   `scripts/checks/`. There is no test runner configuration and no coverage of the
   frontend. `uv run ruff format --check .` passes; `uv run ruff check .` does not
-  (38 findings at the freeze).
+  (33 findings).
 - **t-SNE and PCA seed replicates are repeats, not replicates.** The experiment harnesses
   vary a seed across replicates and thread it into `tsne_random_state`, but `_tsne` passes
   no `init`, and scikit-learn's default `init="pca"` never consults `random_state`. PCA

@@ -126,7 +126,7 @@ def rederive_run(run: str) -> dict:
         f"| the shipped y series, verbatim | {fmt(r_plotted)} | yes (identical to the row above) |",
         "| ARI change vs the default configuration (what the axis claims) | **not derivable** | no — see 3c |",
         "",
-        f"Re-plotted with honest labels: `{out_dir(run).name}/internal_vs_external_corrected_labels.png`.",
+        f"Re-plotted with corrected labels: `{out_dir(run).name}/internal_vs_external_corrected_labels.png`.",
         "",
         "### 3c. Why the labelled quantity cannot be re-derived",
         "",

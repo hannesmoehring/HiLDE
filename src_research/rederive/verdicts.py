@@ -1,12 +1,12 @@
-"""Re-derivation 4: RQ2 verdicts with honest n columns (20260711_115849, H12c).
+"""Re-derivation 4: RQ2 verdicts with corrected n columns (20260711_115849, H12c).
 
 ``verdicts.csv`` reported ``n_selections = n_pairs.max()``, i.e. seeds x selections. The
 unit of analysis is the selection, and on the wine arm the seeds are rebuilds of one
 dataset — the same leaves, five times over — so the column overstated the sample fivefold.
 
 The test statistic is unchanged: the pairs entering the Wilcoxon are the same pairs. What
-changes is that the sample is now described truthfully, as n_selections distinct selections
-observed over n_seeds seeds. Re-derived from ``stability_records.csv`` through the fixed
+changes is that the sample is now reported as n_selections distinct selections observed
+over n_seeds seeds. Re-derived from ``stability_records.csv`` through the fixed
 ``stability_summary`` / ``verdicts``, so this is a pure re-aggregation.
 """
 
@@ -96,7 +96,7 @@ def main() -> dict:
         ),
         "The p-values are still computed over n_pairs. Aggregating to one value per selection before",
         "testing would change a pre-registered analysis, which is out of scope for a re-derivation; the",
-        "honest n is reported so a reader can judge the pseudo-replication for themselves.",
+        "unpooled n is reported so a reader can judge the pseudo-replication for themselves.",
         "",
     ]
     write_deltas(run, f"Corrected RQ2 verdicts — {run}", sections)

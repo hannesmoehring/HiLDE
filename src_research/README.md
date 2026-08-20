@@ -6,22 +6,19 @@ this package. Each harness is a batch script that drives the same calculation la
 ([`src/README.md`](../src/README.md)) the server drives, then writes CSVs and figures to
 `outputs/experiments/<timestamp>/`.
 
-> ### The pre-registered designs are not in this repository
+> ### Where the design record lives
 >
-> Every harness here was written against a design document fixed **before** the harness was
+> Every harness here was written against a design fixed **before** the harness was
 > implemented and its run executed. That is why the code says things like "fixed by the
 > design, §4" and "must not be tuned to taste": those constants were chosen ahead of any
 > result, not after one.
 >
-> Those documents were then revised as the work went on — designs reviewed, defects found,
-> hypotheses split, scope cut — and some of them ended up no longer describing what had
-> actually been run. Rather than keep a stale design record in the repository, they were
-> removed; the thesis carries the design and its disclosed deviations.
+> The design record itself is part of the thesis, not of this repository. The
+> `design §N` / `design SSN` pointers in the module docstrings and `CONFIG` blocks resolve
+> against it — they mark a constant as pre-registered rather than picked after the fact.
 >
-> So: **the thesis is authoritative for the design, and the code in this directory is what
-> produced the numbers.** The `design §N` / `design SSN` pointers in the module docstrings
-> and `CONFIG` blocks stay as provenance markers — they flag a constant as pre-registered
-> rather than picked after the fact — and resolve against the thesis, not a file here.
+> **The thesis is authoritative for the design; the code in this directory is what produced
+> the numbers.**
 
 ---
 
@@ -168,7 +165,7 @@ removed, while its actual computation is NumPy-2 compatible.
 
 ## `rederive/` — corrected aggregates, not reruns
 
-The pre-release adversarial review found four defects in the **aggregation** of already-run
+The pre-release code review found four defects in the **aggregation** of already-run
 experiments. The per-record CSVs on disk were sound; only the summaries derived from them
 were wrong. So this package recomputes those summaries from the raw records:
 
@@ -177,7 +174,7 @@ were wrong. So this package recomputes those summaries from the raw records:
 | `h1a.py` | `HIGHER_IS_BETTER` declared both MRRE terms lower-is-better, but they arrive already inverted into a similarity — so `win_rate` and `rank_biserial` were computed against the wrong direction on every MRRE row, while `median_delta` never consulted the map. That is why the shipped summaries contain rows whose two effect sizes contradict each other. |
 | `h2b.py` | The `non_nested` control forces `eff_rho = 1`, so its six rho levels are six recomputations of one condition — and the nesting gap averaged those six duplicates against six genuinely distinct ones. Plus a row whose two halves came from differently-filtered pivots. |
 | `internal_external.py` | The figure joined `ari_base` from rows that never exist for Track A, then `.fillna(0)` — so an axis labelled "ARI change vs baseline" actually carried raw tuned ARI, and a cell whose tuning *lowered* ARI plotted as a gain. |
-| `verdicts.py` | `n_selections` reported seeds × selections. On the wine arm the seeds are rebuilds of one dataset — the same leaves, five times over — so the column overstated the sample fivefold. The test statistic is unchanged; the sample is now described truthfully. |
+| `verdicts.py` | `n_selections` reported seeds × selections. On the wine arm the seeds are rebuilds of one dataset — the same leaves, five times over — so the column overstated the sample fivefold. The test statistic is unchanged; the sample is now reported as distinct selections. |
 
 **No experiment was re-executed and no original file was modified.** Each re-derivation
 writes into a fresh `rederived_20260813/` subdirectory of the run it corrects, next to a

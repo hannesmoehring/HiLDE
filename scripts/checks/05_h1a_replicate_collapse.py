@@ -140,7 +140,7 @@ print("accordingly -- the duplication itself supplies the significance.")
 print("Column 2 is what B1 restores: 5R genuinely distinct measurements, which is the")
 print("pre-registered (region x seed) unit.")
 print(
-    "Column 3 is the honest-n reading kept alongside it: the 5 replicates of a region are"
+    "Column 3 is the conservative-n reading kept alongside it: the 5 replicates of a region are"
 )
 print(
     "repeated measures of that region, so n=R is the conservative unit. B1 removes the"

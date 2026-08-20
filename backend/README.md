@@ -134,7 +134,7 @@ account for:
 
 ## `scripts/checks/`
 
-Four regression checks retained from the pre-freeze adversarial review, each with a
+Four regression checks retained from the pre-freeze code review, each with a
 one-line statement of what it proves in [`scripts/checks/README.md`](../scripts/checks/README.md).
 They must run from **outside** the repository so no relative dataset path resolves back
 into it.

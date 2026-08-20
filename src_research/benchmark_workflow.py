@@ -833,7 +833,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
 
     # ---- D4 association --------------------------------------------------- #
     # D4 association: ρ with n only — NO p-value (C2's Wilcoxon is the experiment's
-    # only p-value, design §5/§7; adversarial review 2026-07-28 finding 1).
+    # only p-value, design §5/§7; 2026-07-28 review, finding 1).
     d4_lines = []
     for ds in DATASETS_TO_RUN:
         sub = purity[(purity["dataset"] == ds)].dropna(

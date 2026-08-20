@@ -340,10 +340,9 @@ def run_cell(
 
     ``_embed_original`` returns ``None`` for a region it could not project, rather than a
     fabricated all-zeros embedding: that scores ~0.55, which is indistinguishable from a
-    real result. An earlier revision of this harness did fabricate one, and those scores
-    were published as real. An unprojectable region has no hierarchical arm, so it cannot
-    enter a paired test - it is dropped from H1a and recorded in ``skip_rows``, which the
-    driver counts and writes out. Never silently, and never by killing the whole grid.
+    real result. An unprojectable region has no hierarchical arm, so it cannot enter a
+    paired test - it is dropped from H1a and recorded in ``skip_rows``, which the driver
+    counts and writes out. Never silently, and never by killing the whole grid.
 
     ``data`` is the preloaded ``(df, feature_cols, y)`` for this dataset (prepared once in
     the driver, not per cell) so workers neither reload nor re-subsample it."""
