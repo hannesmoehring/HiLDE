@@ -1,7 +1,7 @@
 # HiLDE — Hierarchical Local Decomposition and Explanation
 [![hilde.3m0.de](https://img.shields.io/website?url=https%3A%2F%2Fhilde.3m0.de&label=hilde.3m0.de&up_message=online&down_message=offline)](https://hilde.3m0.de)
 
-**Live instance:** [hilde.3m0.de](https://hilde.3m0.de) · **Intro video:** [watch on YouTube](https://youtu.be/BHsBJ5zTIYA) · **Thesis:** PDF coming soon!<!-- [PDF](./thesis.pdf) -->
+**Live instance:** [hilde.3m0.de](https://hilde.3m0.de) · **Intro video:** [watch on YouTube](https://youtu.be/BHsBJ5zTIYA) · **Thesis:** [PDF](./thesis/thesis.pdf)
 
 Interactive explorer for high-dimensional tabular data. It recursively partitions a
 dataset with HDBSCAN, computes a separate dimensionality reduction inside each region,
@@ -241,9 +241,10 @@ Four code maps go a level deeper than this overview, one per directory:
 
 ### Experiment outputs
 
-Harnesses write to `outputs/experiments/<timestamp>/`. **`outputs/` is not tracked in
-git**, so a clone does not contain any of it; the directories below exist in the author's
-working tree and back specific thesis sections.
+Harnesses write to `outputs/experiments/<timestamp>/`. **`outputs/experiments/` is
+tracked in the repository** — added at submission (tag `final-thesis`), after the
+`v0.1.0-thesis` code freeze — so a clone contains the run directories below, including
+each `plots/` and `rederived_20260813/` subdirectory. They back specific thesis sections.
 
 | Run directory | Harness | Thesis content |
 |---|---|---|
@@ -253,7 +254,7 @@ working tree and back specific thesis sections.
 | `20260711_115849` | `predicate_stability.py` | RQ2 — H2, predicate stability under relaxation |
 | `20260728_185329` | `benchmark_workflow.py` | §6.5 benchmark walk, RQ1/RQ3 consistency checks |
 | `20260729_101836` | `pipeline_tuning.py` | EQ1b preset tuning — **halted mid-run**, nothing integrated |
-| `20260728_190741_depth2_diag` | not in the repository | ad-hoc depth-2 noise diagnostic; the producing script was removed |
+| `20260728_190741_depth2_diag` | script removed pre-release | ad-hoc depth-2 noise diagnostic; the producing script was removed |
 
 Each harness was pre-registered: its guards, objectives and acceptance criteria were fixed
 before the run. The design documents themselves are no longer kept in the repository — the
@@ -270,8 +271,8 @@ nothing, an inflated n). No experiment was re-executed and no original file was 
 `DELTAS.md` in each subdirectory is the provenance record — what changed, by how much, and
 what turned out not to be derivable at all.
 
-The driver is `src_research/rederive/`. It needs `outputs/` present, so it cannot run from
-a bare clone; with the run directories in place, `uv run python -m src_research.rederive`
+The driver is `src_research/rederive/`. The run directories it needs ship with the
+repository, so from any clone `uv run python -m src_research.rederive`
 regenerates every `rederived_20260813/` byte-identically.
 
 ---
