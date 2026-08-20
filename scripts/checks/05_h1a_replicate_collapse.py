@@ -60,7 +60,7 @@ for method in ("UMAP", "t-SNE", "PCA"):
         embs = [embed(method, seed, thread_seed) for seed in SEEDS]
         identical = [bool(np.array_equal(embs[0], e)) for e in embs[1:]]
         maxdiff = max(float(np.abs(embs[0] - e).max()) for e in embs[1:])
-        print(f"{method:6s}  {label:<22s}  {str(identical):<32s}  {maxdiff:.3e}")
+        print(f"{method:6s}  {label:<22s}  {identical!s:<32s}  {maxdiff:.3e}")
 
 print()
 print(
@@ -84,7 +84,7 @@ print(
     "which the embedding never consults random_state. So B1 is a no-op for t-SNE and its"
 )
 print("SEEDS levels remain repeats, not replicates:")
-from sklearn.manifold import TSNE  # noqa: E402 - local to this demonstration
+from sklearn.manifold import TSNE
 
 _a = TSNE(n_components=2, random_state=0).fit_transform(X)
 _b = TSNE(n_components=2, random_state=7).fit_transform(X)
@@ -102,7 +102,9 @@ print()
 # ---------------------------------------------------------------------------
 # What each arm hands scipy.stats.wilcoxon, via _paired_deltas' (seed, region) pivot.
 # ---------------------------------------------------------------------------
-from scipy.stats import wilcoxon  # noqa: E402 - after the demonstration above, by design
+from scipy.stats import (
+    wilcoxon,
+)
 
 print("Consequence for the H1a test (_paired_deltas pivots on ['seed','region']):")
 print()

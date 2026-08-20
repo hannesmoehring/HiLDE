@@ -60,7 +60,7 @@ for m in ("trustworthiness", "continuity", "mrre_false", "mrre_missing", "stress
     declared = HIGHER_IS_BETTER[m]
     ok = higher_is_better_empirically == declared
     print(
-        f"{m:<18} {gv:>12.6f} {bv:>12.6f}   {str(higher_is_better_empirically):>10}   "
+        f"{m:<18} {gv:>12.6f} {bv:>12.6f}   {higher_is_better_empirically!s:>10}   "
         f"{'higher=better' if declared else 'lower=better':>16}   {'ok' if ok else '*** INVERTED ***'}"
     )
 
