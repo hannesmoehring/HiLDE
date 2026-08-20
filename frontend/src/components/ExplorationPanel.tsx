@@ -2,7 +2,12 @@
 // plus an interactive column-range filter (the "Ranges" tab).
 // Parity with src/ui/components/exploration.py::render_cluster_exploration.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchRows, fetchSelectionCharacteristics, fetchTargets, runPredicate } from "../api";
+import {
+  fetchRows,
+  fetchSelectionCharacteristics,
+  fetchTargets,
+  runPredicate,
+} from "../api";
 import { CharacteristicsBar } from "../charts/CharacteristicsBar";
 import { PcaVarianceBar } from "../charts/PcaVarianceBar";
 import { PredicateBands } from "../charts/PredicateBands";
@@ -21,8 +26,8 @@ import type {
   TreeNode,
 } from "../types";
 import { PointImage } from "./PointImage";
-import { collectRangeData, RangeFilters } from "./RangeFilters";
 import type { RangeData } from "./RangeFilters";
+import { collectRangeData, RangeFilters } from "./RangeFilters";
 
 interface Props {
   dataset: string;
@@ -70,7 +75,11 @@ const WHOLE_NODE_HINT =
 
 // Target columns sit at the right of the selected-points table, fenced off from
 // the feature columns so nobody reads a label as something the predicate used.
-function cellClass(col: string, targets: Set<string>, first: string | undefined): string | undefined {
+function cellClass(
+  col: string,
+  targets: Set<string>,
+  first: string | undefined,
+): string | undefined {
   if (!targets.has(col)) return undefined;
   return col === first ? "is-target is-target-first" : "is-target";
 }
@@ -127,7 +136,10 @@ export function ExplorationPanel({
   // could drift out of step with which panel is on screen.
   // Tagged with the node it was fetched for: the tag is what keeps the previous node's
   // values from being read positionally against the new node's points.
-  const [rangeData, setRangeData] = useState<{ nodeId: string; data: RangeData } | null>(null);
+  const [rangeData, setRangeData] = useState<{
+    nodeId: string;
+    data: RangeData;
+  } | null>(null);
   const [rangeNote, setRangeNote] = useState<string | null>(null); // why there is no data
   const [filterCols, setFilterCols] = useState<string[]>([]);
   const [ranges, setRanges] = useState<Record<string, [number, number]>>({});
@@ -143,7 +155,9 @@ export function ExplorationPanel({
   const selectPoints = useCallback(
     (idx: number[]) => {
       setSelected((prev) =>
-        prev.length === idx.length && prev.every((v, i) => v === idx[i]) ? prev : idx,
+        prev.length === idx.length && prev.every((v, i) => v === idx[i])
+          ? prev
+          : idx,
       );
       setSelectedNode(node.id);
     },
@@ -171,7 +185,10 @@ export function ExplorationPanel({
   // The table shows the features the predicate speaks about, then the labels it
   // deliberately ignores — same order the header/CSV are marked up in. The ranges tab
   // offers exactly this set too: it filters, so a label is a fair thing to slice on.
-  const tableCols = useMemo(() => [...featureCols, ...targetCols], [featureCols, targetCols]);
+  const tableCols = useMemo(
+    () => [...featureCols, ...targetCols],
+    [featureCols, targetCols],
+  );
   const targetSet = useMemo(() => new Set(targetCols), [targetCols]);
   const firstTarget = targetCols[0];
 
@@ -210,7 +227,10 @@ export function ExplorationPanel({
       .then(
         (r) =>
           !cancelled &&
-          setRangeData({ nodeId: node.id, data: collectRangeData(tableCols, targetCols, r.rows) }),
+          setRangeData({
+            nodeId: node.id,
+            data: collectRangeData(tableCols, targetCols, r.rows),
+          }),
       )
       .catch((e) => {
         if (cancelled) return;
@@ -235,7 +255,8 @@ export function ExplorationPanel({
   // effects after paint, so on the render that swaps the node `setRangeData(null)` has
   // not landed and the memo's other deps are unchanged: without this the cached array
   // from node A is handed to node B's scatter and applied positionally for one frame.
-  const nodeRange = rangeData && rangeData.nodeId === node.id ? rangeData.data : null;
+  const nodeRange =
+    rangeData && rangeData.nodeId === node.id ? rangeData.data : null;
 
   const clauses = useMemo(() => {
     if (!interactive || !nodeRange) return [];
@@ -287,14 +308,16 @@ export function ExplorationPanel({
   // the previous node's positions — mapping those through the new node's row_indices
   // yields rows nobody asked for. Sit the round out; the reset lands next render.
   const staleSelection =
-    selectedNode !== node.id || selected.some((i) => i >= node.row_indices.length);
+    selectedNode !== node.id ||
+    selected.some((i) => i >= node.row_indices.length);
 
   // A selection that *is* the node answers nothing: the predicate separates it from
   // itself, and the characteristics endpoint z-scores it against itself, which is where
   // the exactly-zero bars under "Selection characteristics — vs. {node}" came from. A
   // strict subset is the intended workflow (narrow in Ranges, inspect in Characteristics)
   // and is carried across tabs untouched; only the whole node is refused.
-  const wholeNodeSelection = selected.length > 0 && selected.length === node.row_indices.length;
+  const wholeNodeSelection =
+    selected.length > 0 && selected.length === node.row_indices.length;
 
   // …and refusing it would strand the user on the Ranges tab with a selection they
   // cannot use, so leaving that tab drops it. A whole-node lasso made on another tab is
@@ -360,7 +383,19 @@ export function ExplorationPanel({
     // reads (app.py:244), the other two endpoints read none of it, and the whole object
     // is minted fresh on every config keystroke — which re-ran this, at whole-node
     // scale, for knobs that cannot change the answer.
-  }, [selected, staleSelection, wholeNodeSelection, scope, interactive, node.id, dataset, featureCols, targetCols, tableCols, config.normalize]);
+  }, [
+    selected,
+    staleSelection,
+    wholeNodeSelection,
+    scope,
+    interactive,
+    node.id,
+    dataset,
+    featureCols,
+    targetCols,
+    tableCols,
+    config.normalize,
+  ]);
 
   // Selection -> characteristics, on its own so the cost is only paid while the tab
   // is open. Unlike the predicate this holds in interactive mode too: the filtered
@@ -369,7 +404,12 @@ export function ExplorationPanel({
   useEffect(() => {
     setCharSel(null);
     setCharFailed(false);
-    if (view !== "characteristics" || selected.length === 0 || staleSelection || wholeNodeSelection)
+    if (
+      view !== "characteristics" ||
+      selected.length === 0 ||
+      staleSelection ||
+      wholeNodeSelection
+    )
       return;
     let cancelled = false;
     fetchSelectionCharacteristics({
@@ -386,16 +426,25 @@ export function ExplorationPanel({
     };
     // `config.normalize` rather than `config`: it is the only field the endpoint
     // reads, and the whole object is minted fresh on every config keystroke.
-  }, [view, selected, staleSelection, wholeNodeSelection, node.id, dataset, featureCols, config.normalize]);
+  }, [
+    view,
+    selected,
+    staleSelection,
+    wholeNodeSelection,
+    node.id,
+    dataset,
+    featureCols,
+    config.normalize,
+  ]);
 
   const variance = (node.embedding_original_variance ?? []).filter(
     (v): v is number => v !== null,
   );
   // Both the axis labels and the variance strip describe *these* coordinates, so they
-  // follow the run that produced them. Off the live knob, flipping Method UMAP -> PCA
-  // relabelled UMAP coordinates "PC1/PC2" with nothing on screen to tell — the variance
-  // strip, which used to be the tell, is absent under the UMAP default because the
-  // backend only ever emits explained_variance_ratio for PCA.
+  // follow the run that produced them, not the live Method knob. Keyed off the knob
+  // instead, flipping Method UMAP -> PCA would relabel UMAP coordinates "PC1/PC2" with
+  // nothing on screen to tell: the variance strip is absent under the UMAP default,
+  // because the backend only ever emits explained_variance_ratio for PCA.
   const showVariance = builtMethod === "PCA" && variance.length > 0;
 
   function exportCsv() {
@@ -490,7 +539,9 @@ export function ExplorationPanel({
               ) : wholeNodeSelection ? (
                 <p className="hint">{WHOLE_NODE_HINT}</p>
               ) : charFailed ? (
-                <p className="hint">Could not compute characteristics for this selection.</p>
+                <p className="hint">
+                  Could not compute characteristics for this selection.
+                </p>
               ) : charSel === null ? (
                 <p className="hint">Computing characteristics…</p>
               ) : (
@@ -530,17 +581,19 @@ export function ExplorationPanel({
                     as 1.00 over 0 clauses — "Predicate F1: 1.00 · Features used:
                     0 / 2" reads as a perfect explanation of nothing. LayerSide
                     already says so instead of drawing it. */}
-                {predicate?.summary && predicate.summary.n_features_used === 0 ? (
+                {predicate?.summary &&
+                predicate.summary.n_features_used === 0 ? (
                   <p className="hint">
-                    No feature range separates this selection from the rest of the{" "}
-                    {scope === "global" ? "dataset" : "cluster"}.
+                    No feature range separates this selection from the rest of
+                    the {scope === "global" ? "dataset" : "cluster"}.
                   </p>
                 ) : (
                   <>
                     {predicate?.summary && (
                       <div className="predicate-summary">
                         <span>
-                          Predicate F1: {predicate.summary.predicate_f1.toFixed(2)}
+                          Predicate F1:{" "}
+                          {predicate.summary.predicate_f1.toFixed(2)}
                         </span>
                         <span>
                           Features used: {predicate.summary.n_features_used} /{" "}
@@ -564,7 +617,10 @@ export function ExplorationPanel({
           {targets && targets.targets.length > 0 && selected.length > 0 && (
             <div className="target-values">
               <h4>Target values — selection</h4>
-              <TargetBands targets={targets.targets} nSelected={targets.n_selected} />
+              <TargetBands
+                targets={targets.targets}
+                nSelected={targets.n_selected}
+              />
             </div>
           )}
         </div>
@@ -578,7 +634,9 @@ export function ExplorationPanel({
             onSelect={filtering ? () => {} : selectPoints}
             selected={filtering ? [] : selected}
             toolbarExtra={
-              showVariance ? <PcaVarianceBar explainedVariance={variance} /> : undefined
+              showVariance ? (
+                <PcaVarianceBar explainedVariance={variance} />
+              ) : undefined
             }
           />
         </div>
@@ -593,7 +651,9 @@ export function ExplorationPanel({
           <>
             <button onClick={exportCsv}>Export selected points to CSV</button>
             {imageSpec && (
-              <p className="hint">Click a row to see the image behind that point.</p>
+              <p className="hint">
+                Click a row to see the image behind that point.
+              </p>
             )}
             <div className="exploration__rows">
               <div className="table-scroll">
@@ -601,7 +661,10 @@ export function ExplorationPanel({
                   <thead>
                     <tr>
                       {rows.columns.map((c) => (
-                        <th key={c} className={cellClass(c, targetSet, firstTarget)}>
+                        <th
+                          key={c}
+                          className={cellClass(c, targetSet, firstTarget)}
+                        >
                           {c}
                         </th>
                       ))}
@@ -616,11 +679,24 @@ export function ExplorationPanel({
                       return (
                         <tr
                           key={i}
-                          className={imageSpec ? (active ? "is-pickable is-active" : "is-pickable") : undefined}
-                          onClick={imageSpec ? () => setImageRow(active ? null : rowId) : undefined}
+                          className={
+                            imageSpec
+                              ? active
+                                ? "is-pickable is-active"
+                                : "is-pickable"
+                              : undefined
+                          }
+                          onClick={
+                            imageSpec
+                              ? () => setImageRow(active ? null : rowId)
+                              : undefined
+                          }
                         >
                           {rows.columns.map((c) => (
-                            <td key={c} className={cellClass(c, targetSet, firstTarget)}>
+                            <td
+                              key={c}
+                              className={cellClass(c, targetSet, firstTarget)}
+                            >
                               {String(r[c])}
                             </td>
                           ))}

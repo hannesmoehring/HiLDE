@@ -322,8 +322,8 @@ def rows(req: RowsRequest) -> dict[str, Any]:
         ) from exc
     # Ids are positions into *this* dataset's frame. A client holding a tree built on
     # another dataset sends ids that are perfectly valid integers and simply too large,
-    # which pandas raises on — a bad request, not a server fault. Every sibling
-    # endpoint already answers 400 here; this one used to surface a 500 traceback.
+    # which pandas raises on — a bad request, not a server fault. Answer 400, as
+    # every sibling endpoint does, rather than letting it surface as a 500 traceback.
     if req.ids and (max(req.ids) >= len(df) or min(req.ids) < 0):
         raise HTTPException(
             status_code=400,

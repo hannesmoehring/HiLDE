@@ -99,7 +99,7 @@ def main() -> None:
     )
 
 
-# Everything above is definition only. The dataset load and the 200-trial study used to run
-# at module level, so `import src_research.dbcv_tuning` started a multi-minute optimisation.
+# Everything above is definition only; the dataset load and the 200-trial study run from
+# `main`, so importing this module does not start a multi-minute optimisation.
 if __name__ == "__main__":
     main()

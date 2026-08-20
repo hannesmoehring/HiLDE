@@ -228,6 +228,17 @@ main.py        Minimal smoke script — loads the wine CSV and runs one PCA.
 
 `src/` never imports from `backend/` or `frontend/`; the API is a wrapper over it.
 
+Four code maps go a level deeper than this overview, one per directory:
+
+- [`src/README.md`](./src/README.md) — the method. The pipeline end to end, the two node
+  kinds, predicate induction, the neighbourhood metrics, and every config knob.
+- [`backend/README.md`](./backend/README.md) — the HTTP API, the request/job lifecycle and
+  the two-tier cache.
+- [`frontend/README.md`](./frontend/README.md) — where state lives, the layer/exploration
+  layout, and every component, chart and hook.
+- [`src_research/README.md`](./src_research/README.md) — the experiment harnesses, what
+  each one tests, and the `rederive/` correction driver.
+
 ### Experiment outputs
 
 Harnesses write to `outputs/experiments/<timestamp>/`. **`outputs/` is not tracked in
@@ -241,11 +252,13 @@ working tree and back specific thesis sections.
 | `20260628_195214` | `planted_subspace_recovery.py` | RQ1 — clean H1b on planted subspaces |
 | `20260711_115849` | `predicate_stability.py` | RQ2 — H2, predicate stability under relaxation |
 | `20260728_185329` | `benchmark_workflow.py` | §6.5 benchmark walk, RQ1/RQ3 consistency checks |
-| `20260729_101836` | `pipeline_tuning.py` | EQ1b preset tuning — **halted mid-run**, see `EXPERIMENT_pipeline_tuning_STATUS.md` |
+| `20260729_101836` | `pipeline_tuning.py` | EQ1b preset tuning — **halted mid-run**, nothing integrated |
 | `20260728_190741_depth2_diag` | not in the repository | ad-hoc depth-2 noise diagnostic; the producing script was removed |
 
-Each `EXPERIMENT_*.md` in `src_research/` is the pre-registered design for its harness,
-written before the run.
+Each harness was pre-registered: its guards, objectives and acceptance criteria were fixed
+before the run. The design documents themselves are no longer kept in the repository — the
+thesis carries the design record, and the code in `src_research/` is what produced the
+numbers. See [`src_research/README.md`](./src_research/README.md).
 
 ### `rederived_20260813/`
 

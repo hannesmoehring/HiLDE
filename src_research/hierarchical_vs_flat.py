@@ -1,8 +1,7 @@
 """RQ1 experiment: hierarchical vs. flat embeddings (thesis).
 
-Implements the design in ``src_research/EXPERIMENT_hierarchical_vs_flat.md``. It tests
-whether the project's recursive, density-based hierarchical decomposition surfaces and
-isolates subspace structure better than a single global ("flat") projection, along two
+Tests whether the project's recursive, density-based hierarchical decomposition surfaces
+and isolates subspace structure better than a single global ("flat") projection, along two
 separable claims:
 
     H1a - faithfulness of local views (no ground truth needed).  For each hierarchy
@@ -59,6 +58,9 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
 Run with::
 
     uv run python -m src_research.hierarchical_vs_flat
+
+``design SSN`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -336,11 +338,12 @@ def run_cell(
     """Build the hierarchy + the flat global embedding once, then run H1a (paired regions)
     and H1b (structure recovery). Returns (h1a_rows, h1b_rows, skip_rows).
 
-    ``_embed_original`` returns ``None`` for a region it could not project (it used to
-    fabricate an all-zeros embedding, which scored ~0.55 and was published as a real
-    result). An unprojectable region has no hierarchical arm, so it cannot enter a paired
-    test - it is dropped from H1a and recorded in ``skip_rows``, which the driver counts
-    and writes out. Never silently, and never by killing the whole grid.
+    ``_embed_original`` returns ``None`` for a region it could not project, rather than a
+    fabricated all-zeros embedding: that scores ~0.55, which is indistinguishable from a
+    real result. An earlier revision of this harness did fabricate one, and those scores
+    were published as real. An unprojectable region has no hierarchical arm, so it cannot
+    enter a paired test - it is dropped from H1a and recorded in ``skip_rows``, which the
+    driver counts and writes out. Never silently, and never by killing the whole grid.
 
     ``data`` is the preloaded ``(df, feature_cols, y)`` for this dataset (prepared once in
     the driver, not per cell) so workers neither reload nor re-subsample it."""
@@ -693,7 +696,7 @@ def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
 
 def print_skips(skipped: pd.DataFrame) -> None:
     """Regions dropped from H1a because a projection failed. Loud by design: a shrinking
-    denominator is not a neutral event, and the old all-zeros fallback used to hide it."""
+    denominator is not a neutral event, and an all-zeros fallback would hide it."""
     if skipped.empty:
         console.print("[dim]Skipped regions: 0 (every region was projectable).[/]")
         return

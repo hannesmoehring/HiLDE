@@ -1,10 +1,9 @@
 """Benchmark workflow walk (thesis §6.5).
 
-Implements the design in ``src_research/EXPERIMENT_benchmark_workflow.md`` — the
-descriptive census of what the *shipped defaults* produce on the three real benchmark
+The descriptive census of what the *shipped defaults* produce on the three real benchmark
 datasets, plus the four pre-registered consistency checks (C1–C4) derived from the
 completed experiments. Unlike the other harnesses this tests no hypothesis; every
-reporting and aggregation rule is fixed in the design doc *before* the run, and the
+reporting and aggregation rule is fixed in the design *before* the run, and the
 operationalisation of each pass/fail verdict is fixed in this file before any result
 was seen. If a check fails, the failure is the finding — degenerate builds are
 reported, never re-rolled (re-rolling a build until the tree looks better is silent
@@ -35,6 +34,9 @@ summary.md.
 Run with::
 
     uv run python -m src_research.benchmark_workflow
+
+``design §N`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -78,7 +80,7 @@ from src_research.hierarchical_vs_flat import (
 from src_research.predicate_stability import admitted_mask, build_predicate
 
 # --------------------------------------------------------------------------- #
-# CONFIG — fixed by the design doc (§3, §4). No new levels, no new datasets.   #
+# CONFIG — fixed by the design (§3, §4). No new levels, no new datasets.      #
 # --------------------------------------------------------------------------- #
 
 DATASETS_TO_RUN = [
@@ -266,8 +268,8 @@ def run_build(
     c2_rows: list[dict] = []
     purity_rows: list[dict] = []
     root_emb = tree["embedding_original"]
-    # `_embed_original` returns None for a projection that failed (it used to fabricate an
-    # all-zeros embedding, which scores ~0.55 and would enter C2 as a real comparator).
+    # `_embed_original` returns None for a projection that failed, rather than a fabricated
+    # all-zeros embedding — that scores ~0.55 and would enter C2 as a real comparator.
     # `root_emb[idx]` on None takes the whole build down, so the state is named, carried
     # into c2_paired.csv per row, and counted in tree_shape.csv — never silently absorbed.
     root_unprojected = root_emb is None

@@ -54,9 +54,9 @@ def load(key: str) -> dict[str, Any] | None:
             return json.load(fh)
     except (OSError, ValueError, EOFError):
         # A truncated/corrupt entry must never break a request — just recompute.
-        # gzip raises EOFError on truncation, which is not an OSError, so that case
-        # used to 500 every request for this config; delete it so the next build
-        # replaces it instead of hitting the same file forever.
+        # gzip raises EOFError on truncation, which is not an OSError, hence the
+        # explicit catch. Delete the file so the next build replaces it, instead of
+        # every request for this config hitting the same bad entry forever.
         path.unlink(missing_ok=True)
         return None
 

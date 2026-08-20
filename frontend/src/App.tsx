@@ -148,7 +148,6 @@ export default function App() {
           <b>Hi</b>erarchical <b>L</b>ocal <b>D</b>ecomposition &amp; <b>E</b>
           xplanation
         </span>
-        {/* TODO: swap in the real intro video once it is recorded. */}
         <a
           className="topbar__video"
           href="https://youtu.be/BHsBJ5zTIYA"

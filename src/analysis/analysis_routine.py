@@ -77,9 +77,9 @@ def _embed_original(
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """2D projection of a node's original (normalized) features, plus PCA explained
     variance when applicable. Returns `None` when the node cannot be projected — too
-    small, or the reducer raised. A zero embedding was fabricated here before, and an
-    (n, 2) array of origins passes every downstream shape check, so a failed
-    projection was scored and published as a real DR-quality result.
+    small, or the reducer raised. Never a fabricated zero embedding: an (n, 2) array of
+    origins passes every downstream shape check, so a failed projection would be scored
+    and reported as a real DR-quality result. (It was, in an earlier revision.)
     """
     n = X_orig.shape[0]
     if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:

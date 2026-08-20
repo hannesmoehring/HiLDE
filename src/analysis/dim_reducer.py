@@ -39,10 +39,6 @@ def fit_dimensionality_reducer(
     config: Config,
     n_components: int = 2,
 ) -> ReductionResult:
-    # if normalize:
-    #     scaler = StandardScaler()
-    #     X = scaler.fit_transform(X)
-
     clog.substep(
         f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D"
     )

@@ -1,8 +1,7 @@
 """Pipeline-level configuration tuning for dataset presets (EQ1b).
 
-Design and pre-registration: ``src_research/EXPERIMENT_pipeline_tuning.md``.
-Read it before changing anything here; the guards, objectives and acceptance
-criteria in this file are pre-registered and must not be tuned to taste.
+The guards, objectives and acceptance criteria in this file are pre-registered —
+fixed before the run — and must not be tuned to taste.
 
 Unlike ``src_research/hyperparameter_tuning.py`` (which optimises a *flat*
 ``DR -> cluster`` pipeline on a 500-row subsample), this harness optimises the
@@ -14,6 +13,9 @@ Run with::
 
     python -m src_research.pipeline_tuning            # all datasets
     python -m src_research.pipeline_tuning --datasets "Iris (Low)" --trials 6
+
+``design section N`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ warnings.filterwarnings("ignore")
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 # --------------------------------------------------------------------------- #
-# Pre-registered constants (EXPERIMENT_pipeline_tuning.md sections 4-6).       #
+# Pre-registered constants (design sections 4-6).                             #
 # --------------------------------------------------------------------------- #
 
 SEED = 42

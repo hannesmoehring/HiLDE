@@ -1,10 +1,9 @@
 """RQ2 experiment: predicate stability under relaxation (thesis).
 
-Implements the design in ``src_research/EXPERIMENT_predicate_stability.md``. It tests H2:
-as the relaxation threshold ``t`` is lowered from 1.0, the predicate describing a selection
-becomes more stable under small perturbations of that selection, while its specificity (F1
-against the unperturbed selection) degrades only gradually - so a favourable operating
-point exists. Decomposed:
+Tests H2: as the relaxation threshold ``t`` is lowered from 1.0, the predicate describing
+a selection becomes more stable under small perturbations of that selection, while its
+specificity (F1 against the unperturbed selection) degrades only gradually - so a
+favourable operating point exists. Decomposed:
 
     H2a - stability gain.       Mean pairwise Jaccard of the admitted sets across perturbed
         re-selections rises as t drops through {0.95, 0.9, 0.8}; F1 variance falls.
@@ -54,6 +53,9 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
 Run with::
 
     uv run python -m src_research.predicate_stability
+
+``design SSN`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations

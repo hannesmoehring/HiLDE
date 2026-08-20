@@ -21,9 +21,9 @@ from src.analysis.predicate_generator import generate_predicate
 def _sanitized(row: dict[str, Any]) -> dict[str, Any]:
     """NaN/Inf -> None, as every other payload module does.
 
-    Starlette encodes with allow_nan=False, and the failure happens while the
-    response is serialized — outside this module's caller's try — so an all-NaN
-    feature answered 500 instead of a payload.
+    Starlette encodes with allow_nan=False, and that failure happens while the
+    response is serialized — outside this module's caller's try, so it cannot be
+    caught there. An all-NaN feature has to be cleaned here or the request 500s.
     """
     return {k: (_finite(v) if isinstance(v, float) else v) for k, v in row.items()}
 
