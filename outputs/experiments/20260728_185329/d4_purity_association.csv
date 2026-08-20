@@ -1,0 +1,4 @@
+dataset,spearman_rho,n_leaves,median_purity,median_enrichment
+Wine quality (Low),0.06001470415926104,79,1.0,1.321003963011889
+Breast cancer (Low),-0.10139151151329985,37,1.0,1.5938375350140055
+Digits (Low),-0.3808365834970814,79,0.975,9.61764015951208

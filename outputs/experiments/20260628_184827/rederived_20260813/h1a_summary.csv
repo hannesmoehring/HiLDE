@@ -1,0 +1,181 @@
+dataset,method,region_def,metric,n_pairs,median_delta,win_rate,wilcoxon_p,rank_biserial,primary
+Breast cancer (Low),MDS,gt_class,trustworthiness,10,0.020670446651082974,1.0,0.001953125,1.0,True
+Breast cancer (Low),MDS,gt_class,continuity,10,0.010936769062841356,1.0,0.001953125,1.0,True
+Breast cancer (Low),MDS,gt_class,mrre_false,10,0.018801175430840866,1.0,0.001953125,1.0,False
+Breast cancer (Low),MDS,gt_class,mrre_missing,10,0.010642639462268233,1.0,0.001953125,1.0,False
+Breast cancer (Low),MDS,gt_class,stress,10,-0.0402820357376136,1.0,0.001953125,1.0,False
+Breast cancer (Low),MDS,hier_leaf,trustworthiness,36,0.08247240934988948,1.0,2.9103830456733704e-11,1.0,True
+Breast cancer (Low),MDS,hier_leaf,continuity,36,0.06998234076239174,0.9722222222222222,5.820766091346741e-11,0.9444444444444444,True
+Breast cancer (Low),MDS,hier_leaf,mrre_false,36,0.10467572748639398,1.0,2.9103830456733704e-11,1.0,False
+Breast cancer (Low),MDS,hier_leaf,mrre_missing,36,0.05888180445758362,1.0,2.9103830456733704e-11,1.0,False
+Breast cancer (Low),MDS,hier_leaf,stress,36,-0.1668886899500056,1.0,2.9103830456733704e-11,1.0,False
+Breast cancer (Low),PCA,gt_class,trustworthiness,10,0.020993217500487937,1.0,0.001953125,1.0,True
+Breast cancer (Low),PCA,gt_class,continuity,10,0.010979498260170917,1.0,0.001953125,1.0,True
+Breast cancer (Low),PCA,gt_class,mrre_false,10,0.020032741829006218,1.0,0.001953125,1.0,False
+Breast cancer (Low),PCA,gt_class,mrre_missing,10,0.009776168420690012,1.0,0.001953125,1.0,False
+Breast cancer (Low),PCA,gt_class,stress,10,-0.05127516799002391,1.0,0.001953125,1.0,False
+Breast cancer (Low),PCA,hier_leaf,trustworthiness,44,0.104315210932858,1.0,7.604826228942754e-09,1.0,True
+Breast cancer (Low),PCA,hier_leaf,continuity,44,0.09275362318840585,1.0,7.602604620271949e-09,1.0,True
+Breast cancer (Low),PCA,hier_leaf,mrre_false,44,0.09433865984053225,0.9772727272727273,8.150280179689022e-09,0.9545454545454546,False
+Breast cancer (Low),PCA,hier_leaf,mrre_missing,44,0.07278396782886215,1.0,7.604826228942754e-09,1.0,False
+Breast cancer (Low),PCA,hier_leaf,stress,44,-0.18445700211116664,1.0,7.604826228942754e-09,1.0,False
+Breast cancer (Low),UMAP,gt_class,trustworthiness,10,0.010144299984880367,1.0,0.001953125,1.0,True
+Breast cancer (Low),UMAP,gt_class,continuity,10,0.009841836902371337,1.0,0.001953125,1.0,True
+Breast cancer (Low),UMAP,gt_class,mrre_false,10,0.012601672983215406,1.0,0.001953125,1.0,False
+Breast cancer (Low),UMAP,gt_class,mrre_missing,10,0.00866455348721512,1.0,0.001953125,1.0,False
+Breast cancer (Low),UMAP,gt_class,stress,10,-0.07440120046772664,1.0,0.001953125,1.0,False
+Breast cancer (Low),UMAP,hier_leaf,trustworthiness,42,0.05390596245859408,0.8809523809523809,5.176389095140621e-09,0.7619047619047619,True
+Breast cancer (Low),UMAP,hier_leaf,continuity,42,0.04647441374415057,0.9523809523809523,1.0800249583553523e-09,0.9047619047619048,True
+Breast cancer (Low),UMAP,hier_leaf,mrre_false,42,0.06792694283063311,1.0,4.547473508864641e-13,1.0,False
+Breast cancer (Low),UMAP,hier_leaf,mrre_missing,42,0.050711053492268066,1.0,4.547473508864641e-13,1.0,False
+Breast cancer (Low),UMAP,hier_leaf,stress,42,-0.2600611558166453,1.0,4.547473508864641e-13,1.0,False
+Breast cancer (Low),t-SNE,gt_class,trustworthiness,10,0.0016681685061525342,0.5,0.21875,0.0,True
+Breast cancer (Low),t-SNE,gt_class,continuity,10,0.0005130568970355687,0.5,0.21875,0.0,True
+Breast cancer (Low),t-SNE,gt_class,mrre_false,10,-0.0013592076815715504,0.5,0.21875,0.0,False
+Breast cancer (Low),t-SNE,gt_class,mrre_missing,10,0.00037879447081956563,0.5,0.21875,0.0,False
+Breast cancer (Low),t-SNE,gt_class,stress,10,-0.5991938088822626,1.0,0.001953125,1.0,False
+Breast cancer (Low),t-SNE,hier_leaf,trustworthiness,48,-0.14322980940628005,0.16666666666666666,3.259433435367501e-07,-0.6666666666666666,True
+Breast cancer (Low),t-SNE,hier_leaf,continuity,48,-0.14300283050283052,0.20833333333333334,1.9448869141766982e-06,-0.5833333333333334,True
+Breast cancer (Low),t-SNE,hier_leaf,mrre_false,48,-0.2654966121794988,0.10416666666666667,7.262911208195186e-09,-0.7916666666666666,False
+Breast cancer (Low),t-SNE,hier_leaf,mrre_missing,48,-0.23450131012989012,0.125,1.5915226465044077e-08,-0.75,False
+Breast cancer (Low),t-SNE,hier_leaf,stress,48,30.243628046063584,0.08333333333333333,3.689335273926599e-09,-0.8333333333333334,False
+Concentric rings (Low),MDS,gt_class,trustworthiness,15,-2.97818479644274e-06,0.3333333333333333,0.9546892997346919,-0.3333333333333333,True
+Concentric rings (Low),MDS,gt_class,continuity,15,-2.97818479644274e-06,0.3333333333333333,0.803955078125,-0.3333333333333333,True
+Concentric rings (Low),MDS,gt_class,mrre_false,15,-4.761681734444245e-05,0.3333333333333333,0.803955078125,-0.3333333333333333,False
+Concentric rings (Low),MDS,gt_class,mrre_missing,15,-4.744485331320547e-05,0.3333333333333333,0.803955078125,-0.3333333333333333,False
+Concentric rings (Low),MDS,gt_class,stress,15,0.0003000645596114,0.3333333333333333,0.803955078125,-0.3333333333333333,False
+Concentric rings (Low),MDS,hier_leaf,trustworthiness,90,0.0,0.06666666666666667,2.0168051157950066e-05,-0.7551020408163265,True
+Concentric rings (Low),MDS,hier_leaf,continuity,90,0.0,0.06666666666666667,2.979627468244274e-05,-0.75,True
+Concentric rings (Low),MDS,hier_leaf,mrre_false,90,-0.000787959988000686,0.1111111111111111,1.0891702088115567e-08,-0.7674418604651163,False
+Concentric rings (Low),MDS,hier_leaf,mrre_missing,90,-0.0007782242274987916,0.1111111111111111,1.2051210890580414e-08,-0.7674418604651163,False
+Concentric rings (Low),MDS,hier_leaf,stress,90,0.0018536440715872001,0.1,4.96229468376772e-09,-0.8,False
+Concentric rings (Low),PCA,gt_class,trustworthiness,15,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,continuity,15,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,mrre_false,15,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,mrre_missing,15,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,stress,15,-1.231567155137791e-17,1.0,,1.0,False
+Concentric rings (Low),PCA,hier_leaf,trustworthiness,90,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,continuity,90,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,mrre_false,90,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,mrre_missing,90,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,stress,90,-1.090676679390624e-15,0.8888888888888888,,0.7777777777777778,False
+Concentric rings (Low),UMAP,gt_class,trustworthiness,15,-0.00010771101680184803,0.3333333333333333,0.1353759765625,-0.3333333333333333,True
+Concentric rings (Low),UMAP,gt_class,continuity,15,-0.0017013326939600004,0.06666666666666667,0.00201416015625,-0.8666666666666667,True
+Concentric rings (Low),UMAP,gt_class,mrre_false,15,0.0006832194505387301,0.8666666666666667,0.0008544921875,0.7333333333333333,False
+Concentric rings (Low),UMAP,gt_class,mrre_missing,15,6.224848748714873e-05,0.5333333333333333,0.5994873046875,0.06666666666666667,False
+Concentric rings (Low),UMAP,gt_class,stress,15,2.4537405794580045,0.0,6.103515625e-05,-1.0,False
+Concentric rings (Low),UMAP,hier_leaf,trustworthiness,90,-0.003273320882016484,0.24444444444444444,1.3126729964653583e-07,-0.5111111111111111,True
+Concentric rings (Low),UMAP,hier_leaf,continuity,90,-0.0037663246268656025,0.26666666666666666,5.397790372376531e-05,-0.4482758620689655,True
+Concentric rings (Low),UMAP,hier_leaf,mrre_false,90,0.00948619755541702,0.7333333333333333,1.909920749873139e-05,0.4666666666666667,False
+Concentric rings (Low),UMAP,hier_leaf,mrre_missing,90,0.004754895338376974,0.6222222222222222,0.014509694346057736,0.24444444444444444,False
+Concentric rings (Low),UMAP,hier_leaf,stress,90,7.945264631590452,0.0,1.7437900167092118e-16,-1.0,False
+Concentric rings (Low),t-SNE,gt_class,trustworthiness,15,0.00018282083558118778,1.0,0.0005610904399640751,1.0,True
+Concentric rings (Low),t-SNE,gt_class,continuity,15,8.891286539236543e-05,1.0,0.0005610904399640751,1.0,True
+Concentric rings (Low),t-SNE,gt_class,mrre_false,15,7.090020920719198e-05,1.0,0.0005610904399640751,1.0,False
+Concentric rings (Low),t-SNE,gt_class,mrre_missing,15,0.000375923549204904,1.0,0.0005610904399640751,1.0,False
+Concentric rings (Low),t-SNE,gt_class,stress,15,-0.24637192327234736,0.6666666666666666,0.2501771730662782,0.3333333333333333,False
+Concentric rings (Low),t-SNE,hier_leaf,trustworthiness,90,-0.21668425743503128,0.05555555555555555,6.450212308446056e-16,-0.8888888888888888,True
+Concentric rings (Low),t-SNE,hier_leaf,continuity,90,-0.23913908073350798,0.05555555555555555,6.450212308446056e-16,-0.8888888888888888,True
+Concentric rings (Low),t-SNE,hier_leaf,mrre_false,90,-0.20458102397362254,0.1111111111111111,1.0564020722946646e-15,-0.7777777777777778,False
+Concentric rings (Low),t-SNE,hier_leaf,mrre_missing,90,-0.26089623734140627,0.1111111111111111,1.0564020722946646e-15,-0.7777777777777778,False
+Concentric rings (Low),t-SNE,hier_leaf,stress,90,323.2483281225269,0.05555555555555555,6.450212308446056e-16,-0.8888888888888888,False
+Digits (Low),MDS,gt_class,trustworthiness,50,0.0787834492484541,1.0,1.7763568394002505e-15,1.0,True
+Digits (Low),MDS,gt_class,continuity,50,0.06289532162567235,1.0,1.7763568394002505e-15,1.0,True
+Digits (Low),MDS,gt_class,mrre_false,50,0.09689163731116462,1.0,1.7763568394002505e-15,1.0,False
+Digits (Low),MDS,gt_class,mrre_missing,50,0.07526177885296376,1.0,1.7763568394002505e-15,1.0,False
+Digits (Low),MDS,gt_class,stress,50,-0.22076759950660804,1.0,1.7763568394002505e-15,1.0,False
+Digits (Low),MDS,hier_leaf,trustworthiness,114,0.13542884990253412,1.0,1.9183556738165432e-20,1.0,True
+Digits (Low),MDS,hier_leaf,continuity,114,0.1356156012540518,1.0,1.9183556738165432e-20,1.0,True
+Digits (Low),MDS,hier_leaf,mrre_false,114,0.1520317002739932,1.0,1.9183556738165432e-20,1.0,False
+Digits (Low),MDS,hier_leaf,mrre_missing,114,0.14031454049567343,1.0,1.9183556738165432e-20,1.0,False
+Digits (Low),MDS,hier_leaf,stress,114,-0.3192524899092928,1.0,1.9183556738165432e-20,1.0,False
+Digits (Low),PCA,gt_class,trustworthiness,50,0.08115400096933462,0.9,7.715247637522892e-09,0.8,True
+Digits (Low),PCA,gt_class,continuity,50,0.06993905166239717,0.9,7.715247637522892e-09,0.8,True
+Digits (Low),PCA,gt_class,mrre_false,50,0.07436766525266086,0.9,1.7858337573242782e-09,0.8,False
+Digits (Low),PCA,gt_class,mrre_missing,50,0.06116782357842532,0.9,1.7858337573242782e-09,0.8,False
+Digits (Low),PCA,gt_class,stress,50,-0.24018106981948037,1.0,7.222037513283772e-10,1.0,False
+Digits (Low),PCA,hier_leaf,trustworthiness,121,0.13809523809523794,0.9834710743801653,1.9124979410645034e-21,0.9669421487603306,True
+Digits (Low),PCA,hier_leaf,continuity,121,0.13398692810457524,0.9752066115702479,1.7313486275703127e-21,0.9504132231404959,True
+Digits (Low),PCA,hier_leaf,mrre_false,121,0.13721361005967647,0.9834710743801653,1.5286190417449616e-21,0.9669421487603306,False
+Digits (Low),PCA,hier_leaf,mrre_missing,121,0.11383804799750818,0.9504132231404959,3.2996591555298895e-21,0.9008264462809917,False
+Digits (Low),PCA,hier_leaf,stress,121,-0.3510146645824828,1.0,1.3494043705835774e-21,1.0,False
+Digits (Low),UMAP,gt_class,trustworthiness,50,0.005177350552211746,0.64,0.004316904154682888,0.28,True
+Digits (Low),UMAP,gt_class,continuity,50,0.0009841618280320708,0.52,0.6947463342363385,0.04,True
+Digits (Low),UMAP,gt_class,mrre_false,50,0.02562079845564169,0.98,3.552713678800501e-15,0.96,False
+Digits (Low),UMAP,gt_class,mrre_missing,50,0.011118450129153745,0.94,4.9604764740251994e-11,0.88,False
+Digits (Low),UMAP,gt_class,stress,50,-0.1528661332802866,1.0,1.7763568394002505e-15,1.0,False
+Digits (Low),UMAP,hier_leaf,trustworthiness,114,0.031459971768501904,0.8421052631578947,8.187460847945443e-12,0.6842105263157895,True
+Digits (Low),UMAP,hier_leaf,continuity,114,0.016159047405971017,0.7105263157894737,1.1974519940664242e-06,0.42105263157894735,True
+Digits (Low),UMAP,hier_leaf,mrre_false,114,0.07114883362600827,0.9824561403508771,5.08619026342934e-20,0.9649122807017544,False
+Digits (Low),UMAP,hier_leaf,mrre_missing,114,0.04059479803389887,0.9649122807017544,4.826003289396478e-19,0.9298245614035088,False
+Digits (Low),UMAP,hier_leaf,stress,114,-0.2314459283419147,1.0,1.9183556738165432e-20,1.0,False
+Digits (Low),t-SNE,gt_class,trustworthiness,50,-0.005941836560252933,0.2,8.206055866333343e-05,-0.6,True
+Digits (Low),t-SNE,gt_class,continuity,50,0.005103472668068654,0.6,0.646186930259426,0.2,True
+Digits (Low),t-SNE,gt_class,mrre_false,50,-0.002155215838186675,0.4,0.05033925077592663,-0.2,False
+Digits (Low),t-SNE,gt_class,mrre_missing,50,0.0010998070325936027,0.5,0.9038440766674087,0.0,False
+Digits (Low),t-SNE,gt_class,stress,50,-0.04186469976061183,0.6,0.45385596360488867,0.2,False
+Digits (Low),t-SNE,hier_leaf,trustworthiness,121,-0.2295482295482295,0.05785123966942149,2.5080138844510813e-20,-0.8842975206611571,True
+Digits (Low),t-SNE,hier_leaf,continuity,121,-0.2502564102564103,0.1487603305785124,8.343927491046579e-19,-0.7024793388429752,True
+Digits (Low),t-SNE,hier_leaf,mrre_false,121,-0.3180707889864549,0.024793388429752067,2.111088155458425e-21,-0.9504132231404959,False
+Digits (Low),t-SNE,hier_leaf,mrre_missing,121,-0.29487774131313615,0.049586776859504134,3.824426519816096e-21,-0.9008264462809917,False
+Digits (Low),t-SNE,hier_leaf,stress,121,18.215880206290848,0.008264462809917356,1.5276798725377136e-21,-0.9834710743801653,False
+Swiss roll (Low),MDS,hier_leaf,trustworthiness,137,0.06490384615384603,1.0,3.1481520564695396e-24,1.0,True
+Swiss roll (Low),MDS,hier_leaf,continuity,137,0.05370370370370359,1.0,3.1481520564695396e-24,1.0,True
+Swiss roll (Low),MDS,hier_leaf,mrre_false,137,0.08667706167706157,1.0,3.148719442428699e-24,1.0,False
+Swiss roll (Low),MDS,hier_leaf,mrre_missing,137,0.08071184199177761,1.0,3.148719442428699e-24,1.0,False
+Swiss roll (Low),MDS,hier_leaf,stress,137,-0.2554347692515942,1.0,3.148719442428699e-24,1.0,False
+Swiss roll (Low),PCA,hier_leaf,trustworthiness,143,0.030555555555555447,0.986013986013986,6.910924739641197e-25,1.0,True
+Swiss roll (Low),PCA,hier_leaf,continuity,143,0.025000000000000022,0.986013986013986,6.910140911799581e-25,1.0,True
+Swiss roll (Low),PCA,hier_leaf,mrre_false,143,0.04877836048293993,0.993006993006993,4.733676714029718e-25,1.0,False
+Swiss roll (Low),PCA,hier_leaf,mrre_missing,143,0.04690555332994062,0.993006993006993,4.733676714029718e-25,1.0,False
+Swiss roll (Low),PCA,hier_leaf,stress,143,-0.1744459685861601,1.0,3.242341524898554e-25,1.0,False
+Swiss roll (Low),UMAP,hier_leaf,trustworthiness,147,0.0013440860215052641,0.5306122448979592,0.18924257865105198,0.0684931506849315,True
+Swiss roll (Low),UMAP,hier_leaf,continuity,147,0.0008064516129032695,0.5170068027210885,0.6226169234112753,0.034013605442176874,True
+Swiss roll (Low),UMAP,hier_leaf,mrre_false,147,0.0015622518165451238,0.564625850340136,0.08111348048251561,0.1292517006802721,False
+Swiss roll (Low),UMAP,hier_leaf,mrre_missing,147,0.00223084499494397,0.5578231292517006,0.03675519790710873,0.11564625850340136,False
+Swiss roll (Low),UMAP,hier_leaf,stress,147,2.8485182585372533,0.013605442176870748,8.963290114428245e-26,-0.9727891156462585,False
+Swiss roll (Low),t-SNE,hier_leaf,trustworthiness,146,-0.4364929732576792,0.04794520547945205,2.740914506184097e-25,-0.9041095890410958,True
+Swiss roll (Low),t-SNE,hier_leaf,continuity,146,-0.44281045751633996,0.0547945205479452,4.0419407384449624e-25,-0.8904109589041096,True
+Swiss roll (Low),t-SNE,hier_leaf,mrre_false,146,-0.4395000159135649,0.0273972602739726,1.2812018953528828e-25,-0.9452054794520548,False
+Swiss roll (Low),t-SNE,hier_leaf,mrre_missing,146,-0.46167449045982595,0.0273972602739726,1.4800456561235492e-25,-0.9452054794520548,False
+Swiss roll (Low),t-SNE,hier_leaf,stress,146,234.47731234916853,0.03424657534246575,1.4203035554702936e-25,-0.9315068493150684,False
+Wine quality (Low),MDS,gt_class,trustworthiness,10,0.036910950810916665,1.0,0.001953125,1.0,True
+Wine quality (Low),MDS,gt_class,continuity,10,0.024575201182705175,1.0,0.001953125,1.0,True
+Wine quality (Low),MDS,gt_class,mrre_false,10,0.03435901159028265,1.0,0.001953125,1.0,False
+Wine quality (Low),MDS,gt_class,mrre_missing,10,0.014450013151371566,1.0,0.001953125,1.0,False
+Wine quality (Low),MDS,gt_class,stress,10,-0.08536249207990014,1.0,0.001953125,1.0,False
+Wine quality (Low),MDS,hier_leaf,trustworthiness,98,0.10610916860916869,0.9897959183673469,8.860504485789392e-18,0.9795918367346939,True
+Wine quality (Low),MDS,hier_leaf,continuity,98,0.09880675954592383,0.9897959183673469,8.591416611780981e-18,0.9795918367346939,True
+Wine quality (Low),MDS,hier_leaf,mrre_false,98,0.14039172769959396,1.0,8.33039747348591e-18,1.0,False
+Wine quality (Low),MDS,hier_leaf,mrre_missing,98,0.0955707438074106,1.0,8.33039747348591e-18,1.0,False
+Wine quality (Low),MDS,hier_leaf,stress,98,-0.202116571451543,1.0,8.33039747348591e-18,1.0,False
+Wine quality (Low),PCA,gt_class,trustworthiness,10,0.043913317838375876,1.0,0.001953125,1.0,True
+Wine quality (Low),PCA,gt_class,continuity,10,0.023925162942057043,1.0,0.001953125,1.0,True
+Wine quality (Low),PCA,gt_class,mrre_false,10,0.040550287446410926,1.0,0.001953125,1.0,False
+Wine quality (Low),PCA,gt_class,mrre_missing,10,0.016358376090654658,1.0,0.001953125,1.0,False
+Wine quality (Low),PCA,gt_class,stress,10,-0.12412422764897693,1.0,0.001953125,1.0,False
+Wine quality (Low),PCA,hier_leaf,trustworthiness,77,0.1090909090909089,1.0,2.461424186637211e-14,1.0,True
+Wine quality (Low),PCA,hier_leaf,continuity,77,0.11082807849992726,1.0,2.461424186637211e-14,1.0,True
+Wine quality (Low),PCA,hier_leaf,mrre_false,77,0.11375288694668861,1.0,2.461424186637211e-14,1.0,False
+Wine quality (Low),PCA,hier_leaf,mrre_missing,77,0.10070801643490823,1.0,2.461424186637211e-14,1.0,False
+Wine quality (Low),PCA,hier_leaf,stress,77,-0.24871899533952774,1.0,2.461424186637211e-14,1.0,False
+Wine quality (Low),UMAP,gt_class,trustworthiness,10,0.00658042087184918,0.8,0.013671875,0.6,True
+Wine quality (Low),UMAP,gt_class,continuity,10,-0.002762043088840427,0.2,0.01953125,-0.6,True
+Wine quality (Low),UMAP,gt_class,mrre_false,10,0.009129862269981914,0.9,0.00390625,0.8,False
+Wine quality (Low),UMAP,gt_class,mrre_missing,10,0.0012523630110117812,0.5,0.625,0.0,False
+Wine quality (Low),UMAP,gt_class,stress,10,-0.06780778108299382,0.5,0.232421875,0.0,False
+Wine quality (Low),UMAP,hier_leaf,trustworthiness,64,0.017673184166728806,0.75,4.934210176132941e-06,0.5,True
+Wine quality (Low),UMAP,hier_leaf,continuity,64,0.014165917939502781,0.65625,0.0006170607428825585,0.3125,True
+Wine quality (Low),UMAP,hier_leaf,mrre_false,64,0.052223288930607015,0.90625,1.307962119816359e-11,0.8125,False
+Wine quality (Low),UMAP,hier_leaf,mrre_missing,64,0.03895373631848409,0.8125,2.109780009593849e-10,0.625,False
+Wine quality (Low),UMAP,hier_leaf,stress,64,-0.37399867022046107,0.953125,4.908681071049331e-12,0.90625,False
+Wine quality (Low),t-SNE,gt_class,trustworthiness,10,-0.00450584573320334,0.0,0.001953125,-1.0,True
+Wine quality (Low),t-SNE,gt_class,continuity,10,-0.008921156707944411,0.0,0.001953125,-1.0,True
+Wine quality (Low),t-SNE,gt_class,mrre_false,10,-0.003160578921370394,0.0,0.001953125,-1.0,False
+Wine quality (Low),t-SNE,gt_class,mrre_missing,10,-0.00638299885251753,0.5,0.21875,0.0,False
+Wine quality (Low),t-SNE,gt_class,stress,10,-0.1875796277168944,0.5,0.21875,0.0,False
+Wine quality (Low),t-SNE,hier_leaf,trustworthiness,83,-0.19861111111111107,0.1927710843373494,5.870762926847276e-11,-0.6144578313253012,True
+Wine quality (Low),t-SNE,hier_leaf,continuity,83,-0.16505417956656332,0.26506024096385544,1.2769617865784814e-09,-0.46987951807228917,True
+Wine quality (Low),t-SNE,hier_leaf,mrre_false,83,-0.23335297934787158,0.07228915662650602,2.077729108429841e-14,-0.8554216867469879,False
+Wine quality (Low),t-SNE,hier_leaf,mrre_missing,83,-0.23173664815178618,0.08433734939759036,4.817962436335018e-14,-0.8313253012048193,False
+Wine quality (Low),t-SNE,hier_leaf,stress,83,59.595820381428055,0.0963855421686747,1.2209972828816079e-14,-0.8072289156626506,False

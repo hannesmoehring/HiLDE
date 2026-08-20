@@ -1,0 +1,53 @@
+{
+  "dataset": "Iris (Low)",
+  "adopted": true,
+  "A1_separation": true,
+  "A2_view": true,
+  "A3_interactive": true,
+  "A4_reliable": true,
+  "A5_granularity": true,
+  "A6_ari": true,
+  "baseline_dbcv_mean": 0.29669817888017835,
+  "baseline_dbcv_max": 0.29669817888017835,
+  "preset_dbcv_mean": 0.5899971075552601,
+  "preset_dbcv_min": 0.5899971075552601,
+  "baseline_tnc_mean": 0.9666006426311343,
+  "preset_tnc_mean": 0.9816222723402754,
+  "baseline_ari_mean": 0.5484194032210918,
+  "preset_ari_mean": 0.5682190844535868,
+  "baseline_noise_mean": 0.013333333333333332,
+  "preset_noise_mean": 0.02,
+  "baseline_seconds_median": 13.08273458480835,
+  "preset_seconds_median": 1.935105323791504,
+  "baseline_leaves": [
+    2,
+    2,
+    2,
+    2,
+    2
+  ],
+  "preset_leaves": [
+    2,
+    2,
+    2,
+    2,
+    2
+  ],
+  "config": {
+    "hierarchical_layers": 2,
+    "hclust_umap_n_components": 4,
+    "hclust_min_cluster_size": 32,
+    "hclust_min_samples": 12,
+    "umap_n_neighbors": 37,
+    "umap_min_dist": 0.0045856818659277265,
+    "method": "MDS",
+    "mds_n_init": 3,
+    "mds_max_iter": 188
+  },
+  "feature_cols": [
+    "sepal length (cm)",
+    "sepal width (cm)",
+    "petal length (cm)",
+    "petal width (cm)"
+  ]
+}

@@ -1,0 +1,21 @@
+dataset,method,region_def,metric,n_pairs,median_delta,win_rate,wilcoxon_p,rank_biserial,primary
+Concentric rings (Low),PCA,gt_class,trustworthiness,3,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,continuity,3,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,mrre_false,3,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,mrre_missing,3,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,stress,3,-4.704355233018213e-17,0.6666666666666666,,0.3333333333333333,False
+Concentric rings (Low),PCA,hier_leaf,trustworthiness,7,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,continuity,7,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,mrre_false,7,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,mrre_missing,7,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,stress,7,-3.1101994656492006e-16,0.8571428571428571,,0.7142857142857143,False
+Concentric rings (Low),UMAP,gt_class,trustworthiness,3,0.0005617433414042416,0.6666666666666666,0.75,0.3333333333333333,True
+Concentric rings (Low),UMAP,gt_class,continuity,3,-0.008376612497905889,0.3333333333333333,1.0,-0.3333333333333333,True
+Concentric rings (Low),UMAP,gt_class,mrre_false,3,0.0002962436832697479,0.0,0.25,-1.0,False
+Concentric rings (Low),UMAP,gt_class,mrre_missing,3,-0.00225222994327845,0.6666666666666666,1.0,0.3333333333333333,False
+Concentric rings (Low),UMAP,gt_class,stress,3,2.818081845735763,0.0,0.25,-1.0,False
+Concentric rings (Low),UMAP,hier_leaf,trustworthiness,7,-0.016869095816464008,0.0,0.015625,-1.0,True
+Concentric rings (Low),UMAP,hier_leaf,continuity,7,-0.005487179487179694,0.0,0.015625,-1.0,True
+Concentric rings (Low),UMAP,hier_leaf,mrre_false,7,-0.010302915727947837,0.8571428571428571,0.046875,0.7142857142857143,False
+Concentric rings (Low),UMAP,hier_leaf,mrre_missing,7,-0.0054503420628129184,1.0,0.015625,1.0,False
+Concentric rings (Low),UMAP,hier_leaf,stress,7,3.0452049575587266,0.0,0.015625,-1.0,False

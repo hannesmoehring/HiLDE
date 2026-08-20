@@ -1,0 +1,31 @@
+{
+  "timestamp_utc": "20260728_185329",
+  "design_doc": "src_research/EXPERIMENT_benchmark_workflow.md",
+  "datasets": [
+    "Wine quality (Low)",
+    "Breast cancer (Low)",
+    "Digits (Low)"
+  ],
+  "n_builds": 5,
+  "hierarchical_layers": 4,
+  "t_grid": [
+    1.0,
+    0.95,
+    0.9,
+    0.8
+  ],
+  "tail_split": "severity",
+  "min_selection": 20,
+  "c2_min_n": 41,
+  "versions": {
+    "python": "3.13.13",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "scikit-learn": "1.9.0",
+    "umap-learn": "0.5.12",
+    "hdbscan": "0.8.44",
+    "zadu": "0.4.2",
+    "scipy": "1.18.0"
+  },
+  "platform": "Linux-6.18.5-x86_64-with-glibc2.39"
+}

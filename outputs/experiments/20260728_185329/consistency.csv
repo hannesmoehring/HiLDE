@@ -1,0 +1,9 @@
+check,prediction,observed,verdict
+C1,"dense recall at t=0.95 ≥ t^d and ≪ 1 for d=30, 64; digits < 0.5",Breast cancer (Low): median 0.3448 vs bound 0.2146; Digits (Low): median 0.3774 vs bound 0.0375 (< 0.5); wine (in-sample): 0.5745 vs bound 0.5688,PASS
+C2,"small positive median Δtrust (0 < median ≤ 0.05), win rate in [0.5, 0.8] (pooled, n≥41, non-degenerate)","median Δtrust +0.0208, win rate 0.81, n=101, median Δcont +0.0069, Wilcoxon p=9.7e-12",FAIL
+C3 [Wine quality (Low)],"per-build noise fraction in [0.00, 0.19] (H1b UMAP range); band [0.00, 0.29]","builds: [0.204 0.253 0.262 0.292 0.323], median 0.262",FAIL
+C3 [Breast cancer (Low)],"per-build noise fraction in [0.15, 0.32] (H1b UMAP range); band [0.07, 0.48]","builds: [0.322 0.401 0.425 0.518 0.591], median 0.425",FAIL
+C3 [Digits (Low)],"per-build noise fraction in [0.12, 0.17] (H1b UMAP range); band [0.06, 0.26]","builds: [0.086 0.1   0.105 0.113 0.175], median 0.105",PASS-WITH-EXCURSION
+C4 [Wine quality (Low)],"strict median in (8, 12), relaxed (t=0.95) in (4, 8) (RQ2: 10 → 6 ± 2)","strict median 10.0, relaxed median 6.0 (n_leaf-records 79/79)",PASS
+C4 [Breast cancer (Low)],direction: relaxed median < strict median ≪ d=30 (strict < d/2),"strict median 9.0, relaxed median 7.0 (n_leaf-records 37/37)",PASS
+C4 [Digits (Low)],direction: relaxed median < strict median ≪ d=64 (strict < d/2),"strict median 12.0, relaxed median 7.0 (n_leaf-records 79/79)",PASS
