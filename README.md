@@ -109,11 +109,18 @@ cd frontend && npm install && npm run build
 
 ### Tests and checks
 
-The test suite is two scripts, run as modules:
+The test suite is three scripts, run as modules:
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
+PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
+```
+
+The same files run under pytest (a dev dependency, installed by `uv sync`):
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q
 ```
 
 `scripts/checks/` holds four regression checks retained from the pre-release code
@@ -188,7 +195,13 @@ flag, so it can never outlive the path it was set for.
 **Exploration panel.** The per-node embedding, with lasso and box selection. The
 selection drives three tabs. *Predicate* induces an axis-aligned conjunction describing
 the selection and reports its F1, precision and recall, scoped either against the whole
-dataset (global) or against the explored node (local). *Characteristics* shows the
+dataset (global) or against the explored node (local). Clauses are listed in the order the
+greedy search added them, each with the **ΔF1 it gained when it was added** and the number
+of background points the conjunction still matched at that step; the summary reads as a
+trajectory (`F1 0.42 → 0.91`) from the empty predicate to the final one. That gain is a
+property of the construction *order*, not of the feature — it is conditional on the
+clauses already chosen and on the interval the range-coverage trim produced, so it is not
+feature importance. *Characteristics* shows the
 selection's per-column z-scores against the node's own baseline. A selection covering the
 entire node is refused in both, because the comparison would be self-referential.
 
@@ -333,11 +346,11 @@ as one.
   remaining 2195 are noise. They are not lost — the layer view, via *Explore entire
   layer*, is where they can be selected — but child cluster sizes do not sum to the
   parent's.
-- **The test suite is minimal.** Two scripts (`backend/tests/`) covering tree
-  serialization and target statistics, plus the four regression checks in
-  `scripts/checks/`. There is no test runner configuration and no coverage of the
-  frontend. `uv run ruff format --check .` passes; `uv run ruff check .` does not
-  (33 findings).
+- **The test suite is backend-only.** Three scripts (`backend/tests/`) covering tree
+  serialization, target statistics and predicate clause bookkeeping, plus the four
+  regression checks in `scripts/checks/`. There is no test runner configuration and no
+  automated coverage of the frontend. `uv run ruff format --check .` passes;
+  `uv run ruff check .` does not (33 findings).
 - **t-SNE and PCA seed replicates are repeats, not replicates.** The experiment harnesses
   vary a seed across replicates and thread it into `tsne_random_state`, but `_tsne` passes
   no `init`, and scikit-learn's default `init="pca"` never consults `random_state`. PCA

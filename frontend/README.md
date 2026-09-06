@@ -119,11 +119,28 @@ deliberate provenance — the files they name are not in this repository.
 | `CharacteristicsBar.tsx` | **B** — z-score bars per column with ±`z_std` error bars and sign-based colouring. |
 | `ProjectionScatter.tsx` | **C** — the exploration embedding (equal aspect) with lasso + box selection. |
 | `PcaVarianceBar.tsx` | **D** — compact stacked explained-variance strip that rides in the projection toolbar. |
-| `PredicateBands.tsx` | **E** — one row per feature, each normalised to its own global range: a faint track, a translucent full band (RCM 1.0) and a solid core band (RCM 0.9). Clause features are indigo and sort to the top. |
+| `PredicateBands.tsx` | **E** — one row per feature, each normalised to its own global range: a faint track, a translucent full band (RCM 1.0) and a solid core band (RCM 0.9). Clause features are indigo and sort to the top in the order the greedy loop added them, each carrying its ΔF1 when added and its match count. |
 | `TargetBands.tsx` | **E2** — E's row geometry for the held-out `target_*` columns, drawn entirely in the target hue so an indigo band always means "predicate clause" and a teal one never does. |
 | `ScoreTiles.tsx` | **F** — trustworthiness / continuity / stress / CADI. The bar under each value is a *quality* reading, so longer and cooler is better on every tile: the two distortion measures are inverted before they reach a bar. |
 | `OutlierHistogram.tsx` | GLOSH score distribution over the fixed range `[0, 1]`, so shapes are comparable between layers. New here, not a port — its props are declared in the file rather than in `props.ts`. |
 | `theme.ts` | Design tokens. Neutral shell, ink type, hairline rules; **colour is reserved for data**. Keep in sync with the custom properties in `styles.css`. |
+
+**How `PredicateBands` shows the construction.** Row order *is* the RCM 1.0 greedy order —
+selected clauses by ascending `predicate_step`, everything else by standalone F1. A right
+gutter gives each clause the F1 it bought at its step and the number of background points
+the conjunction still matched there (`+0.214 · 47`); the gain deliberately does not touch
+band width or opacity, which already carry the interval and the membership. A displayed
+`+0.000` is genuine — the greedy stopping tolerance is `1e-6` — and that is exactly why
+the exact match count sits beside it. The tooltip adds the F1 transition
+(`before → after`), precision/recall after the step, and the renamed **Standalone F1**;
+unselected features show "Not selected" and their standalone F1 only. Because the RCM 0.9
+run is a *separate* greedy pass whose membership and order both differ, it gets its own
+tooltip block instead of being folded into the 1.0 numbers. The predicate summaries in
+`LayerSide.tsx` and `ExplorationPanel.tsx` show both runs as trajectories
+(`F1 0.18 → 0.54`, `Core F1 0.18 → 0.51`); the left-hand number is the empty predicate —
+labelled "no clauses (all 150 points)" in its `title`, with the real background size from
+the summary's `n_background` — and is a function of the selection and background sizes,
+never a score.
 
 ### Hooks
 

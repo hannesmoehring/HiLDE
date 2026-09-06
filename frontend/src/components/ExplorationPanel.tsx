@@ -591,10 +591,27 @@ export function ExplorationPanel({
                   <>
                     {predicate?.summary && (
                       <div className="predicate-summary">
-                        <span>
+                        {/* Trajectory, not a score: the left number is the empty
+                            predicate's F1, which depends only on how many points
+                            were selected out of how many. */}
+                        <span
+                          title={`Baseline: no clauses (all ${predicate.summary.n_background} points) → final predicate`}
+                        >
                           Predicate F1:{" "}
+                          {predicate.summary.predicate_baseline_f1.toFixed(2)} →{" "}
                           {predicate.summary.predicate_f1.toFixed(2)}
                         </span>
+                        {predicate.summary.trimmed_baseline_f1 !== null &&
+                          predicate.summary.trimmed_predicate_f1 !== null && (
+                            <span
+                              title={`Core (RCM 0.9) run, built separately. Baseline: no clauses (all ${predicate.summary.n_background} points) → final predicate`}
+                            >
+                              Core F1 (RCM 0.9):{" "}
+                              {predicate.summary.trimmed_baseline_f1.toFixed(2)}{" "}
+                              →{" "}
+                              {predicate.summary.trimmed_predicate_f1.toFixed(2)}
+                            </span>
+                          )}
                         <span>
                           Features used: {predicate.summary.n_features_used} /{" "}
                           {predicate.summary.n_features_total}

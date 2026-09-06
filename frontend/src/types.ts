@@ -94,12 +94,27 @@ export interface PredicateRow {
   sel_range: number;
   global_min: number;
   global_max: number;
-  clause_f1: number;
+  clause_f1: number; // this clause ALONE against the selection ("Standalone F1")
   clause_precision: number;
   clause_recall: number;
   in_predicate: boolean;
-  predicate_step: number | null;
-  predicate_f1: number;
+  predicate_step: number | null; // zero-based greedy selection order
+  predicate_f1: number; // F1 of the FINAL conjunction; identical on every row
+  // ── Marginal contribution of this clause at the step it was added ─────────
+  // Populated for selected clauses only; `null` on unselected clauses and on the
+  // whole no-labels path. The gain is a property of the CONSTRUCTION ORDER, not
+  // of the feature: it is conditional on the clauses already chosen and on the
+  // fixed interval the RCM trim produced, so it is not feature importance.
+  predicate_f1_before: number | null; // conjunction F1 before this clause
+  predicate_f1_after: number | null; // conjunction F1 after this clause
+  predicate_f1_gain: number | null; // after - before
+  predicate_n_matched: number | null; // |M_k| — background points still matched
+  predicate_precision: number | null; // precision of the conjunction after this step
+  predicate_recall: number | null; // recall of the conjunction after this step
+  // F1 of the EMPTY conjunction (matches all N background points). Identical on
+  // every row, present even when nothing was selected. 2|S|/(N+|S|) — a function
+  // of selection and background size only, so it is never an informative score.
+  predicate_baseline_f1: number;
 }
 
 // Characteristics of a lasso selection rather than of a whole node: same records as
@@ -109,10 +124,20 @@ export interface CharacteristicsResponse {
 }
 
 export interface PredicateSummary {
-  predicate_f1: number;
+  predicate_f1: number; // RCM 1.0 final conjunction F1
+  predicate_baseline_f1: number; // RCM 1.0 empty-conjunction F1 (see PredicateRow)
+  // The RCM 0.9 run is a SEPARATE greedy construction: its clause membership and
+  // its order can both differ from the 1.0 run, so it carries its own trajectory
+  // rather than reusing the numbers above. `null` when the trimmed run produced
+  // no rows.
+  trimmed_predicate_f1: number | null;
+  trimmed_baseline_f1: number | null;
   n_features_used: number;
   n_features_total: number;
   n_selected: number;
+  // Size of the background the baseline was scored on (the node in local scope,
+  // the whole dataset in global scope) — the N in "no clauses (all N points)".
+  n_background: number;
 }
 
 export interface PredicateResponse {

@@ -165,6 +165,22 @@ improves it. Every feature gets a row back, whether or not it entered the conjun
 | `clause_f1`, `clause_precision`, `clause_recall` | this clause **alone** against the selection |
 | `in_predicate`, `predicate_step` | did it enter the conjunction, and at which step |
 | `predicate_f1` | F1 of the **final** conjunction (identical on every row) |
+| `predicate_baseline_f1` | F1 of the **empty** conjunction, which matches every background point (identical on every row) |
+| `predicate_f1_before`, `predicate_f1_after`, `predicate_f1_gain` | the conjunction's F1 either side of the step this clause was added at, and the difference |
+| `predicate_n_matched`, `predicate_precision`, `predicate_recall` | how many background points the conjunction still matched after that step, and its precision/recall there |
+
+The six per-step fields are `None` on clauses that never entered the conjunction and on
+the whole no-labels path; `predicate_baseline_f1` is present everywhere. The baseline is
+`2·|S| / (N + |S|)` — a function of the selection and background sizes only, never an
+informative score — and `baseline + Σ gains = predicate_f1` by construction. Ties in the
+greedy step resolve to the lowest feature-column index.
+
+**The gain is not feature importance.** It is a property of the construction order: it is
+conditional on the clauses already chosen (a redundant copy of an earlier clause gains
+nothing), and conditional on the **fixed interval the RCM trim produced** rather than on
+the feature itself, so a discriminative feature with an unlucky `0.9` trim scores low. It
+is defined only for greedy/sequential construction, and the RCM 1.0 and 0.9 runs each
+produce their own order.
 
 `threshold` is the range-coverage multiplier (RCM): the interval is trimmed to that
 quantile coverage, so `1.0` is the selection's full range and `0.9` a trimmed core. The

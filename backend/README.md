@@ -100,7 +100,7 @@ the tree, so the server never has to remember which node is open.
 | `images.py` | Pixel lookup for the four image datasets. Returns plain numbers — the frontend draws the canvas, so there is no image library on the server. |
 | `datasets.py` | Thin access to `src/datasets.py`. Also defines `default_feature_cols`: everything except `row_id` and `target_*`. |
 | `requirements.txt` | Pinned to the resolved `uv.lock` for the Docker image. If `pyproject.toml` changes, re-lock and re-pin this to match. |
-| `tests/` | `test_serialize.py` (tree → JSON contract) and `test_targets.py` (target statistics). Run as modules, see below. |
+| `tests/` | `test_serialize.py` (tree → JSON contract), `test_targets.py` (target statistics) and `test_predicate.py` (clause ΔF1 bookkeeping). Run as modules, see below. |
 
 ---
 
@@ -147,9 +147,10 @@ into it.
 # API only (frontend runs separately on :5173 in dev)
 PYTHONPATH=. uv run uvicorn backend.app:app --reload --port 8000
 
-# tests
+# tests (each script also runs under pytest: PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q)
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
+PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
 
 # formatting
 uv run ruff format --check .
