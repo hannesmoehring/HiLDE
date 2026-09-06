@@ -25,8 +25,15 @@ from pydantic import BaseModel
 
 from backend import datasets as ds
 from backend import images as ds_images
-from backend import jobs, run_cache
+from backend import jobs, movement_jobs, run_cache
 from backend.characteristics import compute_selection_characteristics
+from backend.movement import (
+    MovementError,
+    MovementRequestData,
+    compute_validated_movement,
+    needs_background,
+    validate_request,
+)
 from backend.predicate import compute_predicate
 from backend.serialize import (
     SCHEMA_VERSION,
@@ -114,6 +121,17 @@ class TargetsRequest(BaseModel):
     target_cols: list[str]
     row_indices: list[int]
     selected_local_indices: list[int]
+
+
+class MovementRequest(BaseModel):
+    analysis_id: str
+    dataset: str
+    feature_cols: list[str]
+    config: dict[str, Any] = {}
+    node_id: str
+    source_child_index: int
+    target: dict[str, Any]
+    strength: float | None = None
 
 
 class RowsRequest(BaseModel):
@@ -279,6 +297,65 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Predicate failed: {exc}") from exc
+
+
+@app.post("/api/movement")
+def movement(req: MovementRequest) -> dict[str, Any]:
+    """A counterfactual preview: move one child cluster toward a point or a sibling.
+
+    PCA answers inline, always — the displacement is one pinv solve against an
+    already cached projection artifact, and it is what the strength slider calls;
+    routing it through a poll would turn an instant interaction into a round
+    trip. So does a UMAP request whose reducer is already in the artifact LRU.
+    Only a UMAP request that still has to refit the node's projection becomes a
+    job: the analysis discards its fitted reducers, so that first movement pays
+    for a full UMAP fit, which can outlast a proxy's response timeout.
+
+    Validation runs here either way, before any job is submitted, so a bad
+    request is an HTTP 400/409 rather than a job that fails one poll later.
+
+    Nothing is written back: the dataframe, the tree and the cached payload are
+    all read-only here, and the movement result itself is never persisted (see
+    backend/movement_jobs.py).
+
+    The movement is answered against the run the client is looking at, which is
+    the payload under this request's own cache key. `validate_request` compares
+    the stored `analysis_id` with the requested one and answers 409 when they
+    disagree, when the payload is gone, or when it predates `effective_config`.
+    """
+    try:
+        df = ds.load(req.dataset)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown dataset: {req.dataset}"
+        ) from exc
+    payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
+    data = MovementRequestData(**req.model_dump())
+    try:
+        validated = validate_request(data, payload)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if needs_background(validated):
+        return movement_jobs.envelope(
+            movement_jobs.submit(
+                movement_jobs.job_key(data),
+                lambda: compute_validated_movement(validated, df),
+            )
+        )
+    try:
+        return compute_validated_movement(validated, df)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.get("/api/movement/jobs/{job_id}")
+def movement_job(job_id: str) -> dict[str, Any]:
+    """Poll a movement job. Terminal success returns the `MovementResponse` itself."""
+    job = movement_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown movement job")
+    return movement_jobs.envelope(job)
 
 
 @app.post("/api/characteristics")
