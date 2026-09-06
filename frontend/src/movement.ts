@@ -308,6 +308,12 @@ export interface MovementController {
   /** `state.response` re-expressed at the slider's strength — what the chart
    *  should draw as ghosts. Null unless `state.phase === "ready"`. */
   preview: MovementResponse | null;
+  /** True only when the preview on screen is EXACTLY what the server would
+   *  write on Apply: phase `ready`, no strength re-request pending or in
+   *  flight, the response answered at the slider's own strength, and the
+   *  response belongs to the run on screen. `ready` alone is not enough — the
+   *  hook stays `ready` while a UMAP refinement is pending or after one failed. */
+  settled: boolean;
   /** Enter movement mode for one child of one node. Re-calling it with a
    *  different source replaces the movement (and drops anything in flight). */
   start: (nodeId: string, sourceChildIndex: number) => void;
@@ -337,13 +343,18 @@ export function useMovement(args: UseMovementArgs): MovementController {
   // response that belongs to a superseded question can be recognised as such.
   const genRef = useRef(0);
 
-  // A UMAP strength re-request waiting for the slider to settle.
+  // A UMAP strength re-request waiting for the slider to settle. Mirrored in
+  // state (`pending`, `inFlight`) so `settled` re-renders when they change; the
+  // refs are what the callbacks read.
   const pendingRef = useRef<number | null>(null);
+  const [pending, setPending] = useState(false);
+  const [inFlight, setInFlight] = useState(0);
   const clearPending = useCallback(() => {
     if (pendingRef.current !== null) {
       window.clearTimeout(pendingRef.current);
       pendingRef.current = null;
     }
+    setPending(false);
   }, []);
 
   const cancel = useCallback(() => {
@@ -418,7 +429,10 @@ export function useMovement(args: UseMovementArgs): MovementController {
       };
       if (showLoading) setState({ phase: "loading", nodeId, sourceChildIndex, target });
 
-      runMovement(req).then(
+      setInFlight((n) => n + 1);
+      runMovement(req)
+        .finally(() => setInFlight((n) => n - 1))
+        .then(
         (res) => {
           if (!isCurrent(gen, req, res)) return;
           setState((prev) => ({
@@ -476,8 +490,10 @@ export function useMovement(args: UseMovementArgs): MovementController {
       // actually projected, so ask again once the slider settles.
       if (s.response.method === "PCA") return;
       clearPending();
+      setPending(true);
       pendingRef.current = window.setTimeout(() => {
         pendingRef.current = null;
+        setPending(false);
         const now = stateRef.current;
         if (now.phase !== "ready" || now.response.method === "PCA") return;
         issue(now.target, now.strength, false);
@@ -521,7 +537,17 @@ export function useMovement(args: UseMovementArgs): MovementController {
     [state],
   );
 
-  return { state, preview, start, setTarget, setStrength, cancel };
+  // The Apply-enablement condition, exactly. PCA's local re-expression is exact,
+  // so `applied_strength === strength` holds by construction there; for UMAP it
+  // means the last response really is for the current slider value.
+  const settled =
+    state.phase === "ready" &&
+    !pending &&
+    inFlight === 0 &&
+    state.response.applied_strength === state.strength &&
+    state.response.analysis_id === (analysis?.meta.analysis_id ?? null);
+
+  return { state, preview, settled, start, setTarget, setStrength, cancel };
 }
 
 /** The five movement props one `ClusterScatter` needs, for the node it draws.

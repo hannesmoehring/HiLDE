@@ -4,6 +4,10 @@ import type {
   AnalysisJob,
   AnalysisResponse,
   CharacteristicsResponse,
+  CounterfactualApplyRequest,
+  CounterfactualApplyResponse,
+  CounterfactualChain,
+  CounterfactualJob,
   DatasetColumns,
   DatasetInfo,
   ImagePixels,
@@ -137,4 +141,36 @@ export async function runMovement(req: MovementRequest): Promise<MovementRespons
   }
   if (job.status === "error") throw new Error(job.detail);
   return job;
+}
+
+/** Writes a previewed movement into a counterfactual copy of the dataset and
+ *  returns the new dataset key. Same job rule as `runMovement`: only an Apply
+ *  that needs a UMAP refit polls. The analysis itself is NOT rebuilt here — the
+ *  caller runs `runAnalysis` on the returned key. */
+export async function applyCounterfactual(
+  req: CounterfactualApplyRequest,
+): Promise<CounterfactualApplyResponse> {
+  let job = await post<CounterfactualJob>("/api/counterfactual/apply", req);
+  let failures = 0;
+  while (job.status === "running") {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      job = await get<CounterfactualJob>(`/api/counterfactual/jobs/${job.job_id}`);
+      failures = 0;
+    } catch (e) {
+      if (++failures > POLL_RETRIES) throw e;
+    }
+  }
+  if (job.status === "error") throw new Error(job.detail);
+  return job;
+}
+
+/** The edit chain behind a counterfactual key, base first. */
+export function fetchCounterfactualChain(cfId: string): Promise<CounterfactualChain> {
+  return get(`/api/counterfactual/${encodeURIComponent(cfId)}`);
+}
+
+/** Download URL of the changed rows (row_id, original and counterfactual values). */
+export function counterfactualRowsUrl(cfId: string): string {
+  return `/api/counterfactual/${encodeURIComponent(cfId)}/rows.csv`;
 }

@@ -95,6 +95,12 @@ const ABOUT = {
   held:
     "Row ids and target_* label columns are never counterfactuals. They are held fixed, so the " +
     "requested destination may not be reached exactly.",
+  apply:
+    "Apply writes this movement — the deltas at the current strength, mutable features only, " +
+    "one rigid translation per row of the whole cluster — into a counterfactual copy of the " +
+    "dataset and rebuilds the entire analysis on it. The original data is untouched; Undo and " +
+    "Reset are in the banner above the layers. The hierarchy may change, so cluster numbers " +
+    "need not correspond to this run afterwards.",
 } as const;
 
 function num(v: number | null | undefined, digits = 3): string {
@@ -343,6 +349,12 @@ export interface ClusterMovementPanelProps {
   onStrength: (strength: number) => void;
   /** `useMovement().cancel`. */
   onCancel: () => void;
+  /** Write the preview into data (App.tsx builds the request). */
+  onApply: () => void;
+  /** `null` = Apply is enabled; otherwise the one-line reason it is not. */
+  applyDisabledReason: string | null;
+  /** True while an apply or the rebuild it triggers is out. */
+  applying: boolean;
 }
 
 export function ClusterMovementPanel({
@@ -351,6 +363,9 @@ export function ClusterMovementPanel({
   builtMethod,
   onStrength,
   onCancel,
+  onApply,
+  applyDisabledReason,
+  applying,
 }: ClusterMovementPanelProps) {
   const ready = state.phase === "ready" ? state : null;
   const res = ready?.response ?? null;
@@ -510,7 +525,15 @@ export function ClusterMovementPanel({
             <output htmlFor="movement-strength">{pct(ready.strength)}</output>
           </div>
           <div className="mv-actions">
-            <button className="mv-cancel" onClick={onCancel}>
+            <button
+              className="primary"
+              disabled={applyDisabledReason != null || applying}
+              title={applyDisabledReason ? `Apply: ${applyDisabledReason}` : ABOUT.apply}
+              onClick={onApply}
+            >
+              {applying ? "Applying…" : "Apply"}
+            </button>
+            <button className="mv-cancel" onClick={onCancel} disabled={applying}>
               Cancel
             </button>
             <button onClick={exportCsv} title="Feature changes at the current strength">
@@ -680,6 +703,8 @@ export function ClusterMovementPanel({
           )}
           <dt>Held fixed</dt>
           <dd>{ABOUT.held}</dd>
+          <dt>Apply</dt>
+          <dd>{ABOUT.apply}</dd>
           {chips.map((c) => (
             <div key={`about-${c.key}`}>
               <dt>{c.short}</dt>

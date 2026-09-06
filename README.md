@@ -109,13 +109,14 @@ cd frontend && npm install && npm run build
 
 ### Tests and checks
 
-The test suite is four scripts, run as modules:
+The test suite is five scripts, run as modules:
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
+PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
 ```
 
 The same files run under pytest (a dev dependency, installed by `uv sync`):
@@ -222,10 +223,10 @@ cluster, so it translates without morphing and every distance inside it is prese
 panel reports the per-feature change in raw units and in standard deviations, sorted by
 magnitude, with a strength slider from 0 to 100 %.
 
-Nothing is written back: the dataset and the hierarchy are untouched, there is no *Apply*,
-and the preview is drawn in the **frozen** projection currently on screen — the embedding
-is never recomputed, because a fresh fit could rotate or reshape it and the comparison
-would be meaningless. PCA reaches a reachable destination exactly, but a free point has a
+Nothing is written back by the preview: the dataset and the hierarchy are untouched, and
+the preview is drawn in the **frozen** projection currently on screen — the embedding is
+never recomputed, because a fresh fit could rotate or reshape it and the comparison would
+be meaningless. PCA reaches a reachable destination exactly, but a free point has a
 whole family of solutions and the one shown is the smallest, measured in standardized
 units (the panel says so). UMAP has no exact inverse, so its destination is an estimate,
 its intermediate strengths are the least trustworthy part of the preview, and the panel
@@ -234,6 +235,18 @@ runs built with PCA or UMAP; t-SNE has no out-of-sample transform and MDS only
 reconstructs from a distance matrix, so both are refused by name. Moving a cluster does
 **not** promise that a rebuild would make HDBSCAN merge it with its destination, and it is
 not a causal claim — it says what would have to differ, not what would cause it.
+
+**Apply (counterfactual session).** *Apply* turns the preview into data: the feature deltas
+at the current strength are written — mutable features only, one rigid translation per row
+of the whole cluster — into a **server-side counterfactual copy** of the dataset, and the
+entire analysis is rebuilt on it with the same configuration. The original dataset and the
+original run are untouched; ancestors, children, characteristics, predicates and DR quality
+all reflect the moved rows afterwards. Edits stack: a banner above the layers lists them,
+with *Undo* (back to the previous data), *Reset* (back to the original) and *Export rows*
+(the changed rows with original and counterfactual values). The hierarchy may change on the
+rebuild — HDBSCAN decides over the whole dataset — so the app returns to the root and says
+once that cluster numbering does not correspond to the previous run. The session is
+client-side state: a page reload returns to the original data.
 
 **Outliers.** Each internal layer carries a collapsible GLOSH outlier section: the score
 distribution and a ranked table of the 100 most outlying points. Clicking a row reveals
@@ -369,8 +382,9 @@ as one.
   remaining 2195 are noise. They are not lost — the layer view, via *Explore entire
   layer*, is where they can be selected — but child cluster sizes do not sum to the
   parent's.
-- **The test suite is backend-only.** Four scripts (`backend/tests/`) covering tree
-  serialization, target statistics, predicate clause bookkeeping and cluster movement,
+- **The test suite is backend-only.** Five scripts (`backend/tests/`) covering tree
+  serialization, target statistics, predicate clause bookkeeping, cluster movement and
+  counterfactual sessions,
   plus the four regression checks in `scripts/checks/`. There is no test runner
   configuration and no automated coverage of the frontend. `uv run ruff format --check .`
   passes; `uv run ruff check .` does not (33 findings).
@@ -385,6 +399,11 @@ as one.
 - **A movement needs a run built after the feature landed.** Refits read
   `meta.effective_config`, which older cached payloads do not carry; those answer HTTP 409
   and ask for a rebuild.
+- **Counterfactual sessions live in memory.** Each applied edit keeps a full copy of the
+  dataset on the server (eight most recent; older ones are replayed from the edit history
+  on demand) — on the wide image datasets that is hundreds of MB per copy. The history
+  expires 24 h after last use, is never written to the run cache, and the client-side stack
+  is gone on reload.
 - **t-SNE and PCA seed replicates are repeats, not replicates.** The experiment harnesses
   vary a seed across replicates and thread it into `tsne_random_state`, but `_tsne` passes
   no `init`, and scikit-learn's default `init="pca"` never consults `random_state`. PCA

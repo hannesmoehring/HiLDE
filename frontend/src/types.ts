@@ -363,3 +363,59 @@ export type MovementState =
       target: MovementTarget | null;
       message: string;
     };
+
+// ── Counterfactual sessions (Apply) ─────────────────────────────────────────
+// Apply writes the previewed deltas — at the applied strength, mutable features
+// only, one rigid translation per moved row — into a server-side counterfactual
+// COPY of the dataset and rebuilds the whole analysis on it. Nothing about the
+// original dataframe or any existing payload changes. Edits are immutable and
+// content-addressed, stacked as a chain; Undo and Reset are just a switch back
+// to the parent key or the base. See backend/counterfactual.py.
+
+export interface CounterfactualEdit {
+  cf_id: string;
+  parent: string | null; // the cf_id this edit stacks on; null = directly on the base
+  base_dataset: string;
+  dataset_key: string; // "{base}@cf:{cf_id}" — what every request sends as `dataset`
+  node_id: string;
+  source_child_index: number;
+  target: MovementTarget;
+  strength: number;
+  n_rows: number; // every member of the source cluster, never the preview sample
+  features_changed: string[];
+  deltas_raw: Record<string, number>; // feature -> applied raw delta (mutable only)
+  created_at: number;
+}
+
+/** `MovementRequest` with a required, positive strength. `dataset` is the base
+ *  or an existing counterfactual key to stack on. */
+export interface CounterfactualApplyRequest extends Omit<MovementRequest, "strength"> {
+  strength: number;
+}
+
+export interface CounterfactualApplyResponse {
+  status: "ok";
+  dataset_key: string;
+  cf_id: string;
+  edits: CounterfactualEdit[]; // the whole chain, base first
+  n_rows_changed: number;
+}
+
+// Same three-way union as MovementJob: an Apply on a cold UMAP node is a job.
+export type CounterfactualJob =
+  | { status: "running"; job_id: string }
+  | { status: "error"; job_id: string; detail: string }
+  | CounterfactualApplyResponse;
+
+export interface CounterfactualChain {
+  cf_id: string;
+  dataset_key: string;
+  base_dataset: string;
+  edits: CounterfactualEdit[];
+}
+
+// Client-side state of the session, owned by `useCounterfactual` in
+// frontend/src/counterfactual.ts. `applying` = the apply request is out;
+// `rebuilding` = the analysis is being rebuilt on the new key while the current
+// run stays on screen; `error` keeps the stack and the displayed run unchanged.
+export type CounterfactualPhase = "idle" | "applying" | "rebuilding" | "error";

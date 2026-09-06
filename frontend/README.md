@@ -96,7 +96,8 @@ path resolves to.
 | `types.ts` | The data contract. **Mirrors `backend/serialize.py`** — change one and change the other. |
 | `config.ts` | `DEFAULT_CONFIG`, mirroring `src/config_defaults.py`, except `method`: the app opens on UMAP while the Python default stays PCA (a research harness reads its DR method off that default). Every request carries `method`, so this is what the app actually runs. |
 | `treeNav.ts` | Client-side drill-down over the fetched tree. |
-| `movement.ts` | The cluster-movement state machine (`useMovement`) plus the pure geometry it needs: screen→embedding inversion, target resolution, strength re-expression, and the stale-response guard. Kept out of the chart so all of it is testable without a DOM. |
+| `movement.ts` | The cluster-movement state machine (`useMovement`) plus the pure geometry it needs: screen→embedding inversion, target resolution, strength re-expression, and the stale-response guard. Kept out of the chart so all of it is testable without a DOM. `settled` is the Apply-enablement condition: phase `ready`, no strength re-request pending or in flight, the response answered at the slider's own strength, and belonging to the run on screen. |
+| `counterfactual.ts` | The counterfactual session (`useCounterfactual`): the stack of applied edits, the one `activeDatasetKey` every request is sent against, and the `idle / applying / rebuilding / error` phases. Apply and Undo/Reset are a rebuild on a key; the switch — stack, active key, displayed run, path to root — is one state update, and any failure leaves everything as it was. `App.tsx` keys the layer stack on the active key, so a switch remounts it with the movement machine idle. |
 
 ### Components
 
@@ -107,7 +108,7 @@ path resolves to.
 | `ExplorationPanel.tsx` | The node's own embedding with lasso/box selection, feeding three tabs: *Predicate*, *Characteristics*, *Ranges*. Also the selected-points table and CSV export. |
 | `RangeFilters.tsx` | The *Ranges* tab — the inverted interaction: pick columns, slide a `[min, max]` window over each, and points inside *every* window become the selection. Windows are in raw column units. |
 | `OutlierPanel.tsx` | GLOSH scores for one internal layer, folded into a `<details>`; the closed summary carries the headline numbers. Clicking a row reveals that point's values and rings it in the projection above. |
-| `ClusterMovementPanel.tsx` | Two pieces. `MovementStartRow` is the one button that sits under `LayerSide` in the side column. `ClusterMovementPanel` is the full-width row a layer card grows under the plot *and* the characteristics once a movement runs: three columns (route + strength slider with a `rec.` tick + Cancel/CSV/JSON · stat tiles at the server's strength + the UMAP sparkline · the feature-change table sorted by standardized magnitude, held-fixed columns as a footer line), then one-line warning chips, then a collapsed *About this preview*. Every tile label and chip carries its sentence as a `title`, and the same sentences are listed in the About block, so nothing is hover-only. The "click a destination" prompt is the chart's own status line above the plot. Deliberately has **no *Apply*** yet — this is a preview, not an edit. |
+| `ClusterMovementPanel.tsx` | Two pieces. `MovementStartRow` is the one button that sits under `LayerSide` in the side column. `ClusterMovementPanel` is the full-width row a layer card grows under the plot *and* the characteristics once a movement runs: three columns (route + strength slider with a `rec.` tick + Cancel/CSV/JSON · stat tiles at the server's strength + the UMAP sparkline · the feature-change table sorted by standardized magnitude, held-fixed columns as a footer line), then one-line warning chips, then a collapsed *About this preview*. Every tile label and chip carries its sentence as a `title`, and the same sentences are listed in the About block, so nothing is hover-only. The "click a destination" prompt is the chart's own status line above the plot. *Apply* (enabled only when the preview is exactly what the server would write — see `movement.ts::settled`) hands the movement to the counterfactual session. |
 | `PointImage.tsx` | One row drawn as its image. The server sends raw greyscale pixels, so the canvas is drawn at native size and blown up with `image-rendering: pixelated` — an 8×8 digit stays a grid of squares. |
 
 **Why `target_*` columns are offered in *Ranges* but never in the predicate.** A range
@@ -206,6 +207,11 @@ sample cannot be trusted to satisfy — so the two files always agree with each 
 - **`metrics` describe the strength the *server* answered at**, not the live slider
   position; the panel labels them with it and flags the mismatch rather than silently
   showing a stale distance as current.
+- **Apply rebuilds on a counterfactual key and always goes to the root.** Node ids are
+  positional (`root/1` is "the second child"), so after a rebuild the same id can name
+  entirely different rows; keeping the path would preserve nothing. The banner says so
+  once. The session stack is client-side state and is gone on reload; the server keeps the
+  edit history for 24 h, so a key pasted from a request still resolves.
 - **A movement survives drilling deeper, not stepping sideways.** The preview belongs to
   one parent projection. Drilling into a child keeps that projection on screen in the
   layer stack, so the movement stays; navigating to a sibling, back up, or to another
