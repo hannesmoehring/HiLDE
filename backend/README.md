@@ -72,6 +72,10 @@ rows, image pixels) come back to the server.
 | `GET` | `/api/analysis/jobs/{job_id}` | poll a running build |
 | `POST` | `/api/movement` | a counterfactual movement preview for one cluster |
 | `GET` | `/api/movement/jobs/{job_id}` | poll a running movement (UMAP refits only) |
+| `POST` | `/api/counterfactual/apply` | write a previewed movement into a counterfactual copy of the dataset |
+| `GET` | `/api/counterfactual/jobs/{job_id}` | poll an Apply that needed a UMAP refit |
+| `GET` | `/api/counterfactual/{cf_id}` | the edit chain behind a counterfactual key |
+| `GET` | `/api/counterfactual/{cf_id}/rows.csv` | the changed rows, original and counterfactual values |
 | `POST` | `/api/predicate` | induce an axis-aligned predicate for a selection |
 | `POST` | `/api/characteristics` | z-scored column means for a selection |
 | `POST` | `/api/targets` | held-out `target_*` values for a selection |
@@ -93,7 +97,7 @@ the tree, so the server never has to remember which node is open.
 `POST /api/movement` answers one question: *if this cluster were to sit over there
 instead, what would have to change about it?* It is a *counterfactual preview* — the
 dataframe, the analysis tree and the cached payload are all read-only, and nothing is
-written back. It is deliberately not an edit, and there is no `Apply` button.
+written back. Turning the preview into data is a separate, explicit step: *Apply*, below.
 
 **Shared translation.** Every source point receives the *same* feature-space
 displacement, `X' = X + strength · Δ`. One displacement means every pairwise distance
@@ -194,6 +198,58 @@ errors and never a job failure discovered one poll later.
 
 ---
 
+## Counterfactual sessions (Apply)
+
+`POST /api/counterfactual/apply` takes the same fields as `/api/movement` with a required
+strength in `(0, 1]`, and **writes the previewed feature deltas at that strength into a
+server-side counterfactual copy of the dataset**: one rigid translation per moved row,
+mutable features only. The server recomputes the movement itself — client deltas are never
+trusted — then records the edit and answers with a new dataset key. The client rebuilds the
+whole analysis on that key with `/api/analysis`, with the same request config. The original
+dataframe and every existing payload stay untouched; ancestors, the node, its children,
+characteristics, predicates and DR-quality scores all reflect the moved rows afterwards.
+
+**The hierarchy may change.** HDBSCAN decides over the whole dataset, so after a rebuild the
+cluster indices need not correspond to the previous run — `root/1` may name entirely
+different rows, or not exist. That is the honest result; the client navigates to the root
+and says so once.
+
+**Key convention.** `"{base}@cf:{cf_id}"`. `backend/datasets.py::load` resolves it, so every
+endpoint that takes a `dataset` — analysis, predicate, characteristics, targets, rows, image
+pixels, movement, and a further Apply — works on a counterfactual run unchanged. Plain keys
+are unchanged; counterfactual keys are not listed by `/api/datasets`. An unknown or expired
+id is a 404 ("counterfactual expired or unknown").
+
+**Which rows change — exactly.** All members of the source cluster: the serialized child's
+`row_indices`, never the ≤5000-point preview sample. Those are *positions* in the frame
+(the whole pipeline is positional), so the edit is applied with `iloc`; the frame's `row_id`
+values at those positions are recorded alongside for the export and the UI. The two
+coincide only while the loader's index is a `RangeIndex`.
+
+**Identity and stacking.** `cf_id = sha256(base | parent | canonical edit)[:12]` — content
+derived, so the same edit on the same parent is one snapshot (a duplicate click cannot fork
+the history), the same edit on two datasets never collides, and stacking is a chain of
+immutable snapshots. Undo and Reset need no endpoint: the client switches back to the parent
+key or the base.
+
+**Two stores, deliberately** (`backend/counterfactual.py`). The *edit history* is small and
+never evicted by the frame cache; it expires only by session lifetime (24 h since an edit or
+any descendant was last touched, swept on insert), so Undo keeps working across a long
+session. *Materialized frames* are an LRU of 8 full copies; on a miss the frame is replayed
+from the base loader through the chain. Each copy is a full frame in memory — on MNIST
+(70 000 × 784 float64) that is ~440 MB per copy, so the bound matters on the wide image
+datasets.
+
+**Never persisted.** Hosting mode skips the on-disk run cache for counterfactual keys: a
+counterfactual run is session state and must not outlive the history that gives its key
+meaning. The in-memory tree cache holds it like any other run.
+
+**Export.** `GET /api/counterfactual/{cf_id}/rows.csv` lists every row any edit in the chain
+moved, with the original and the counterfactual value of every feature any edit touched
+(`feature`, `feature__cf`), keyed by `row_id`.
+
+---
+
 ## `backend/` — the service
 
 | File | Role |
@@ -203,14 +259,16 @@ errors and never a job failure discovered one poll later.
 | `jobs.py` | Build-on-a-worker-thread, keyed by the run-cache signature so a retry or reload re-attaches to the run already in flight. Keeps the last 64 jobs so a late poll can still read the outcome. |
 | `run_cache.py` | Gzipped on-disk payload cache, **hosting mode only** (`HILDE_HOSTING=1`, which `host.py` sets). Dev runs never touch the disk. A corrupt entry is deleted rather than served. |
 | `movement.py` | Cluster movement: one shared feature-space displacement that translates a child cluster toward a clicked point or a sibling. Refits the parent's reducer, aligns it to the stored embedding, solves for the displacement, and answers entirely in *visible* coordinates. Its module docstring is the HTTP contract. |
-| `movement_jobs.py` | The same worker-thread pattern as `jobs.py`, for the one movement case that can be slow (a UMAP refit). Keyed on the whole request so a duplicate POST re-attaches; keeps 16 jobs; results live in memory only and are never written to `run_cache.py`. |
+| `movement_jobs.py` | The same worker-thread pattern as `jobs.py`, for the one movement case that can be slow (a UMAP refit). Keyed on the whole request so a duplicate POST re-attaches; keeps 16 jobs; results live in memory only and are never written to `run_cache.py`. Also carries an Apply that needs a refit. |
+| `counterfactual.py` | Counterfactual sessions: the immutable, content-addressed edit history, the bounded LRU of materialized frames (replayed from the base on a miss), the `{base}@cf:{id}` key convention, and the changed-rows export. Its module docstring is the design. |
+| `counterfactual_apply.py` | Apply = recompute the movement at the requested strength through the movement pipeline, then register it as an edit on top of the base or of an existing counterfactual key. |
 | `predicate.py` | Reproduces the local/global scaling for a selection and runs `generate_predicate("db", …)` twice — at RCM 1.0 (full range) and 0.9 (trimmed core). |
 | `characteristics.py` | The same z-score contrast the tree stores per cluster, but for an arbitrary lasso selection: a two-label split (selected vs. rest of node) through the unchanged calc-layer function, reproducing the root scaler rather than refitting, so both frames land on one axis. |
 | `targets.py` | The separate question the predicate must not answer: what are the *labels* of these points? Reported against the whole-dataset range so the selection has a scale to sit in. |
 | `images.py` | Pixel lookup for the four image datasets. Returns plain numbers — the frontend draws the canvas, so there is no image library on the server. |
 | `datasets.py` | Thin access to `src/datasets.py`. Also defines `default_feature_cols`: everything except `row_id` and `target_*`. |
 | `requirements.txt` | Pinned to the resolved `uv.lock` for the Docker image. If `pyproject.toml` changes, re-lock and re-pin this to match. |
-| `tests/` | `test_serialize.py` (tree → JSON contract), `test_targets.py` (target statistics), `test_predicate.py` (clause ΔF1 bookkeeping) and `test_movement.py` (alignment, PCA and UMAP movement). Run as modules, see below. |
+| `tests/` | `test_serialize.py` (tree → JSON contract), `test_targets.py` (target statistics), `test_predicate.py` (clause ΔF1 bookkeeping), `test_movement.py` (alignment, PCA and UMAP movement) and `test_counterfactual.py` (edits, keys, frames, the rebuild on a counterfactual key). Run as modules, see below. |
 
 ---
 
@@ -262,6 +320,7 @@ PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
+PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
 
 # formatting
 uv run ruff format --check .
