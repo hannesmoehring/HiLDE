@@ -39,8 +39,20 @@ export interface TreeNode {
 export interface AnalysisMeta {
   dataset: string;
   feature_cols: string[];
-  config: Record<string, unknown>;
+  config: Record<string, unknown>; // the knobs the client sent, verbatim
   n_total: number;
+  // ── Movement prerequisites (added with the cluster-movement feature) ──────
+  // `analysis_id` is a stable digest of (dataset, feature_cols, config, schema
+  // version); the movement endpoint refuses a request whose id does not match the
+  // run it holds. `effective_config` is the config AFTER `compute_analysis_tree`
+  // mutated it in place (it clamps `hclust_umap_n_components` and
+  // `umap_n_neighbors` against the root size), which is what every visible
+  // per-node embedding was actually fit with — refitting from `config` would
+  // build a different reducer whenever the clamp fired. Older cached payloads
+  // predate all three and answer 409 on /api/movement.
+  analysis_id?: string;
+  effective_config?: Record<string, unknown>;
+  schema_version?: number;
 }
 
 export interface AnalysisResponse {

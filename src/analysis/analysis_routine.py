@@ -11,7 +11,11 @@ from src.analysis.characteristics import (
     compute_cluster_characteristics,
 )
 from src.analysis.clustering import compute_clusters
-from src.analysis.dim_reducer import fit_dimensionality_reducer, reduce_dimensionality
+from src.analysis.dim_reducer import (
+    ReductionResult,
+    fit_dimensionality_reducer,
+    reduce_dimensionality,
+)
 from src.types import Config
 from src.util import console as clog
 
@@ -72,6 +76,32 @@ class ExplorationObject(TypedDict):  # add embedded points
 type AnalysisObject = HierarchyObject | ExplorationObject
 
 
+def fit_node_projection(X_orig: np.ndarray, config: Config) -> ReductionResult | None:
+    """Fit a node's 2D projection and return the whole result, fitted reducer included.
+
+    The analysis itself keeps only the coordinates (`_embed_original` below), but
+    `backend/movement.py` needs the reducer back to answer a counterfactual
+    movement, and it must be *this* fit — same guards, same
+    `fit_dimensionality_reducer` call, so the refit inherits parity by
+    construction rather than by a second implementation that has to be kept in
+    step (the `init="pca"` UMAP determinism fix lives on this path only).
+
+    `None` = the node cannot be projected: too small, or the reducer raised.
+    """
+    n = X_orig.shape[0]
+    if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:
+        return None
+    try:
+        return fit_dimensionality_reducer(
+            method=config["method"], X=X_orig, n_components=2, config=config
+        )
+    except Exception as exc:
+        clog.warn(
+            f"Projection failed for a node of {n} points ({type(exc).__name__}: {exc}) — left unembedded"
+        )
+        return None
+
+
 def _embed_original(
     X_orig: np.ndarray, config: Config
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
@@ -81,17 +111,8 @@ def _embed_original(
     origins passes every downstream shape check, so a failed projection would be scored
     and reported as a real DR-quality result. (It was, in an earlier revision.)
     """
-    n = X_orig.shape[0]
-    if n < _MIN_EMBED_DIMS or X_orig.shape[1] < _MIN_EMBED_DIMS:
-        return None, None
-    try:
-        result = fit_dimensionality_reducer(
-            method=config["method"], X=X_orig, n_components=2, config=config
-        )
-    except Exception as exc:
-        clog.warn(
-            f"Projection failed for a node of {n} points ({type(exc).__name__}: {exc}) — left unembedded"
-        )
+    result = fit_node_projection(X_orig, config)
+    if result is None:
         return None, None
     return result.embedding, result.explained_variance_ratio
 

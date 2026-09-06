@@ -28,7 +28,12 @@ from backend import images as ds_images
 from backend import jobs, run_cache
 from backend.characteristics import compute_selection_characteristics
 from backend.predicate import compute_predicate
-from backend.serialize import serialize_tree
+from backend.serialize import (
+    SCHEMA_VERSION,
+    analysis_id,
+    effective_config,
+    serialize_tree,
+)
 from backend.targets import compute_targets
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
@@ -190,6 +195,14 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
             "feature_cols": req.feature_cols,
             "config": req.config,
             "n_total": len(df),
+            # Movement prerequisites (backend/movement.py). `config` above is
+            # what the client sent; `effective_config` is what the tree was
+            # built with after `compute_analysis_tree` clamped it in place —
+            # `start_evaluation` has returned, so `config` now holds the mutated
+            # values, and that is the only config a refit may read.
+            "analysis_id": analysis_id(req.dataset, req.feature_cols, req.config),
+            "effective_config": effective_config(config),  # type: ignore[arg-type]
+            "schema_version": SCHEMA_VERSION,
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
