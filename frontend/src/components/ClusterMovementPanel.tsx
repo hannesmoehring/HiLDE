@@ -1,18 +1,25 @@
-// Cluster movement panel — the reading half of the counterfactual. The chart draws
-// the ghosts; this panel says what the shared feature-space translation actually is,
-// how far it got, and everything about it that is estimated rather than measured.
+// Cluster movement — the reading half of the counterfactual, in two pieces.
 //
-// It owns no state: `state` and `preview` come straight from `useMovement`, and the
-// three callbacks are the hook's own. That is deliberate — the slider position lives
-// on the `ready` variant of the frozen `MovementState`, so a local copy here could
-// only ever disagree with it.
+// `MovementStartRow` is the ONLY thing that sits in a layer's side column: one
+// button. `ClusterMovementPanel` is the full-width row App.tsx mounts under the
+// plot and the characteristics once a movement is running: controls, stat tiles,
+// the feature-change table, one-line warning chips, and a collapsed "About this
+// preview" block that holds every explanatory sentence. Nothing explanatory is
+// visible by default; every tile label and chip carries its sentence as a
+// `title`, and the same sentences are listed in the <details> block so nothing is
+// hover-only. The "click a destination" prompt lives in ClusterScatter, above the
+// plot, not here.
 //
-// STALE METRICS (the one honesty trap): `preview` is `response` re-expressed at the
-// slider, but `previewAtStrength` rescales feature deltas and ghost points ONLY —
-// `metrics` still describe `response.applied_strength`. So this panel reads
-// `feature_changes` off `preview` (live) and `metrics` off `state.response` (frozen),
-// and labels the metrics block with the strength they were computed at. Nothing here
-// presents a distance as if it tracked the slider.
+// Neither component owns state: `state` and `preview` come straight from
+// `useMovement`, and the callbacks are the hook's own. The slider position lives
+// on the `ready` variant of the frozen `MovementState`, so a local copy here
+// could only ever disagree with it.
+//
+// STALE METRICS (the one honesty trap): `preview` is `response` re-expressed at
+// the slider, but `previewAtStrength` rescales feature deltas and ghost points
+// ONLY — `metrics` still describe `response.applied_strength`. So the table reads
+// `feature_changes` off `preview` (live) and the tiles read `metrics` off
+// `state.response` (frozen), labelled with the strength they were computed at.
 import { useMemo } from "react";
 import type {
   MovementFeatureChange,
@@ -21,33 +28,6 @@ import type {
   MovementStrengthPoint,
 } from "../types";
 
-export interface ClusterMovementPanelProps {
-  /** The machine, straight from `useMovement().state`. */
-  state: MovementState;
-  /** `useMovement().preview` — the response re-expressed at the slider position.
-   *  Non-null exactly while `state.phase === "ready"`. */
-  preview: MovementResponse | null;
-  /** The node this panel belongs to (`TreeNode.id`). Only a movement whose
-   *  `state.nodeId` matches is shown here; every other layer's panel stays on its
-   *  start form, so two panels can never claim the same movement. */
-  nodeId: string;
-  /** The child cluster selected in that node — the source a start would move.
-   *  `null` = nothing selected, so there is nothing to move yet. */
-  selectedChildIndex: number | null;
-  /** `node.children.length`. A free-point target needs ≥ 1 child, a cluster target
-   *  ≥ 2; with none there is nothing to move at all. */
-  childCount: number;
-  /** The method the run on screen was BUILT with (`analysis.meta.config.method`),
-   *  never the live rail knob: t-SNE and MDS get the disabled state. */
-  builtMethod: string;
-  /** `useMovement().start` — called with (nodeId, sourceChildIndex). */
-  onStart: (nodeId: string, sourceChildIndex: number) => void;
-  /** `useMovement().setStrength` — 0..1. */
-  onStrength: (strength: number) => void;
-  /** `useMovement().cancel`. */
-  onCancel: () => void;
-}
-
 // Only PCA and UMAP have what a movement needs. t-SNE has no out-of-sample
 // transform at all, and MDS only ever reconstructs a configuration from a distance
 // matrix — neither can project a moved point into the frozen embedding.
@@ -55,25 +35,67 @@ const SUPPORTED = ["PCA", "UMAP"];
 
 const OUT_OF_RANGE_WARN = 0.05;
 
-// Display threshold only — the backend owns the real support warning and sends its
-// own text. Above this the ratio is styled as a caution instead of a plain metric.
+// Display threshold only — the backend owns the real support warning (at 3) and
+// sends its own text. Above this the ratio is styled as a caution.
 const SUPPORT_CAUTION = 2;
 
-const FROZEN_NOTE =
-  "Counterfactual preview in the current frozen projection. The moved points are pushed " +
-  "through the reducer that was fitted for this node; the embedding is never recomputed " +
-  "afterwards, because a new fit could rotate, reflect or reshape it and the two pictures " +
-  "would not be comparable. Nothing is written back to the dataset or to the hierarchy, and " +
-  "the movement does not guarantee that HDBSCAN would merge the clusters after a rebuild.";
-
-// Fallback for the amended min-norm sentence. The backend emits the norm space it
-// actually used (standardized vs raw); this names both cases, so it stays true
-// whichever way `normalize` was set, and is used only if no backend sentence arrived.
-const MIN_NORM_FALLBACK =
-  "This destination is under-determined: infinitely many feature-space changes land on the " +
-  "same 2D point, and the one shown is the smallest of them — measured in the reducer's " +
-  "input space, i.e. root-standardized units when the run normalized and raw units when it " +
-  "did not. Other, larger changes reach the same place.";
+/** Every explanatory sentence the panel uses, in one place: each is a tooltip on
+ *  its tile / chip AND a line in the "About this preview" block. */
+const ABOUT = {
+  frozen:
+    "Counterfactual preview in the current frozen projection. The moved points are pushed " +
+    "through the reducer that was fitted for this node; the embedding is never recomputed " +
+    "afterwards, because a new fit could rotate, reflect or reshape it and the two pictures " +
+    "would not be comparable. Nothing is written back to the dataset or to the hierarchy, and " +
+    "the movement does not guarantee that HDBSCAN would merge the clusters after a rebuild.",
+  units:
+    "Projected distances are in the coordinates of this plot. Feature values and deltas are in " +
+    "the dataset's own units; |Δ| standardized is in the reducer's input space — " +
+    "root-standardized units when the run normalized, raw units when it did not.",
+  strength:
+    "Fraction of the recommended displacement that is applied. PCA re-expresses ghosts and " +
+    "deltas client-side, exactly. UMAP's transform is not linear, so its ghosts are re-requested " +
+    "350 ms after the slider settles, and the tiles describe the strength the server last " +
+    "answered at.",
+  projected:
+    "Distance between the destination and the moved cluster's centroid in this plot's " +
+    "coordinates, before the movement and at the applied strength.",
+  feature:
+    "Distance between the destination and the cluster's centroid in the reducer's input space, " +
+    "before and at the applied strength. Cluster targets only: a point target's destination is " +
+    "defined as source + Δ, so its 'after' would be (1−α)·‖Δ‖ by construction and is not shown.",
+  alignment:
+    "How closely the refitted reducer reproduced the points already on screen: the " +
+    "root-mean-square residual over the cloud's RMS radius (the server refuses anything above " +
+    "0.05 rather than drawing it) and the single worst point, which can exceed that bound. " +
+    "Neither says anything about the error of the new counterfactual points.",
+  range:
+    "Fraction of moved points with at least one mutable feature outside the full dataset's " +
+    "observed raw [min, max]. Above 5 % the counterfactual is extrapolating beyond the data.",
+  support:
+    "Distance from the chosen position to the nearest embedded point, over the typical local " +
+    "neighbour distance in this embedding. Large means the destination sits away from observed " +
+    "data and its inverse is an extrapolation.",
+  sampled:
+    "The ghost points are a deterministic subsample of the cluster, not every moved point. " +
+    "Centroids, metrics and the recommendation are computed from the complete cluster.",
+  trajectory:
+    "Projected distance to the destination at each strength of the α grid, measured through the " +
+    "frozen reducer. UMAP's out-of-sample transform is neighbour-driven, so this can plateau and " +
+    "jump; when it is not monotone the ghosts at intermediate strengths are the least " +
+    "trustworthy part of the preview.",
+  minNormStd:
+    "Many different feature changes reach this position; this is the smallest standardized " +
+    "change that reaches this point (smallest measured in root-standardized units — one unit is " +
+    "one standard deviation over the whole dataset). Other, larger changes reach the same place.",
+  minNormRaw:
+    "Many different feature changes reach this position; this is the smallest raw change that " +
+    "reaches this point (smallest measured in the dataset's own units, because this analysis was " +
+    "built without normalization). Other, larger changes reach the same place.",
+  held:
+    "Row ids and target_* label columns are never counterfactuals. They are held fixed, so the " +
+    "requested destination may not be reached exactly.",
+} as const;
 
 function num(v: number | null | undefined, digits = 3): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -85,7 +107,7 @@ function pct(v: number | null | undefined): string {
   return `${Math.round(v * 100)}%`;
 }
 
-function rmse(v: number | null | undefined): string {
+function sci(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v === 0 ? "0" : v.toExponential(1);
 }
@@ -144,6 +166,53 @@ function download(name: string, body: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
+// ── Warning chips ───────────────────────────────────────────────────────────
+// One short visible line per warning, the long sentence in the tooltip. Backend
+// warnings are recognised by content and given a stable key, so a client-side
+// chip about the same thing (out-of-range, support) never appears twice.
+
+interface Chip {
+  key: string;
+  short: string;
+  long: string;
+  caution: boolean;
+}
+
+function chipForWarning(w: string): Chip {
+  if (/smallest standardized change/i.test(w))
+    return {
+      key: "minnorm",
+      short: "Smallest standardized change reaching this point; larger ones exist.",
+      long: w,
+      caution: false,
+    };
+  if (/smallest raw change/i.test(w))
+    return {
+      key: "minnorm",
+      short: "Smallest raw-unit change reaching this point; larger ones exist.",
+      long: w,
+      caution: false,
+    };
+  if (/closest reachable point/i.test(w))
+    return { key: "reach", short: "Destination not exactly reachable — closest point shown.", long: w, caution: true };
+  if (/held fixed/i.test(w))
+    return { key: "held", short: "Labels / ids held fixed; the destination may not be reached exactly.", long: w, caution: false };
+  if (/outside the range/i.test(w))
+    return { key: "range", short: "Moved points leave the observed data range.", long: w, caution: true };
+  if (/inverse projection is approximate/i.test(w))
+    return { key: "approx", short: "UMAP's inverse is approximate; the ghosts show where the points actually land.", long: w, caution: false };
+  if (/estimated from the nearest observed points/i.test(w))
+    return { key: "fallback", short: "Destination estimated from the nearest observed points, not inverted.", long: w, caution: true };
+  if (/does not reliably approach/i.test(w))
+    return { key: "norec", short: "No strength approaches the destination; none is recommended.", long: w, caution: true };
+  if (/far from observed data/i.test(w))
+    return { key: "support", short: "Position far from observed data; its inverse is uncertain.", long: w, caution: true };
+  if (/no feature in this analysis may be changed/i.test(w))
+    return { key: "nomutable", short: "No feature may change here; nothing to recommend.", long: w, caution: true };
+  const first = w.split(/(?<=\.)\s/)[0];
+  return { key: w, short: first.length > 90 ? `${first.slice(0, 87)}…` : first, long: w, caution: false };
+}
+
 /** Projected distance across the α grid. UMAP only — PCA is linear, so its
  *  trajectory is a straight line the backend does not bother returning. */
 function StrengthTrajectory({
@@ -153,8 +222,8 @@ function StrengthTrajectory({
   points: readonly MovementStrengthPoint[];
   cursor: number;
 }) {
-  const W = 208;
-  const H = 46;
+  const W = 168;
+  const H = 40;
   const P = 5;
   const xs = points.map((p) => p.strength);
   const ys = points.map((p) => p.projected_distance);
@@ -197,44 +266,149 @@ function StrengthTrajectory({
   );
 }
 
+function Tile({
+  value,
+  label,
+  tip,
+  caution,
+}: {
+  value: string;
+  label: string;
+  tip: string;
+  caution?: boolean;
+}) {
+  return (
+    <span className={caution ? "mv-tile mv-tile--caution" : "mv-tile"} title={tip}>
+      <b>{value}</b>
+      <i>
+        {label} <span aria-hidden="true">ⓘ</span>
+      </i>
+    </span>
+  );
+}
+
+// ── The idle row: one button in the side column ─────────────────────────────
+
+export interface MovementStartRowProps {
+  nodeId: string;
+  /** The child cluster selected in this node — the source a start would move. */
+  selectedChildIndex: number | null;
+  /** The method the run on screen was BUILT with, never the live rail knob. */
+  builtMethod: string;
+  /** True while this node's own movement is running: the full-width row is
+   *  showing and carries Cancel, so the start button steps aside. */
+  active: boolean;
+  onStart: (nodeId: string, sourceChildIndex: number) => void;
+}
+
+export function MovementStartRow({
+  nodeId,
+  selectedChildIndex,
+  builtMethod,
+  active,
+  onStart,
+}: MovementStartRowProps) {
+  if (active) return null;
+  const supported = SUPPORTED.includes(builtMethod);
+  const label = selectedChildIndex == null ? "Move a cluster…" : `Move C${selectedChildIndex}…`;
+  const title = !supported
+    ? `Not available for ${builtMethod}: no feature→2D mapping. Rebuild with PCA or UMAP.`
+    : selectedChildIndex == null
+      ? "Select a cluster in this projection first"
+      : `Move C${selectedChildIndex} toward a destination you pick in the projection — a counterfactual preview, nothing is written back`;
+  return (
+    <div className="movement-start">
+      <button
+        disabled={!supported || selectedChildIndex == null}
+        title={title}
+        onClick={() => selectedChildIndex != null && onStart(nodeId, selectedChildIndex)}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+// ── The active row: full width under the plot and the characteristics ───────
+
+export interface ClusterMovementPanelProps {
+  /** The machine, straight from `useMovement().state`. Must not be `idle`. */
+  state: MovementState;
+  /** `useMovement().preview` — the response re-expressed at the slider position.
+   *  Non-null exactly while `state.phase === "ready"`. */
+  preview: MovementResponse | null;
+  /** The method the run on screen was BUILT with. */
+  builtMethod: string;
+  /** `useMovement().setStrength` — 0..1. */
+  onStrength: (strength: number) => void;
+  /** `useMovement().cancel`. */
+  onCancel: () => void;
+}
+
 export function ClusterMovementPanel({
   state,
   preview,
-  nodeId,
-  selectedChildIndex,
-  childCount,
   builtMethod,
-  onStart,
   onStrength,
   onCancel,
 }: ClusterMovementPanelProps) {
-  const supported = SUPPORTED.includes(builtMethod);
-  // The movement this panel is allowed to show: only one for this node, and only
-  // once it has an answer to report.
-  const ready = state.phase === "ready" && state.nodeId === nodeId ? state : null;
+  const ready = state.phase === "ready" ? state : null;
   const res = ready?.response ?? null;
   // Feature deltas track the slider; metrics do not (see the file header).
   const live = ready ? (preview ?? ready.response) : null;
   const rows = useMemo(() => bySalience(live?.feature_changes ?? []), [live]);
-
-  const maxMagnitude = rows.reduce(
+  const mutableRows = rows.filter((r) => r.mutable);
+  const heldFixed = rows.filter((r) => !r.mutable);
+  const maxMagnitude = mutableRows.reduce(
     (m, r) => Math.max(m, Math.abs(r.standardized_magnitude ?? 0)),
     0,
   );
-  const heldFixed = rows.filter((r) => !r.mutable);
-
-  // The amended min-norm sentence is emitted by the backend as a warning; a free
-  // PCA target is exactly the case it applies to. Lift it out of the list so it
-  // reads as a property of the answer rather than as one more caveat, and leave
-  // cluster targets (Δ = μ_t − μ_s, unique) without it.
-  const underdetermined = res?.target.kind === "point" && res.target.estimator === "pca_pinv";
-  const minNormFromBackend = underdetermined
-    ? (res?.warnings.find((w) => /smallest/i.test(w)) ?? null)
-    : null;
-  const otherWarnings = (res?.warnings ?? []).filter((w) => w !== minNormFromBackend);
 
   const trajectory = res?.strength_trajectory ?? [];
-  const trajectoryMonotone = isMonotone(trajectory);
+  const monotone = isMonotone(trajectory);
+
+  // Chips: backend warnings first (deduplicated by key), then the client-side
+  // observations about the same response.
+  const chips: Chip[] = [];
+  const seen = new Set<string>();
+  const push = (c: Chip) => {
+    if (seen.has(c.key)) return;
+    seen.add(c.key);
+    chips.push(c);
+  };
+  if (res) {
+    for (const w of res.warnings) push(chipForWarning(w));
+    if (!monotone)
+      push({
+        key: "monotone",
+        short: "Trajectory not monotone: intermediate strengths are the least trustworthy.",
+        long: ABOUT.trajectory,
+        caution: true,
+      });
+    const oor = res.metrics.out_of_range_fraction ?? 0;
+    if (oor > OUT_OF_RANGE_WARN)
+      push({ key: "range", short: `${pct(oor)} of moved points leave the observed data range.`, long: ABOUT.range, caution: true });
+    const sr = res.metrics.support_ratio;
+    if (sr != null && sr > SUPPORT_CAUTION)
+      push({ key: "support", short: `Support ratio ${num(sr, 1)}: destination sits away from observed data.`, long: ABOUT.support, caution: true });
+    if (res.metrics.preview_sampled)
+      push({ key: "sampled", short: `Ghosts are a deterministic subsample of ${res.source_size} points.`, long: ABOUT.sampled, caution: false });
+  }
+
+  const source = state.phase === "idle" ? "" : `C${state.sourceChildIndex}`;
+  const destination = res
+    ? res.target.kind === "cluster"
+      ? `C${res.target.child_index}`
+      : `point (${num(res.target.x, 2)}, ${num(res.target.y, 2)})`
+    : state.phase === "choosing"
+      ? "…"
+      : state.phase === "idle"
+        ? ""
+        : state.target?.kind === "cluster"
+          ? `C${state.target.child_index}`
+          : state.target
+            ? `point (${num(state.target.x, 2)}, ${num(state.target.y, 2)})`
+            : "…";
 
   function exportCsv() {
     if (!live) return;
@@ -264,280 +438,153 @@ export function ClusterMovementPanel({
     );
   }
 
-  // ── Nothing running here: the start form, or the unsupported-method notice ──
-  if (state.phase === "idle" || state.nodeId !== nodeId) {
+  // ── Not ready yet: one line and Cancel ────────────────────────────────────
+  if (!ready || !res || !live) {
     return (
-      <div className="movement">
-        <div className="movement__head">
-          <span className="movement__title">Cluster movement</span>
-        </div>
-        {!supported ? (
-          <div className="movement__disabled">
-            <p>
-              This projection was built with <b>{builtMethod}</b>, which cannot host a movement
-              preview.
-            </p>
-            <p className="hint">
-              <b>t-SNE</b> has no out-of-sample transform: there is no way to project a moved point
-              into the embedding on screen without refitting the whole thing. <b>MDS</b> only
-              reconstructs a configuration from a distance matrix, so it has no mapping from feature
-              space to these coordinates either. Rebuild with PCA or UMAP to move a cluster.
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="hint">
-              Ask what feature values would put a cluster somewhere else in this projection. It is a
-              counterfactual preview — nothing is written back.
-            </p>
-            <div className="movement__actions">
-              <button
-                disabled={selectedChildIndex == null || childCount < 1}
-                onClick={() => selectedChildIndex != null && onStart(nodeId, selectedChildIndex)}
-                title={
-                  selectedChildIndex == null
-                    ? "Select a cluster in this projection first"
-                    : `Move C${selectedChildIndex} toward a destination you pick in this projection`
-                }
-              >
-                {selectedChildIndex == null ? "Move a cluster…" : `Move C${selectedChildIndex}…`}
-              </button>
-              {selectedChildIndex == null && (
-                <span className="hint">Select a cluster in this projection first.</span>
-              )}
-              {selectedChildIndex != null && childCount < 2 && (
-                <span className="hint">
-                  Only one cluster here — a free position is the only possible destination.
-                </span>
-              )}
-            </div>
-          </>
+      <div className="mv mv--pending">
+        <span className="mv-route">
+          <b>{source}</b> <span aria-hidden="true">→</span> <b>{destination}</b>
+        </span>
+        {state.phase === "choosing" && (
+          <span className="hint">Pick a destination in the projection above. Escape cancels.</span>
         )}
+        {state.phase === "loading" && (
+          <span className="hint" role="status">
+            Calculating {builtMethod} movement…
+            {builtMethod === "UMAP" ? " UMAP may have to fit the reducer first." : ""}
+          </span>
+        )}
+        {state.phase === "error" && (
+          <span className="mv-error" role="alert">
+            {state.message}
+          </span>
+        )}
+        <button className="mv-cancel" onClick={onCancel}>
+          Cancel
+        </button>
       </div>
     );
   }
 
-  const source = `C${state.sourceChildIndex}`;
+  const stale = Math.abs(ready.strength - res.applied_strength) > 1e-9;
+  const minNormTip =
+    res.warnings.find((w) => /smallest/i.test(w)) ??
+    (res.method === "PCA" ? ABOUT.minNormStd : "");
 
-  // ── Active: choosing / loading / error / ready ─────────────────────────────
   return (
-    <div className="movement movement--active">
-      <div className="movement__head">
-        <span className="movement__title">Cluster movement</span>
-        {res?.metrics.preview_sampled && (
-          <span className="movement__badge" title="The ghost points are a deterministic subsample">
-            sampled preview
-          </span>
-        )}
-        <button className="movement__cancel" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-
-      {state.phase === "choosing" && (
-        <p className="movement__prompt">
-          Moving <b>{source}</b>. Click an empty position, or click another cluster to use it as the
-          destination. Escape cancels.
-        </p>
-      )}
-
-      {state.phase === "loading" && (
-        <p className="movement__loading" role="status">
-          Calculating {builtMethod} movement…
-          {builtMethod === "UMAP" && (
+    <div className="mv">
+      <div className="mv-grid">
+        {/* 1 — controls */}
+        <div className="mv-col mv-controls">
+          <div className="mv-route">
+            <b>{source}</b> <span aria-hidden="true">→</span> <b>{destination}</b>
             <span className="hint">
               {" "}
-              UMAP may have to fit or restore a reducer first, which can take noticeably longer.
-            </span>
-          )}
-        </p>
-      )}
-
-      {state.phase === "error" && (
-        <p className="movement__error" role="alert">
-          {state.message}
-        </p>
-      )}
-
-      {ready && res && live && (
-        <>
-          <div className="movement__route">
-            <span className="movement__route-line">
-              <b>{source}</b> <span aria-hidden="true">→</span>{" "}
-              <b>
-                {res.target.kind === "cluster"
-                  ? `C${res.target.child_index}`
-                  : `point (${num(res.target.x, 2)}, ${num(res.target.y, 2)})`}
-              </b>
-            </span>
-            <span className="hint">
-              {res.source_size} points moving
-              {res.target.kind === "cluster" && res.target_size != null
-                ? ` toward ${res.target_size} points`
-                : ""}
-              {" · "}
-              {res.method}
-              {" · "}
-              destination from {res.target.estimator.replace(/_/g, " ")}
+              · {res.source_size} pts · {res.method} · {res.target.estimator.replace(/_/g, " ")}
             </span>
           </div>
-
-          {underdetermined && (
-            <p className="movement__note movement__note--minnorm">
-              {minNormFromBackend ?? MIN_NORM_FALLBACK}
-            </p>
-          )}
-
-          <div className="movement__strength">
-            <label htmlFor="movement-strength">Strength</label>
-            {/* PCA re-expresses locally (see `previewAtStrength`), so moving the
-                slider issues no request. SEAM: the debounced re-request UMAP will
-                need belongs on this handler. */}
-            <input
-              id="movement-strength"
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={Math.round(ready.strength * 100)}
-              onChange={(e) => onStrength(Number(e.currentTarget.value) / 100)}
-            />
-            <output htmlFor="movement-strength">{pct(ready.strength)}</output>
-            {res.recommended_strength != null ? (
-              <span className="hint">recommended {pct(res.recommended_strength)}</span>
-            ) : (
-              <span className="hint">
-                No strength approached the destination, so none is recommended and
-                the cluster is left where it is. Move the slider to see the
-                displacement anyway.
-              </span>
-            )}
-          </div>
-
-          {/* Metrics describe `res.applied_strength`, NOT the slider. Labelled
-              rather than hidden: they are the anchor the table is read against,
-              and blanking them on every nudge would remove the only reference. */}
-          <div className="movement__metrics-head">
-            <span>Distances at {pct(res.applied_strength)} strength</span>
-            {Math.abs(ready.strength - res.applied_strength) > 1e-9 && (
-              <span className="movement__stale">
-                slider is at {pct(ready.strength)} — these are not recomputed
-              </span>
-            )}
-          </div>
-          <div className="movement__metrics">
-            <span>
-              <b>{num(res.metrics.projected_distance_before, 2)}</b>
-              <i>projected before</i>
-            </span>
-            <span>
-              <b>{num(res.metrics.projected_distance_after, 2)}</b>
-              <i>projected after</i>
-            </span>
-            <span>
-              <b>{num(res.metrics.projected_distance_reduction, 2)}</b>
-              <i>projected reduction</i>
-            </span>
-            <span>
-              <b>{num(res.metrics.feature_centroid_distance_before, 2)}</b>
-              <i>feature-space before</i>
-            </span>
-            {/* Cluster targets only: a point target's destination is defined as
-                μ_source + Δ, so "after" would be (1−α)·‖Δ‖ by construction and the
-                backend sends null instead. */}
-            {res.metrics.feature_centroid_distance_after != null && (
-              <span>
-                <b>{num(res.metrics.feature_centroid_distance_after, 2)}</b>
-                <i>feature-space after</i>
-              </span>
-            )}
-            <span>
-              <b>{rmse(res.metrics.alignment_rmse)}</b>
-              <i>alignment RMSE</i>
-            </span>
-            <span>
-              <b>{rmse(res.metrics.alignment_max_residual)}</b>
-              <i>alignment max residual</i>
-            </span>
-          </div>
-          <p className="hint">
-            Projected distances are in the coordinates of this plot. Feature-space centroid distances
-            are in the reducer&apos;s input space — root-standardized units when the run normalized,
-            raw units when it did not. Alignment RMSE is how closely the refitted reducer reproduced
-            the points already on screen (root-mean-square residual over the cloud&apos;s RMS
-            radius); the server refuses anything above 0.05 outright rather than showing it. That
-            bound is on the RMS only — the max residual is the single worst point and can exceed it
-            — and neither says anything about the error of the new counterfactual points.
-          </p>
-
-          {trajectory.length > 0 && (
-            <div className="movement__trajectory">
-              <div className="movement__trajectory-head">Projected distance vs strength</div>
-              <StrengthTrajectory points={trajectory} cursor={ready.strength} />
-              {!trajectoryMonotone && (
-                <p className="movement__warning movement__warning--caution">
-                  This trajectory is not monotone. UMAP&apos;s out-of-sample transform is
-                  neighbour-driven, so distance against strength can plateau and jump; the ghosts at
-                  intermediate strengths are the least trustworthy part of this preview.
-                </p>
-              )}
-            </div>
-          )}
-
-          {(otherWarnings.length > 0 ||
-            (res.metrics.out_of_range_fraction ?? 0) > OUT_OF_RANGE_WARN ||
-            res.metrics.support_ratio != null ||
-            res.metrics.preview_sampled ||
-            heldFixed.length > 0) && (
-            <div className="movement__warnings">
-              {otherWarnings.map((w) => (
-                <p key={w} className="movement__warning">
-                  {w}
-                </p>
-              ))}
-              {(res.metrics.out_of_range_fraction ?? 0) > OUT_OF_RANGE_WARN && (
-                <p className="movement__warning movement__warning--caution">
-                  {pct(res.metrics.out_of_range_fraction)} of the moved points leave the range the
-                  data actually covers — that is the fraction with at least one <i>mutable</i>{" "}
-                  feature outside the full dataset&apos;s observed raw [min, max].
-                </p>
-              )}
-              {res.metrics.support_ratio != null && (
-                <p
-                  className={
-                    res.metrics.support_ratio > SUPPORT_CAUTION
-                      ? "movement__warning movement__warning--caution"
-                      : "movement__warning"
-                  }
+          <div className="mv-strength">
+            <label htmlFor="movement-strength" title={ABOUT.strength}>
+              Strength
+            </label>
+            <span className="mv-strength__track">
+              <input
+                id="movement-strength"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(ready.strength * 100)}
+                onChange={(e) => onStrength(Number(e.currentTarget.value) / 100)}
+              />
+              {res.recommended_strength != null && (
+                <span
+                  className="mv-strength__rec"
+                  style={{ left: `${res.recommended_strength * 100}%` }}
+                  title={`Recommended strength ${pct(res.recommended_strength)}`}
                 >
-                  Support ratio {num(res.metrics.support_ratio, 2)}: the distance from the chosen
-                  position to the nearest embedded point, over the typical local neighbour distance
-                  in this embedding. Large means the destination sits away from observed data and its
-                  inverse is an extrapolation.
-                </p>
+                  rec.
+                </span>
               )}
-              {res.metrics.preview_sampled && (
-                <p className="movement__warning">
-                  The ghost points are a deterministic subsample of {res.source_size}, not every
-                  moved point. The feature centroids and the recommendation below are computed from
-                  the complete cluster.
-                </p>
-              )}
-              {heldFixed.length > 0 && (
-                <p className="movement__warning">
-                  {heldFixed.length} feature{heldFixed.length === 1 ? " is" : "s are"} held fixed
-                  (row ids and <code>target_*</code> labels are never counterfactuals), so the
-                  requested destination may not be reached exactly.
-                </p>
-              )}
+            </span>
+            <output htmlFor="movement-strength">{pct(ready.strength)}</output>
+          </div>
+          <div className="mv-actions">
+            <button className="mv-cancel" onClick={onCancel}>
+              Cancel
+            </button>
+            <button onClick={exportCsv} title="Feature changes at the current strength">
+              CSV
+            </button>
+            <button onClick={exportJson} title="Recommendation at the current strength">
+              JSON
+            </button>
+          </div>
+        </div>
+
+        {/* 2 — metrics (at the strength the server answered at) */}
+        <div className="mv-col mv-metrics">
+          <div className="mv-col__head">
+            <span>Distances at {pct(res.applied_strength)}</span>
+            {stale && (
+              <span
+                className="mv-chip mv-chip--caution"
+                title="The slider has moved since these were computed; they are not recomputed until the server answers at the new strength."
+              >
+                slider at {pct(ready.strength)}
+              </span>
+            )}
+            {res.metrics.preview_sampled && (
+              <span className="movement__badge" title={ABOUT.sampled}>
+                sampled
+              </span>
+            )}
+          </div>
+          <div className="mv-tiles">
+            <Tile
+              value={`${num(res.metrics.projected_distance_before, 2)} → ${num(res.metrics.projected_distance_after, 2)}`}
+              label="projected distance"
+              tip={ABOUT.projected}
+            />
+            {res.metrics.feature_centroid_distance_after != null && (
+              <Tile
+                value={`${num(res.metrics.feature_centroid_distance_before, 2)} → ${num(res.metrics.feature_centroid_distance_after, 2)}`}
+                label="feature-space distance"
+                tip={ABOUT.feature}
+              />
+            )}
+            <Tile
+              value={`${sci(res.metrics.alignment_rmse)} · max ${sci(res.metrics.alignment_max_residual)}`}
+              label="alignment RMSE · worst point"
+              tip={ABOUT.alignment}
+            />
+            <Tile
+              value={pct(res.metrics.out_of_range_fraction)}
+              label="out of range"
+              tip={ABOUT.range}
+              caution={(res.metrics.out_of_range_fraction ?? 0) > OUT_OF_RANGE_WARN}
+            />
+            {res.metrics.support_ratio != null && (
+              <Tile
+                value={num(res.metrics.support_ratio, 2)}
+                label="support ratio"
+                tip={ABOUT.support}
+                caution={res.metrics.support_ratio > SUPPORT_CAUTION}
+              />
+            )}
+          </div>
+          {trajectory.length > 0 && (
+            <div className="mv-spark" title={ABOUT.trajectory}>
+              <span className="mv-spark__label">distance vs strength</span>
+              <StrengthTrajectory points={trajectory} cursor={ready.strength} />
             </div>
           )}
+        </div>
 
-          <div className="movement__table-head">
-            <span>Feature changes</span>
-            <span className="hint">applied at {pct(live.applied_strength)}</span>
-            <button onClick={exportCsv}>CSV</button>
-            <button onClick={exportJson}>JSON</button>
+        {/* 3 — feature changes */}
+        <div className="mv-col mv-table">
+          <div className="mv-col__head">
+            <span>Feature changes at {pct(live.applied_strength)}</span>
           </div>
           <div className="table-scroll movement__table">
             <table>
@@ -546,22 +593,19 @@ export function ClusterMovementPanel({
                   <th>Feature</th>
                   <th className="num">Source mean</th>
                   <th className="num">Target</th>
-                  <th className="num">Recommended Δ</th>
-                  <th className="num">Applied Δ</th>
-                  <th>|Δ| standardized</th>
+                  <th className="num">Δ recommended</th>
+                  <th className="num">Δ applied</th>
+                  <th title={ABOUT.units}>|Δ| standardized</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
+                {mutableRows.map((r) => {
                   const mag = Math.abs(r.standardized_magnitude ?? 0);
                   const width = maxMagnitude > 0 ? (mag / maxMagnitude) * 100 : 0;
                   const sign = (r.recommended_delta_raw ?? 0) < 0 ? "is-down" : "is-up";
                   return (
-                    <tr key={r.feature} className={r.mutable ? undefined : "is-immutable"}>
-                      <td>
-                        {r.feature}
-                        {!r.mutable && <span className="movement__fixed">held fixed</span>}
-                      </td>
+                    <tr key={r.feature}>
+                      <td>{r.feature}</td>
                       <td className="num">{num(r.source_mean_raw)}</td>
                       <td className="num">{num(r.target_value_raw)}</td>
                       <td className="num">{num(r.recommended_delta_raw)}</td>
@@ -583,10 +627,67 @@ export function ClusterMovementPanel({
               </tbody>
             </table>
           </div>
+          {heldFixed.length > 0 && (
+            <div className="mv-held" title={ABOUT.held}>
+              {heldFixed.length} held fixed: {heldFixed.map((r) => r.feature).join(", ")}
+            </div>
+          )}
+        </div>
+      </div>
 
-          <p className="movement__note">{FROZEN_NOTE}</p>
-        </>
+      {chips.length > 0 && (
+        <div className="mv-chips">
+          {chips.map((c) => (
+            <span
+              key={c.key}
+              className={c.caution ? "mv-chip mv-chip--caution" : "mv-chip"}
+              title={c.long}
+            >
+              {c.short}
+            </span>
+          ))}
+        </div>
       )}
+
+      <details className="mv-about">
+        <summary>About this preview</summary>
+        <dl>
+          <dt>Frozen projection</dt>
+          <dd>{ABOUT.frozen}</dd>
+          <dt>Units</dt>
+          <dd>{ABOUT.units}</dd>
+          <dt>Strength</dt>
+          <dd>{ABOUT.strength}</dd>
+          <dt>Projected distance</dt>
+          <dd>{ABOUT.projected}</dd>
+          <dt>Feature-space distance</dt>
+          <dd>{ABOUT.feature}</dd>
+          <dt>Alignment RMSE · worst point</dt>
+          <dd>{ABOUT.alignment}</dd>
+          <dt>Out of range</dt>
+          <dd>{ABOUT.range}</dd>
+          <dt>Support ratio</dt>
+          <dd>{ABOUT.support}</dd>
+          <dt>Sampled preview</dt>
+          <dd>{ABOUT.sampled}</dd>
+          <dt>Distance vs strength</dt>
+          <dd>{ABOUT.trajectory}</dd>
+          {minNormTip && (
+            <>
+              <dt>Under-determined destination</dt>
+              <dd>{minNormTip}</dd>
+            </>
+          )}
+          <dt>Held fixed</dt>
+          <dd>{ABOUT.held}</dd>
+          {chips.map((c) => (
+            <div key={`about-${c.key}`}>
+              <dt>{c.short}</dt>
+              <dd>{c.long}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
     </div>
   );
 }

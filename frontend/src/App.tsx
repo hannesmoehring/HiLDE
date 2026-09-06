@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
 import { ClusterScatter } from "./charts/ClusterScatter";
-import { ClusterMovementPanel } from "./components/ClusterMovementPanel";
+import {
+  ClusterMovementPanel,
+  MovementStartRow,
+} from "./components/ClusterMovementPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { LayerSide } from "./components/LayerSide";
@@ -417,6 +420,11 @@ function Navigation(props: {
     // the deepest one rendered, i.e. the one that would otherwise be waiting for a
     // cluster click. `node` here *is* that node, so it is what gets explored.
     const exploringHere = exploreWhole && treePath.length === L - 1;
+    // A running movement belongs to exactly one node. Its reading — controls,
+    // tiles, feature table — takes a full-width row of THAT layer card, under
+    // both columns; every other layer only ever shows the start button.
+    const movingHere =
+      movement.state.phase !== "idle" && movement.state.nodeId === node.id;
     layerViews.push(
       <section className="panel layer" key={`layer-${L}`}>
         <div className="panel__head">
@@ -482,19 +490,26 @@ function Navigation(props: {
                   : "Select a cluster to see its DR quality, characteristics and predicate."}
               </p>
             )}
+            <MovementStartRow
+              nodeId={node.id}
+              selectedChildIndex={selectedChild}
+              builtMethod={builtMethod}
+              active={movingHere}
+              onStart={movement.start}
+            />
+          </div>
+        </div>
+        {movingHere && (
+          <div className="layer__movement">
             <ClusterMovementPanel
               state={movement.state}
               preview={movement.preview}
-              nodeId={node.id}
-              selectedChildIndex={selectedChild}
-              childCount={node.children?.length ?? 0}
               builtMethod={builtMethod}
-              onStart={movement.start}
               onStrength={movement.setStrength}
               onCancel={movement.cancel}
             />
           </div>
-        </div>
+        )}
         <OutlierPanel
           node={node}
           dataset={dataset}
