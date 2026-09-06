@@ -1260,6 +1260,112 @@ def test_umap_movement_response_is_json_safe():
         assert json.loads(json.dumps(response, allow_nan=False))["status"] == "ok"
 
 
+# ── Numba's threading layer: every UMAP call is serialized ──────────────────
+
+
+class _OverlapDetector:
+    """A reducer proxy that records any two calls overlapping in time.
+
+    Numba's workqueue layer aborts the whole process on concurrent parallel
+    regions, which no assertion can catch — so this asserts the guarantee one
+    level up: no two UMAP calls are ever in flight at once.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._busy = 0
+        self._guard = threading.Lock()
+        self.overlaps = 0
+        self.calls = 0
+
+    def _enter(self) -> None:
+        with self._guard:
+            self.calls += 1
+            if self._busy:
+                self.overlaps += 1
+            self._busy += 1
+
+    def _leave(self) -> None:
+        with self._guard:
+            self._busy -= 1
+
+    def transform(self, X: Any) -> Any:
+        self._enter()
+        try:
+            time.sleep(0.005)  # widen the window so a race would show
+            return self._inner.transform(X)
+        finally:
+            self._leave()
+
+    def inverse_transform(self, Y: Any) -> Any:
+        self._enter()
+        try:
+            return self._inner.inverse_transform(Y)
+        finally:
+            self._leave()
+
+
+def test_concurrent_umap_movements_never_overlap_in_the_reducer():
+    """Request threads (warm UMAP movements) and job threads (refits) share one
+    Numba threading layer that is not thread-safe. `NUMBA_PARALLEL_LOCK` in
+    src/analysis/dim_reducer.py serializes every UMAP fit, transform and
+    inverse in the process; this runs four movements at once and checks that
+    the reducer never saw two calls in flight."""
+    payload, df, artifact, destination = _umap_pieces()
+    real = artifact.reducer
+    detector = _OverlapDetector(real)
+    artifact.reducer = detector
+    results: list[Any] = []
+    errors: list[BaseException] = []
+
+    def worker(alpha: float) -> None:
+        try:
+            results.append(
+                _movement(payload, df, target=_point(destination), strength=alpha)[0]
+            )
+        except BaseException as exc:  # noqa: BLE001 - collected for the assertions
+            errors.append(exc)
+
+    try:
+        threads = [
+            threading.Thread(target=worker, args=(a,)) for a in (0.2, 0.5, 0.8, 1.0)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+    finally:
+        artifact.reducer = real
+    assert errors == [], errors
+    assert len(results) == 4 and all(r["status"] == "ok" for r in results)
+    assert detector.calls >= 4 * (len(STRENGTH_GRID) + 1)
+    assert detector.overlaps == 0, f"{detector.overlaps} overlapping UMAP calls"
+
+    # Fits, too: two cold refits on different nodes at once complete.
+    meta = payload["meta"]
+    fits: list[Any] = []
+
+    def refit(node_id: str) -> None:
+        fits.append(
+            build_projection_artifact(
+                analysis_id=meta["analysis_id"],
+                node_id=node_id,
+                node=find_node(payload["tree"], node_id),
+                method="UMAP",
+                effective_config=meta["effective_config"],
+                feature_cols=meta["feature_cols"],
+                df=df,
+            )
+        )
+
+    pair = [threading.Thread(target=refit, args=(n,)) for n in ("root/0", "root/1")]
+    for t in pair:
+        t.start()
+    for t in pair:
+        t.join(timeout=120.0)
+    assert len(fits) == 2
+
+
 # ── The background-job path ─────────────────────────────────────────────────
 
 

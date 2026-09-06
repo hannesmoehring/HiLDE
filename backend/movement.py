@@ -121,6 +121,7 @@ from sklearn.preprocessing import StandardScaler
 from backend.serialize import SCHEMA_VERSION, _finite
 from backend.serialize import analysis_id as run_analysis_id
 from src.analysis.analysis_routine import fit_node_projection
+from src.analysis.dim_reducer import NUMBA_PARALLEL_LOCK
 from src.config_defaults import default_config
 
 if TYPE_CHECKING:
@@ -1209,11 +1210,16 @@ def _umap_transform(reducer: Any, X: np.ndarray) -> np.ndarray:
     Never a refit: a new fit may rotate, reflect or reshape the projection, and
     the preview would then be drawn against an embedding the analyst is not
     looking at.
+
+    Under `NUMBA_PARALLEL_LOCK`: `transform` runs Numba parallel regions, and
+    the workqueue threading layer aborts the process if two threads enter one
+    concurrently — a slider re-request racing a job-thread refit was enough.
     """
     try:
-        moved = np.asarray(
-            reducer.transform(np.asarray(X, dtype=float)), dtype=float
-        ).reshape(-1, 2)
+        with NUMBA_PARALLEL_LOCK:
+            moved = np.asarray(
+                reducer.transform(np.asarray(X, dtype=float)), dtype=float
+            ).reshape(-1, 2)
     except Exception as exc:
         raise MovementError(
             409,
@@ -1234,10 +1240,11 @@ def _umap_inverse(
     which is what the neighbour fallback exists for.
     """
     try:
-        x = np.asarray(
-            reducer.inverse_transform(np.asarray([target_fitted], dtype=float)),
-            dtype=float,
-        ).reshape(-1)
+        with NUMBA_PARALLEL_LOCK:  # same reason as `_umap_transform`
+            x = np.asarray(
+                reducer.inverse_transform(np.asarray([target_fitted], dtype=float)),
+                dtype=float,
+            ).reshape(-1)
     except Exception:  # noqa: BLE001 - any inverse failure means "use the fallback"
         return None
     if x.size != n_features or not np.all(np.isfinite(x)):

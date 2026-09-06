@@ -178,6 +178,15 @@ frozen projection would put it; clustering is a separate, non-linear decision ov
 whole dataset, and a nearby projection is not the same thing as a merged cluster. The
 preview is also not causal — it says what would have to differ, not what would cause it.
 
+**One UMAP at a time.** UMAP (and pynndescent under it) runs Numba parallel regions, and
+Numba's default `workqueue` threading layer is not thread-safe: two threads entering a
+parallel region at once make it *abort the process*. TBB has no macOS arm64 wheel and the
+OpenMP layer needs a `libomp` that is not shipped, so every UMAP fit, transform and inverse
+in the process goes through `NUMBA_PARALLEL_LOCK` (`src/analysis/dim_reducer.py`). Builds on
+job threads, refits on movement-job threads and warm UMAP movements on request threads
+therefore queue rather than overlap; a UMAP slider re-request issued during a build waits
+for it. PCA movements are unaffected.
+
 **Coordinates.** Every 2D quantity crossing the wire — target, preview points,
 displacements, distances — is in *visible* coordinates, the units of the parent's
 serialized `embedding_original`. The refitted reducer's own coordinates never leave the
