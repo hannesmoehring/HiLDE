@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
 import { ClusterScatter } from "./charts/ClusterScatter";
+import { ClusterMovementPanel } from "./components/ClusterMovementPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
+import { movementPropsFor, useMovement } from "./movement";
 import { getNodeAtPath } from "./treeNav";
 import type {
   AnalysisConfig,
@@ -383,6 +385,10 @@ function Navigation(props: {
       ? analysis.meta.config.method
       : config.method;
 
+  // Cluster movement — a counterfactual preview, not an edit. The hook owns the
+  // whole state machine and clears itself on a dataset / analysis / path change,
+  // so nothing here has to remember to tear it down.
+  const movement = useMovement({ analysis, datasetKey: dataset, treePath });
   // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
   // One at a time across layers, cleared whenever we drill in or out.
   const [outlierPick, setOutlierPick] = useState<{
@@ -432,6 +438,7 @@ function Navigation(props: {
               selectedChild={selectedChild}
               onSelectCluster={(i) => navigate([...parentPath, i])}
               highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
+              {...movementPropsFor(movement, node.id)}
             />
             {/* The projection above is what this acts on, so the action sits under it
                 rather than in the side column, which is about the selected child. */}
@@ -475,6 +482,17 @@ function Navigation(props: {
                   : "Select a cluster to see its DR quality, characteristics and predicate."}
               </p>
             )}
+            <ClusterMovementPanel
+              state={movement.state}
+              preview={movement.preview}
+              nodeId={node.id}
+              selectedChildIndex={selectedChild}
+              childCount={node.children?.length ?? 0}
+              builtMethod={builtMethod}
+              onStart={movement.start}
+              onStrength={movement.setStrength}
+              onCancel={movement.cancel}
+            />
           </div>
         </div>
         <OutlierPanel

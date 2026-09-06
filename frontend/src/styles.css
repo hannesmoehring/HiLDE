@@ -729,3 +729,157 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .cluster-chip { margin: 0 4px 4px 0; }
 .chart-placeholder { border: 1px dashed var(--border-strong); padding: 1rem; background: var(--panel-2); min-height: 120px; }
 .chart-placeholder__title { font-size: 12.5px; color: var(--muted); margin-bottom: 0.5rem; }
+
+/* ── Cluster movement panel ───────────────────────────────────────────────── */
+/* The chart-side marks (crosshair, ghosts, arrow, destination marker) are drawn
+   inline in ClusterScatter with the theme tokens — nothing here touches them.
+   This block is the panel only: toolbar, route, slider, metric tiles, delta
+   table, sparkline, warnings. Cluster hues stay reserved for cluster identity,
+   so the only color used is the diverging polarity pair already carried by the
+   characteristics bars (--pos / --neg) plus the caution warm (--neg). */
+.movement {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hair);
+}
+/* A live movement suspends drill-down on the projection beside it — the left
+   rule is the standing reminder that this panel is currently in charge. */
+.movement--active { border-left: 2px solid var(--ink); padding-left: 11px; }
+
+.movement__head { display: flex; align-items: baseline; gap: 8px; }
+.movement__title { font-size: 12.5px; font-weight: 600; }
+.movement__cancel { margin-left: auto; padding: 1px 8px; font-size: 11.5px; }
+
+.movement__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Deterministic-subsample flag. Same shape as the .banner kicker so a badge
+   reads as a badge wherever it turns up. */
+.movement__badge {
+  border: 1px solid var(--border-strong);
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.movement__prompt { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.movement__loading { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.movement__error { margin: 0; font-size: 12.5px; color: var(--neg); }
+.movement__disabled p { margin: 0 0 6px; font-size: 12.5px; }
+.movement__disabled p:last-child { margin-bottom: 0; }
+
+/* Source → destination, the one line that says what is being asked. */
+.movement__route { display: flex; flex-direction: column; gap: 1px; }
+.movement__route-line { font-size: 13px; }
+
+.movement__strength { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+.movement__strength label { color: var(--muted); }
+.movement__strength input[type="range"] { flex: 1 1 auto; min-width: 90px; }
+.movement__strength output { min-width: 34px; text-align: right; font-weight: 600; }
+
+/* The metrics are computed at the response's strength, not the slider's. The
+   header carries that strength, and the warm note fires as soon as the two part
+   company — the tiles below are never silently re-read as live. */
+.movement__metrics-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.movement__stale { margin-left: auto; color: var(--neg); }
+
+.movement__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.movement__metrics span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--panel);
+  padding: 5px 9px;
+}
+.movement__metrics b { font-size: 13px; font-weight: 600; }
+.movement__metrics i { font-style: normal; font-size: 11px; color: var(--muted); }
+
+/* Sparkline for the UMAP α grid. Deliberately not a chart component: it has one
+   series, no axes and no interaction — the numbers that matter are in the tiles. */
+.movement__trajectory { display: flex; flex-direction: column; gap: 3px; }
+.movement__trajectory-head { font-size: 12px; color: var(--muted); }
+.movement__spark { display: block; border: 1px solid var(--border); background: var(--panel-2); }
+.movement__spark-line { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.movement__spark-dot { fill: var(--ink); }
+.movement__spark-cursor { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+
+.movement__warnings { display: flex; flex-direction: column; gap: 4px; }
+.movement__warning {
+  margin: 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--border-strong);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.movement__warning--caution { border-left-color: var(--neg); color: var(--neg); }
+.movement__warning code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; }
+
+/* The two sentences that must not be skimmed past: the min-norm caveat for a
+   free PCA target, and the frozen-projection note. Boxed rather than listed. */
+.movement__note {
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.movement__note--minnorm { border-color: var(--border-strong); color: var(--ink); }
+
+.movement__table-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.movement__table-head .hint { font-weight: 400; }
+.movement__table-head button { margin-left: 0; padding: 1px 8px; font-size: 11.5px; }
+.movement__table-head button:first-of-type { margin-left: auto; }
+
+.movement__table { max-height: 260px; }
+.movement__table .num { text-align: right; }
+/* Immutable columns (row ids, target_* labels) carry a zero delta by definition —
+   they recede, and the tag beside the name says why. */
+.movement__table tr.is-immutable td { color: var(--faint); }
+.movement__fixed {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  line-height: 14px;
+  vertical-align: 1px;
+}
+
+/* Standardized magnitude, as a track. Sign takes the diverging polarity pair —
+   the same one the characteristics bars use — never a categorical cluster hue. */
+.movement__bar {
+  display: inline-block;
+  width: 62px;
+  height: 7px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  background: #f3f1ec; /* theme.track — the faint range track used by the predicate bands */
+}
+.movement__bar-fill { display: block; height: 100%; }
+.movement__bar-fill.is-up { background: var(--pos); }
+.movement__bar-fill.is-down { background: var(--neg); }
+.movement__bar-value { font-variant-numeric: tabular-nums; }

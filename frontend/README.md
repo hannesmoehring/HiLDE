@@ -43,6 +43,12 @@ older than `src/`.
 | `exploreWhole` | *Explore entire layer* is active for the current path |
 | `useCache`, `mode` | the run-cache toggle and whether the server has one |
 
+Cluster movement is the one exception to "`App.tsx` owns everything": its state machine
+lives in `movement.ts::useMovement`, because it is a five-phase machine with in-flight
+requests and half a dozen clear-conditions, and folding that into the flat `useState`
+block above would have buried it. `App.tsx` still owns the hook — it just does not own the
+transitions.
+
 **The tree arrives once and navigation is local.** `treeNav.ts::getNodeAtPath` walks the
 already-fetched tree, so clicking a cluster costs nothing. Only per-selection questions —
 predicate, characteristics, targets, raw rows, image pixels — go back to the server.
@@ -90,6 +96,7 @@ path resolves to.
 | `types.ts` | The data contract. **Mirrors `backend/serialize.py`** — change one and change the other. |
 | `config.ts` | `DEFAULT_CONFIG`, mirroring `src/config_defaults.py`, except `method`: the app opens on UMAP while the Python default stays PCA (a research harness reads its DR method off that default). Every request carries `method`, so this is what the app actually runs. |
 | `treeNav.ts` | Client-side drill-down over the fetched tree. |
+| `movement.ts` | The cluster-movement state machine (`useMovement`) plus the pure geometry it needs: screen→embedding inversion, target resolution, strength re-expression, and the stale-response guard. Kept out of the chart so all of it is testable without a DOM. |
 
 ### Components
 
@@ -100,6 +107,7 @@ path resolves to.
 | `ExplorationPanel.tsx` | The node's own embedding with lasso/box selection, feeding three tabs: *Predicate*, *Characteristics*, *Ranges*. Also the selected-points table and CSV export. |
 | `RangeFilters.tsx` | The *Ranges* tab — the inverted interaction: pick columns, slide a `[min, max]` window over each, and points inside *every* window become the selection. Windows are in raw column units. |
 | `OutlierPanel.tsx` | GLOSH scores for one internal layer, folded into a `<details>`; the closed summary carries the headline numbers. Clicking a row reveals that point's values and rings it in the projection above. |
+| `ClusterMovementPanel.tsx` | The movement counterpart to `LayerSide`: start/cancel, the resolved destination, the strength slider, the per-feature change table sorted by standardized magnitude, distance metrics, the UMAP strength trajectory, warnings, and JSON/CSV export. Deliberately has **no *Apply*** — this is a preview, not an edit. |
 | `PointImage.tsx` | One row drawn as its image. The server sends raw greyscale pixels, so the canvas is drawn at native size and blown up with `image-rendering: pixelated` — an 8×8 digit stays a grid of squares. |
 
 **Why `target_*` columns are offered in *Ranges* but never in the predicate.** A range
@@ -151,9 +159,22 @@ that rate.
 
 ### `fixtures/`
 
-`analysis_iris.json`, `predicate_iris.json` — captured `/api/analysis` and `/api/predicate`
-responses for a two-layer PCA build on Iris. No source file imports them; they are kept as a
-reference sample of the wire format.
+`analysis_iris.json`, `predicate_iris.json`, `movement_iris.json` — captured `/api/analysis`,
+`/api/predicate` and `/api/movement` responses for a two-layer PCA build on Iris. No source
+file imports any of them; they are kept as a reference sample of the wire format.
+
+The analysis and movement fixtures come from ONE live run, captured together by
+`scripts/capture_movement_fixture.py` (standard library only) against a running backend:
+
+```bash
+PYTHONPATH=. uv run uvicorn backend.app:app --port 8000
+python frontend/scripts/capture_movement_fixture.py --base-url http://127.0.0.1:8000
+```
+
+The movement sample is a PCA point target on `root/1` (source child 0, aimed at child 1's
+visible centroid). The script refuses to write unless every ghost equals the serialized
+source point plus `visible_displacement` — the shared-translation invariant a hand-written
+sample cannot be trusted to satisfy — so the two files always agree with each other.
 
 ---
 
@@ -172,4 +193,22 @@ reference sample of the wire format.
 - **Requests are not cancelled.** There is no `AbortController`; a superseded response is
   discarded on arrival rather than aborted at the socket, so a slow build keeps running
   server-side after you navigate away.
+- **Movement coordinates are always the *visible* ones.** The server refits the parent's
+  reducer to answer a movement and aligns that refit to the embedding already on screen, so
+  every 2D number the client sees — target, ghosts, displacements, distances — is in
+  `embedding_original` units. Fitted-reducer coordinates never reach the frontend.
+- **The strength slider costs nothing under PCA and one request under UMAP.** PCA is
+  linear, so `previewAtStrength` interpolates ghosts exactly from the returned
+  `visible_displacement`. UMAP's transform is not linear, so its ghosts are only correct at
+  a strength the server actually projected: the slider stays instant, and a re-request
+  goes out 350 ms after it settles. The re-request deliberately does not blank the panel —
+  hiding the ghosts on every nudge would remove exactly what is being compared.
+- **`metrics` describe the strength the *server* answered at**, not the live slider
+  position; the panel labels them with it and flags the mismatch rather than silently
+  showing a stale distance as current.
+- **A movement survives drilling deeper, not stepping sideways.** The preview belongs to
+  one parent projection. Drilling into a child keeps that projection on screen in the
+  layer stack, so the movement stays; navigating to a sibling, back up, or to another
+  dataset removes the projection and cancels the movement (`nodeIsOnPath` in
+  `movement.ts`). Decision of 06.09.
 - **There are no frontend tests.** Verification is `npm run build` plus the app itself.
