@@ -135,10 +135,26 @@ Two settings here exist purely for **determinism**, and both are load-bearing:
 t-SNE clamps `perplexity` below the sample count so it survives small sub-regions. MDS
 uses `init="random"` with `n_init`/`max_iter` from the config.
 
+> **Only PCA and UMAP can place a point that was never fitted.** `backend/movement.py`
+> needs exactly that — where would a moved point land? — so it supports those two and
+> refuses the other two by name: t-SNE has no out-of-sample transform at all, and MDS only
+> reconstructs from a distance matrix.
+
 > **t-SNE and PCA do not honour a replicate seed.** `_tsne` passes no `init`, and
 > scikit-learn's default `init="pca"` never consults `random_state`; PCA takes no seed at
 > all. Only UMAP and MDS produce genuinely different embeddings across seeds. This matters
 > for the experiment harnesses — see `scripts/checks/05_h1a_replicate_collapse.py`.
+
+### `analysis/analysis_routine.py` — `fit_node_projection`
+
+`_embed_original` keeps only a node's coordinates and throws the fitted reducer away,
+which is all the analysis needs. `backend/movement.py` needs the reducer back, and it must
+be *this* fit rather than a lookalike, so the body was lifted into
+`fit_node_projection(X_orig, config) -> ReductionResult | None` and `_embed_original` now
+delegates to it. Same guards, same `fit_dimensionality_reducer` call, so a movement refit
+inherits parity by construction — including the `init="pca"` determinism fix above, which
+a second implementation would have had to remember to copy. `None` still means the node
+cannot be projected: too small, or the reducer raised.
 
 ### `analysis/clustering.py`
 

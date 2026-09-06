@@ -109,12 +109,13 @@ cd frontend && npm install && npm run build
 
 ### Tests and checks
 
-The test suite is three scripts, run as modules:
+The test suite is four scripts, run as modules:
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
 PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
+PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
 ```
 
 The same files run under pytest (a dev dependency, installed by `uv sync`):
@@ -211,6 +212,28 @@ lassoing points and reading off a description, the analyst picks columns, slides
 become the selection. Both feature and `target_*` columns are offered — a range filter is
 a question, not an induced explanation, so slicing on a label explains nothing away, and
 targets stay marked in the target hue. The tab badge shows how many columns are filtered.
+
+**Move a cluster (counterfactual preview).** From a selected cluster's side column,
+*Move C…* asks a what-if question: if this cluster sat over there instead, what would have
+to change about it? Pick a destination by clicking — an empty spot for a free position, or
+another cluster (its points, its centroid label, its legend chip) to aim at that cluster.
+The answer is **one shared feature-space displacement** applied to every point of the
+cluster, so it translates without morphing and every distance inside it is preserved. The
+panel reports the per-feature change in raw units and in standard deviations, sorted by
+magnitude, with a strength slider from 0 to 100 %.
+
+Nothing is written back: the dataset and the hierarchy are untouched, there is no *Apply*,
+and the preview is drawn in the **frozen** projection currently on screen — the embedding
+is never recomputed, because a fresh fit could rotate or reshape it and the comparison
+would be meaningless. PCA reaches a reachable destination exactly, but a free point has a
+whole family of solutions and the one shown is the smallest, measured in standardized
+units (the panel says so). UMAP has no exact inverse, so its destination is an estimate,
+its intermediate strengths are the least trustworthy part of the preview, and the panel
+plots the whole distance-vs-strength trajectory rather than a single number. Available for
+runs built with PCA or UMAP; t-SNE has no out-of-sample transform and MDS only
+reconstructs from a distance matrix, so both are refused by name. Moving a cluster does
+**not** promise that a rebuild would make HDBSCAN merge it with its destination, and it is
+not a causal claim — it says what would have to differ, not what would cause it.
 
 **Outliers.** Each internal layer carries a collapsible GLOSH outlier section: the score
 distribution and a ranked table of the 100 most outlying points. Clicking a row reveals
@@ -346,11 +369,22 @@ as one.
   remaining 2195 are noise. They are not lost — the layer view, via *Explore entire
   layer*, is where they can be selected — but child cluster sizes do not sum to the
   parent's.
-- **The test suite is backend-only.** Three scripts (`backend/tests/`) covering tree
-  serialization, target statistics and predicate clause bookkeeping, plus the four
-  regression checks in `scripts/checks/`. There is no test runner configuration and no
-  automated coverage of the frontend. `uv run ruff format --check .` passes;
-  `uv run ruff check .` does not (33 findings).
+- **The test suite is backend-only.** Four scripts (`backend/tests/`) covering tree
+  serialization, target statistics, predicate clause bookkeeping and cluster movement,
+  plus the four regression checks in `scripts/checks/`. There is no test runner
+  configuration and no automated coverage of the frontend. `uv run ruff format --check .`
+  passes; `uv run ruff check .` does not (33 findings).
+- **Movement previews are not a promise about clustering.** A cluster moved onto another
+  in the frozen projection may still not merge with it on a rebuild: HDBSCAN decides over
+  the whole dataset in the pre-reduction space, not from the picture on screen.
+- **UMAP movement is approximate on both ends.** The destination for a free point comes
+  from `inverse_transform`, which has no exactness guarantee, and the ghosts come from the
+  out-of-sample `transform` — so even at strength 0 they do not sit exactly on the
+  original points. The distance-vs-strength trajectory is returned in full precisely
+  because its middle is unreliable.
+- **A movement needs a run built after the feature landed.** Refits read
+  `meta.effective_config`, which older cached payloads do not carry; those answer HTTP 409
+  and ask for a rebuild.
 - **t-SNE and PCA seed replicates are repeats, not replicates.** The experiment harnesses
   vary a seed across replicates and thread it into `tsne_random_state`, but `_tsne` passes
   no `init`, and scikit-learn's default `init="pca"` never consults `random_state`. PCA
