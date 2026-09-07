@@ -77,6 +77,10 @@ export interface PcaVarianceBarProps {
 export interface PredicateBandsProps {
   full: PredicateRow[]; // RCM 1.0
   trimmed: PredicateRow[]; // RCM 0.9
+  // Size of the background the predicate was scored on (summary.n_background),
+  // so the per-step match count can be read as "n of N". Optional: the bands
+  // draw the same without it.
+  nBackground?: number;
 }
 
 // E2 — Target-value bands. Same band geometry as E, for the `target_*` label

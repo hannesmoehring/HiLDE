@@ -623,6 +623,7 @@ export function ExplorationPanel({
                       <PredicateBands
                         full={predicate.full}
                         trimmed={predicate.trimmed}
+                        nBackground={predicate.summary?.n_background}
                       />
                     )}
                   </>

@@ -166,7 +166,11 @@ export function LayerSide({
                       <span>{predicate.summary.n_selected} points</span>
                     </div>
                   )}
-                  <PredicateBands full={clauses.full} trimmed={clauses.trimmed} />
+                  <PredicateBands
+                    full={clauses.full}
+                    trimmed={clauses.trimmed}
+                    nBackground={predicate?.summary?.n_background}
+                  />
                 </>
               ))}
           </div>

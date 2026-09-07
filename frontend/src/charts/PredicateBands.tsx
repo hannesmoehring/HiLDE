@@ -34,6 +34,13 @@ const GAIN_W = 96; // right gutter holding "+0.214 · 47"
 const BOTTOM = 26; // x-axis (0% / 50% / 100%)
 const PITCH = 22; // vertical distance between rows
 const BAND_H = 13;
+const TIP_PAD = 14; // cursor → tooltip offset
+const TIP_CHAR_W = 7; // ≈ mean advance of the 13px tooltip face
+
+const GAIN_HEADER_TITLE =
+  "Per clause, in the order the greedy search added it: the F1 the predicate gained when " +
+  "the clause was added, and the number of background points the conjunction still " +
+  "matched after that step (the selection is a subset of them; precision = selected ÷ matched).";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const fmt = (v: number) => v.toFixed(2);
@@ -41,7 +48,7 @@ const fmt = (v: number) => v.toFixed(2);
 // +0.000 here — that is why the match count is shown next to it.
 const gain = (v: number) => `+${v.toFixed(3)}`;
 
-export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
+export function PredicateBands({ full, trimmed, nBackground }: PredicateBandsProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const [tip, setTip] = useState<{ row: PredicateRow; x: number; y: number } | null>(null);
 
@@ -85,6 +92,29 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
     setTip({ row, x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) });
   };
 
+  const matchedLine = (row: PredicateRow) =>
+    nBackground != null
+      ? `Matches ${row.predicate_n_matched} of ${nBackground} background points`
+      : `Matches ${row.predicate_n_matched} background points`;
+
+  // The tooltip opens to the right of the cursor, and to its LEFT when that would
+  // run past the chart's edge — the column clips with overflow: hidden, so the
+  // rightmost rows (the gain gutter) otherwise lose half their tooltip. The
+  // width estimate only picks the side; the flipped tooltip is anchored by its
+  // right edge, so a poor estimate costs an early flip, never a clipped tip.
+  const tipWidth = (row: PredicateRow) => {
+    const core = coreByFeature.get(row.feature);
+    const lines = [
+      row.feature,
+      `Selection: ${fmt(row.sel_min)} – ${fmt(row.sel_max)}`,
+      `Standalone F1: ${fmt(row.clause_f1)}`,
+      `${matchedLine(row)} · P 0.00 · R 0.00`,
+      core ? `Core (RCM 0.9): step 0 · +0.000 · 0.00 → 0.00` : "",
+    ];
+    return Math.max(...lines.map((l) => l.length)) * TIP_CHAR_W + 16;
+  };
+  const flipTip = tip != null && tip.x + TIP_PAD + tipWidth(tip.row) > width;
+
   return (
     <div
       ref={ref}
@@ -126,7 +156,8 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
             fontSize={10.5}
             fill={MUTED}
           >
-            ΔF1 when added · matched
+            <title>{GAIN_HEADER_TITLE}</title>
+            ΔF1 when added · points matched
           </text>
         )}
 
@@ -195,7 +226,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
                     fill={TEXT}
                   >
                     <title>
-                      {`ΔF1 when added ${gain(row.predicate_f1_gain)} at step ${row.predicate_step}; ${row.predicate_n_matched} points still matched`}
+                      {`ΔF1 when added ${gain(row.predicate_f1_gain)} at step ${row.predicate_step}; ${matchedLine(row).toLowerCase()} after this step`}
                     </title>
                     {gain(row.predicate_f1_gain)}
                     <tspan fill={MUTED}> · {row.predicate_n_matched}</tspan>
@@ -253,8 +284,10 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         <div
           style={{
             position: "absolute",
-            left: tip.x + 14,
-            top: tip.y + 14,
+            // Flipped: anchor the tooltip's RIGHT edge left of the cursor, so it
+            // can never spill past the chart however wide it turns out to be.
+            ...(flipTip ? { right: width - tip.x + TIP_PAD } : { left: tip.x + TIP_PAD }),
+            top: tip.y + TIP_PAD,
             pointerEvents: "none",
             background: theme.surface,
             border: `1px solid ${theme.textPrimary}`,
@@ -285,7 +318,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
                 {fmt(tip.row.predicate_f1_after ?? 0)}
               </div>
               <div style={{ color: MUTED }}>
-                Matched {tip.row.predicate_n_matched} · P {fmt(tip.row.predicate_precision ?? 0)} · R{" "}
+                {matchedLine(tip.row)} · P {fmt(tip.row.predicate_precision ?? 0)} · R{" "}
                 {fmt(tip.row.predicate_recall ?? 0)}
               </div>
             </>
