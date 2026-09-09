@@ -12,8 +12,10 @@ than from inside one. Each worker's per-stage output goes to /dev/null: ten
 interleaved progress logs are unreadable, and a failure comes back as a captured
 traceback anyway.
 
-The job is long and restartable: a re-run skips whatever is already cached, so an
-interrupted one can simply be started again.
+The job is long and restartable: a re-run skips whatever is already cached AT THE
+CURRENT SCHEMA VERSION, so an interrupted one can simply be started again — and a
+schema bump (see `backend/serialize.py`) makes the same re-run replace the stale
+entries in place, without a window where the cache is empty.
 
     PYTHONPATH=. .venv/bin/python scripts/precompute_cache.py
 
@@ -54,6 +56,7 @@ for _var in (
 from backend import datasets as ds  # noqa: E402
 from backend import run_cache  # noqa: E402
 from backend.app import AnalysisRequest, _build, _cache_key, _tree_cache  # noqa: E402
+from backend.serialize import SCHEMA_VERSION  # noqa: E402
 
 # DATASETS = ["MNIST (High)", "Fashion-MNIST (High)"]
 
@@ -253,6 +256,22 @@ def _quiet() -> None:
     os.close(fd)
 
 
+def _is_current(payload: dict[str, object]) -> bool:
+    """Whether a cached payload was written by the current serializer.
+
+    The run-cache key is (dataset, feature_cols, config) — deliberately NOT the
+    code — so a payload from an older build is still a hit, and a plain
+    `load(key) is not None` skip would leave the whole cache at its old schema
+    forever. Anything below the current version is rebuilt in place: the server
+    keeps serving the old entry until its replacement is written, so there is no
+    cold-cache window. Payloads predating the field carry no `schema_version`
+    and count as version 1.
+    """
+    meta = payload.get("meta")
+    version = meta.get("schema_version", 1) if isinstance(meta, dict) else 1
+    return version == SCHEMA_VERSION
+
+
 def _run_one(
     dataset: str, feature_cols: list[str], config: dict[str, object], key: str
 ) -> tuple[str, float, str]:
@@ -262,7 +281,8 @@ def _run_one(
     already written it to disk, and shipping an 8-10 MB tree back through the pool
     would cost more than the build that produced it.
     """
-    if run_cache.load(key) is not None:
+    cached = run_cache.load(key)
+    if cached is not None and _is_current(cached):
         return "skipped", 0.0, ""
 
     df = ds.load(dataset)
