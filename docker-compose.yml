@@ -2,7 +2,7 @@ services:
   shd:
     build: .
     image: shd:latest
-    mem_limit: 12g
+    mem_limit: 28g
     ports:
       - "8000:8000"
     environment:
