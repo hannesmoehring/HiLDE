@@ -1,11 +1,23 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { datasetColumns, getMode, listDatasets, runAnalysis } from "./api";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  counterfactualRowsUrl,
+  datasetColumns,
+  getMode,
+  listDatasets,
+  runAnalysis,
+} from "./api";
 import { ClusterScatter } from "./charts/ClusterScatter";
+import {
+  ClusterMovementPanel,
+  MovementStartRow,
+} from "./components/ClusterMovementPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
 import { DEFAULT_CONFIG } from "./config";
+import { useCounterfactual, type CounterfactualController } from "./counterfactual";
+import { movementPropsFor, useMovement } from "./movement";
 import { getNodeAtPath } from "./treeNav";
 import type {
   AnalysisConfig,
@@ -25,6 +37,8 @@ export default function App() {
   const [config, setConfig] = useState<AnalysisConfig>(DEFAULT_CONFIG);
 
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const analysisRef = useRef(analysis);
+  analysisRef.current = analysis;
   const [treePath, setTreePath] = useState<number[]>([]);
   // Explore the node at the end of `treePath` whole, instead of waiting for a drill
   // into one of its clusters. Every navigation goes through `navigate` so the flag
@@ -37,6 +51,27 @@ export default function App() {
     setTreePath(path);
     setExploreWhole(whole);
   }
+
+  // Counterfactual session: the stack of applied movements and the ONE dataset
+  // key every request goes out with. A rebuild on a counterfactual key uses the
+  // run's own feature columns and built config — never the rail's unsaved knobs
+  // — and commits the new run together with the stack, then goes to root:
+  // node ids like `root/1` are positional and may name entirely different rows
+  // after a rebuild, so "the same path" would preserve nothing.
+  const cf = useCounterfactual({
+    baseDataset: datasetKey,
+    rebuild: (key) => {
+      const meta = analysisRef.current?.meta;
+      if (!meta) return Promise.reject(new Error("there is no run on screen to rebuild"));
+      return runAnalysis(key, meta.feature_cols, meta.config as Partial<AnalysisConfig>, true);
+    },
+    onSwitched: (res) => {
+      setAnalysis(res);
+      navigate([]);
+    },
+  });
+  const cfBusy = cf.phase === "applying" || cf.phase === "rebuilding";
+  const cfHead = cf.stack.length ? cf.stack[cf.stack.length - 1] : null;
 
   // The config rail collapses to a 38px strip so the analysis canvas can widen.
   const [configOpen, setConfigOpen] = useState(true);
@@ -111,7 +146,9 @@ export default function App() {
     setAnalysis(null);
     navigate([]);
     try {
-      const res = await runAnalysis(datasetKey, featureCols, config, useCache);
+      // On a counterfactual session the rail rebuilds the counterfactual data:
+      // the edits are the data now, the rail only changes how it is analysed.
+      const res = await runAnalysis(cf.activeDatasetKey, featureCols, config, useCache);
       setAnalysis(res);
     } catch (e) {
       setError(String(e));
@@ -125,7 +162,7 @@ export default function App() {
   // their requests off both, and row indices from a 6497-row tree sent against a
   // 150-row dataset are a 500, not an empty result. Never hand them a mismatched pair.
   const shownAnalysis =
-    analysis && analysis.meta.dataset === datasetKey ? analysis : null;
+    analysis && analysis.meta.dataset === cf.activeDatasetKey ? analysis : null;
 
   const runMeta = [
     datasetKey || "no dataset",
@@ -173,13 +210,24 @@ export default function App() {
                 <section className="cfg__block">
                   <h3>Dataset</h3>
                   <label className="field">
-                    <span>Source</span>
+                    <span>
+                      Source
+                      {cf.stack.length > 0 && (
+                        <span
+                          className="cf-badge"
+                          title={`Counterfactual data: ${cf.stack.length} edit(s) applied on top of ${datasetKey}. Changing the dataset resets the session.`}
+                        >
+                          cf
+                        </span>
+                      )}
+                    </span>
                     {/* Locked during a build: swapping datasets mid-run would apply the
-                        in-flight tree under the new dataset's key. */}
+                        in-flight tree under the new dataset's key. Also locked while
+                        a counterfactual apply/rebuild is out, for the same reason. */}
                     <select
                       value={datasetKey}
                       onChange={(e) => setDatasetKey(e.target.value)}
-                      disabled={loading}
+                      disabled={loading || cfBusy}
                     >
                       {datasets.map((d) => (
                         <option key={d.key} value={d.key}>
@@ -257,10 +305,17 @@ export default function App() {
               </div>
 
               <div className="cfg__build">
+                {/* `cfBusy` gates this the way it gates the dataset selector and
+                    Undo/Reset. Build is the one control that can move App state
+                    from under an apply that is already out: it nulls `analysis`,
+                    which the pending rebuild reads, and it commits a run built on
+                    the key it captured. The counterfactual hook's stale check
+                    cannot see either — Build changes no base, generation or head. */}
                 <button
                   className="primary"
                   onClick={build}
-                  disabled={loading || featureCols.length === 0}
+                  disabled={loading || featureCols.length === 0 || cfBusy}
+                  title={cfBusy ? "Waiting for the counterfactual rebuild" : undefined}
                 >
                   {loading ? "Building…" : "Build & Apply"}
                 </button>
@@ -309,6 +364,69 @@ export default function App() {
             </div>
           )}
 
+          {cf.phase === "applying" && (
+            <div className="banner" role="status">
+              <strong>Applying</strong>
+              <span>Writing the movement into a counterfactual copy of the dataset…</span>
+            </div>
+          )}
+          {cf.phase === "rebuilding" && (
+            <div className="banner" role="status">
+              <strong>Rebuilding</strong>
+              <span>
+                Rebuilding the analysis on the counterfactual data… the run below stays on
+                screen until the new one is ready.
+              </span>
+            </div>
+          )}
+          {cf.phase === "error" && cf.error && (
+            <div className="banner banner--error" role="alert">
+              <strong>Counterfactual</strong>
+              <span>{cf.error} — the run on screen is unchanged.</span>
+            </div>
+          )}
+          {cfHead && (
+            <div className="banner banner--cf">
+              <strong>Counterfactual data</strong>
+              <span className="banner__chips">
+                {cf.stack.length} edit{cf.stack.length === 1 ? "" : "s"} applied ·
+                {cfHead.edits.map((e) => (
+                  <span
+                    key={e.cf_id}
+                    className="banner__chip"
+                    title={`${e.node_id}: C${e.source_child_index} → ${
+                      e.target.kind === "cluster"
+                        ? `C${e.target.child_index}`
+                        : `point (${e.target.x.toFixed(2)}, ${e.target.y.toFixed(2)})`
+                    } at ${Math.round(e.strength * 100)}% — ${e.n_rows} rows, ${e.features_changed.length} feature(s): ${e.features_changed.join(", ")}`}
+                  >
+                    C{e.source_child_index} →{" "}
+                    {e.target.kind === "cluster" ? `C${e.target.child_index}` : "point"} @{" "}
+                    {Math.round(e.strength * 100)}%
+                  </span>
+                ))}
+              </span>
+              <span className="banner__note">
+                Hierarchy rebuilt on counterfactual data — cluster numbering does not
+                correspond to the previous run.
+              </span>
+              <button onClick={cf.undo} disabled={cfBusy} title="Back to the previous data">
+                Undo
+              </button>
+              <button onClick={cf.reset} disabled={cfBusy} title="Back to the original data">
+                Reset
+              </button>
+              <a
+                className="button-link"
+                href={counterfactualRowsUrl(cfHead.cfId)}
+                download={`counterfactual_${cfHead.cfId}.csv`}
+                title="The changed rows: row_id, original and counterfactual values"
+              >
+                Export rows
+              </a>
+            </div>
+          )}
+
           {mode?.hosting && shownAnalysis?.cached && (
             <div className="banner">
               <strong>Cached</strong>
@@ -325,12 +443,17 @@ export default function App() {
           )}
 
           {shownAnalysis && (
+            // Keyed on the active dataset key: a switch remounts the whole layer
+            // stack, so the movement machine starts idle against the new run in
+            // the very render that shows it.
             <Navigation
+              key={cf.activeDatasetKey}
               analysis={shownAnalysis}
               treePath={treePath}
               exploreWhole={exploreWhole}
               navigate={navigate}
-              dataset={datasetKey}
+              dataset={cf.activeDatasetKey}
+              counterfactual={cf}
               featureCols={featureCols}
               targetCols={targetCols}
               config={config}
@@ -356,6 +479,7 @@ function Navigation(props: {
   exploreWhole: boolean;
   navigate: (path: number[], whole?: boolean) => void;
   dataset: string;
+  counterfactual: CounterfactualController;
   featureCols: string[];
   targetCols: string[];
   config: AnalysisConfig;
@@ -368,6 +492,7 @@ function Navigation(props: {
     exploreWhole,
     navigate,
     dataset,
+    counterfactual,
     featureCols,
     targetCols,
     config,
@@ -383,6 +508,39 @@ function Navigation(props: {
       ? analysis.meta.config.method
       : config.method;
 
+  // Cluster movement — a counterfactual preview, not an edit. The hook owns the
+  // whole state machine and clears itself on a dataset / analysis / path change,
+  // so nothing here has to remember to tear it down.
+  const movement = useMovement({ analysis, datasetKey: dataset, treePath });
+
+  // Apply is enabled only when the preview on screen is exactly what the server
+  // would write (`movement.settled`) and no counterfactual apply/rebuild is out.
+  // A failed apply leaves the button usable again.
+  const cfBusy =
+    counterfactual.phase === "applying" || counterfactual.phase === "rebuilding";
+  const applyDisabledReason: string | null = cfBusy
+    ? "a counterfactual apply or rebuild is in progress"
+    : !analysis.meta.analysis_id
+      ? "this run predates movement support — rebuild it first"
+      : movement.state.phase !== "ready"
+        ? "pick a destination and wait for the preview"
+        : !movement.settled
+          ? "waiting for the preview at this strength"
+          : null;
+  const onApply = () => {
+    const s = movement.state;
+    if (s.phase !== "ready" || applyDisabledReason) return;
+    counterfactual.apply({
+      analysis_id: analysis.meta.analysis_id ?? "",
+      dataset,
+      feature_cols: analysis.meta.feature_cols,
+      config: analysis.meta.config,
+      node_id: s.nodeId,
+      source_child_index: s.sourceChildIndex,
+      target: s.target,
+      strength: s.strength,
+    });
+  };
   // Point picked in a layer's GLOSH outlier table; ringed in that layer's scatter.
   // One at a time across layers, cleared whenever we drill in or out.
   const [outlierPick, setOutlierPick] = useState<{
@@ -411,6 +569,11 @@ function Navigation(props: {
     // the deepest one rendered, i.e. the one that would otherwise be waiting for a
     // cluster click. `node` here *is* that node, so it is what gets explored.
     const exploringHere = exploreWhole && treePath.length === L - 1;
+    // A running movement belongs to exactly one node. Its reading — controls,
+    // tiles, feature table — takes a full-width row of THAT layer card, under
+    // both columns; every other layer only ever shows the start button.
+    const movingHere =
+      movement.state.phase !== "idle" && movement.state.nodeId === node.id;
     layerViews.push(
       <section className="panel layer" key={`layer-${L}`}>
         <div className="panel__head">
@@ -432,6 +595,7 @@ function Navigation(props: {
               selectedChild={selectedChild}
               onSelectCluster={(i) => navigate([...parentPath, i])}
               highlightRow={outlierPick?.layer === L ? outlierPick.rowId : null}
+              {...movementPropsFor(movement, node.id)}
             />
             {/* The projection above is what this acts on, so the action sits under it
                 rather than in the side column, which is about the selected child. */}
@@ -475,8 +639,29 @@ function Navigation(props: {
                   : "Select a cluster to see its DR quality, characteristics and predicate."}
               </p>
             )}
+            <MovementStartRow
+              nodeId={node.id}
+              selectedChildIndex={selectedChild}
+              builtMethod={builtMethod}
+              active={movingHere}
+              onStart={movement.start}
+            />
           </div>
         </div>
+        {movingHere && (
+          <div className="layer__movement">
+            <ClusterMovementPanel
+              state={movement.state}
+              preview={movement.preview}
+              builtMethod={builtMethod}
+              onStrength={movement.setStrength}
+              onCancel={movement.cancel}
+              onApply={onApply}
+              applyDisabledReason={applyDisabledReason}
+              applying={cfBusy}
+            />
+          </div>
+        )}
         <OutlierPanel
           node={node}
           dataset={dataset}

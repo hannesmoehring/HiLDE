@@ -14,7 +14,7 @@ CLAUDE.md
 *.png
 *.md
 !README.md
-
+!plans/*.md
 # Python-generated files
 __pycache__/
 *.py[oc]

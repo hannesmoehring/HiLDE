@@ -4,7 +4,15 @@
 //
 // Parity references point at the Streamlit source each chart replaces.
 import type { ReactNode } from "react";
-import type { Characteristic, NodeScores, PredicateRow, TargetStat, TreeNode } from "../types";
+import type {
+  Characteristic,
+  MovementResponse,
+  MovementTarget,
+  NodeScores,
+  PredicateRow,
+  TargetStat,
+  TreeNode,
+} from "../types";
 
 // A — Cluster projection scatter. Replaces the KDE topography (which ported
 // src/ui/visualization.py::cluster_gauss_kde): the parent node's 2D embedding
@@ -16,6 +24,22 @@ export interface ClusterScatterProps {
   selectedChild?: number | null;
   title?: string;
   highlightRow?: number | null; // row id to ring (a point picked in the GLOSH outlier table)
+  // ── Cluster movement ──────────────────────────────────────────────────────
+  // Off by default: with `movementMode` false the chart behaves exactly as
+  // before, and a click still drills down. While it is on, drill-down clicks are
+  // suspended for this projection and a click resolves to a movement target
+  // instead, by this precedence: centroid label / legend entry -> that cluster;
+  // a point of another cluster -> that cluster; the nearest other-cluster point
+  // within a 10 px screen-space snap radius (measured AFTER the zoom transform)
+  // -> that cluster; otherwise -> a free point at the inverted coordinate.
+  // Clicks on the source cluster resolve to nothing. Coordinates handed back are
+  // in `embedding_original` units: undo the d3 zoom transform, then the
+  // equal-aspect plot transform.
+  movementMode?: boolean;
+  movementSource?: number | null; // child index being moved
+  movementTarget?: MovementTarget | null; // resolved destination, for the marker
+  movementPreview?: MovementResponse | null; // ghost points, arrow, target marker
+  onMovementTarget?: (target: MovementTarget) => void;
 }
 
 // B — Cluster characteristics bar. Replaces cluster_characteristics_fig.
@@ -53,6 +77,10 @@ export interface PcaVarianceBarProps {
 export interface PredicateBandsProps {
   full: PredicateRow[]; // RCM 1.0
   trimmed: PredicateRow[]; // RCM 0.9
+  // Size of the background the predicate was scored on (summary.n_background),
+  // so the per-step match count can be read as "n of N". Optional: the bands
+  // draw the same without it.
+  nBackground?: number;
 }
 
 // E2 — Target-value bands. Same band geometry as E, for the `target_*` label

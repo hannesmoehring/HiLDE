@@ -31,7 +31,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pyinstrument>=5.1.2", "ruff>=0.16.3"]
+dev = [
+    "pyinstrument>=5.1.2",
+    "pytest>=9.1.1",
+    "ruff>=0.16.3",
+]
 
 [tool.uv]
 # kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1, which is
@@ -40,3 +44,10 @@ dev = ["pyinstrument>=5.1.2", "ruff>=0.16.3"]
 # override the stale caps. The one import-time incompatibility (a removed
 # np.float_ alias in kdbcv's type hints) is shimmed in src_research/dbcv_tuning.py.
 override-dependencies = ["numpy>=2.4.4,<2.5", "scipy>=1.17.1"]
+
+[tool.ruff]
+# `ruff format` reformats Python blocks inside Markdown, which silently rewrote a
+# design document under plans/ — those are inputs to the work, not repo source,
+# and a formatter must not edit them. Excluded so the documented
+# `uv run ruff format .` stays safe to run from the repo root.
+extend-exclude = ["plans"]

@@ -135,10 +135,26 @@ Two settings here exist purely for **determinism**, and both are load-bearing:
 t-SNE clamps `perplexity` below the sample count so it survives small sub-regions. MDS
 uses `init="random"` with `n_init`/`max_iter` from the config.
 
+> **Only PCA and UMAP can place a point that was never fitted.** `backend/movement.py`
+> needs exactly that — where would a moved point land? — so it supports those two and
+> refuses the other two by name: t-SNE has no out-of-sample transform at all, and MDS only
+> reconstructs from a distance matrix.
+
 > **t-SNE and PCA do not honour a replicate seed.** `_tsne` passes no `init`, and
 > scikit-learn's default `init="pca"` never consults `random_state`; PCA takes no seed at
 > all. Only UMAP and MDS produce genuinely different embeddings across seeds. This matters
 > for the experiment harnesses — see `scripts/checks/05_h1a_replicate_collapse.py`.
+
+### `analysis/analysis_routine.py` — `fit_node_projection`
+
+`_embed_original` keeps only a node's coordinates and throws the fitted reducer away,
+which is all the analysis needs. `backend/movement.py` needs the reducer back, and it must
+be *this* fit rather than a lookalike, so the body was lifted into
+`fit_node_projection(X_orig, config) -> ReductionResult | None` and `_embed_original` now
+delegates to it. Same guards, same `fit_dimensionality_reducer` call, so a movement refit
+inherits parity by construction — including the `init="pca"` determinism fix above, which
+a second implementation would have had to remember to copy. `None` still means the node
+cannot be projected: too small, or the reducer raised.
 
 ### `analysis/clustering.py`
 
@@ -165,6 +181,22 @@ improves it. Every feature gets a row back, whether or not it entered the conjun
 | `clause_f1`, `clause_precision`, `clause_recall` | this clause **alone** against the selection |
 | `in_predicate`, `predicate_step` | did it enter the conjunction, and at which step |
 | `predicate_f1` | F1 of the **final** conjunction (identical on every row) |
+| `predicate_baseline_f1` | F1 of the **empty** conjunction, which matches every background point (identical on every row) |
+| `predicate_f1_before`, `predicate_f1_after`, `predicate_f1_gain` | the conjunction's F1 either side of the step this clause was added at, and the difference |
+| `predicate_n_matched`, `predicate_precision`, `predicate_recall` | how many background points the conjunction still matched after that step, and its precision/recall there |
+
+The six per-step fields are `None` on clauses that never entered the conjunction and on
+the whole no-labels path; `predicate_baseline_f1` is present everywhere. The baseline is
+`2·|S| / (N + |S|)` — a function of the selection and background sizes only, never an
+informative score — and `baseline + Σ gains = predicate_f1` by construction. Ties in the
+greedy step resolve to the lowest feature-column index.
+
+**The gain is not feature importance.** It is a property of the construction order: it is
+conditional on the clauses already chosen (a redundant copy of an earlier clause gains
+nothing), and conditional on the **fixed interval the RCM trim produced** rather than on
+the feature itself, so a discriminative feature with an unlucky `0.9` trim scores low. It
+is defined only for greedy/sequential construction, and the RCM 1.0 and 0.9 runs each
+produce their own order.
 
 `threshold` is the range-coverage multiplier (RCM): the interval is trimmed to that
 quantile coverage, so `1.0` is the selection's full range and `0.9` a trimmed core. The
@@ -226,6 +258,17 @@ Every loader returns a DataFrame with a `row_id` column and label columns named
 `target_*`. That naming is the contract: `backend/datasets.py::default_feature_cols` holds
 `row_id` and every `target_*` out of the feature space, so labels never reach the
 clustering, the projection or the predicate.
+
+**Counterfactual data arrives here as an ordinary frame.** The app's *Apply* action edits
+a copy of a dataset and rebuilds on it, but that copy is made in
+`backend/counterfactual.py` and resolved from its `"{base}@cf:{id}"` key by
+`backend/datasets.py::load`; `start_evaluation` is handed a plain DataFrame and knows
+nothing about it. So a counterfactual build is a normal build:
+HDBSCAN re-partitions the edited data from scratch, and the resulting hierarchy — cluster
+count, membership, node ids — need not correspond to the run the edit was previewed on.
+Nothing in this layer preserves that correspondence, and the moved cluster is not
+guaranteed to merge with its destination. See
+[`backend/README.md`](../backend/README.md#counterfactual-sessions-apply).
 
 ### `types.py` and `config_defaults.py`
 

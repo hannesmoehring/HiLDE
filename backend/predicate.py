@@ -82,12 +82,27 @@ def compute_predicate(
 
     # Not sanitized: `_f1` returns 0.0 for every degenerate denominator, so this is
     # always finite — and the client formats it with .toFixed, which a null breaks.
+    # The same reasoning covers the baseline and the trimmed run's floats; the
+    # per-step `None`s survive `_sanitized`, which only rewrites `float` instances.
     predicate_f1 = float(full_rows[0]["predicate_f1"]) if full_rows else 0.0
+    baseline_f1 = float(full_rows[0]["predicate_baseline_f1"]) if full_rows else 0.0
     n_clauses = sum(1 for r in full_rows if r.get("in_predicate"))
+    # The RCM 0.9 run is its own greedy construction — separate trajectory, not a
+    # restatement of the 1.0 one above.
     summary = {
         "predicate_f1": predicate_f1,
+        "predicate_baseline_f1": baseline_f1,
+        "trimmed_predicate_f1": (
+            float(trimmed_rows[0]["predicate_f1"]) if trimmed_rows else None
+        ),
+        "trimmed_baseline_f1": (
+            float(trimmed_rows[0]["predicate_baseline_f1"]) if trimmed_rows else None
+        ),
         "n_features_used": n_clauses,
         "n_features_total": len(full_rows),
         "n_selected": int(sel.shape[0]),
+        # The baseline is 2|S|/(N+|S|); N is what the UI needs to label it
+        # "no clauses (all N points)" with the real count.
+        "n_background": int(background.shape[0]),
     }
     return {"full": full_rows, "trimmed": trimmed_rows, "summary": summary}

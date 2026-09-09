@@ -4,10 +4,17 @@ import type {
   AnalysisJob,
   AnalysisResponse,
   CharacteristicsResponse,
+  CounterfactualApplyRequest,
+  CounterfactualApplyResponse,
+  CounterfactualChain,
+  CounterfactualJob,
   DatasetColumns,
   DatasetInfo,
   ImagePixels,
   ModeInfo,
+  MovementJob,
+  MovementRequest,
+  MovementResponse,
   PredicateResponse,
   PredicateScope,
   RowsResponse,
@@ -114,4 +121,56 @@ export function fetchRows(
   columns?: string[],
 ): Promise<RowsResponse> {
   return post("/api/rows", { dataset, ids, columns });
+}
+
+/** Requests a cluster-movement preview, polling the job when the server needs a
+ *  reducer refit (UMAP). PCA and cache hits answer inline, so the loop usually
+ *  runs zero times. Retry behaviour matches `runAnalysis`: a hiccup on one poll
+ *  must not throw away work already in flight. */
+export async function runMovement(req: MovementRequest): Promise<MovementResponse> {
+  let job = await post<MovementJob>("/api/movement", req);
+  let failures = 0;
+  while (job.status === "running") {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      job = await get<MovementJob>(`/api/movement/jobs/${job.job_id}`);
+      failures = 0;
+    } catch (e) {
+      if (++failures > POLL_RETRIES) throw e;
+    }
+  }
+  if (job.status === "error") throw new Error(job.detail);
+  return job;
+}
+
+/** Writes a previewed movement into a counterfactual copy of the dataset and
+ *  returns the new dataset key. Same job rule as `runMovement`: only an Apply
+ *  that needs a UMAP refit polls. The analysis itself is NOT rebuilt here — the
+ *  caller runs `runAnalysis` on the returned key. */
+export async function applyCounterfactual(
+  req: CounterfactualApplyRequest,
+): Promise<CounterfactualApplyResponse> {
+  let job = await post<CounterfactualJob>("/api/counterfactual/apply", req);
+  let failures = 0;
+  while (job.status === "running") {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      job = await get<CounterfactualJob>(`/api/counterfactual/jobs/${job.job_id}`);
+      failures = 0;
+    } catch (e) {
+      if (++failures > POLL_RETRIES) throw e;
+    }
+  }
+  if (job.status === "error") throw new Error(job.detail);
+  return job;
+}
+
+/** The edit chain behind a counterfactual key, base first. */
+export function fetchCounterfactualChain(cfId: string): Promise<CounterfactualChain> {
+  return get(`/api/counterfactual/${encodeURIComponent(cfId)}`);
+}
+
+/** Download URL of the changed rows (row_id, original and counterfactual values). */
+export function counterfactualRowsUrl(cfId: string): string {
+  return `/api/counterfactual/${encodeURIComponent(cfId)}/rows.csv`;
 }

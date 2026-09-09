@@ -59,6 +59,12 @@ export function TargetBands({ targets, nSelected }: TargetBandsProps) {
     setTip({ row, x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) });
   };
 
+  // Same flip as PredicateBands: open to the left of the cursor when the tooltip
+  // would run past the chart's clipped edge. A generous fixed estimate — the
+  // flipped tooltip is anchored by its right edge, so over-estimating only flips early.
+  const TIP_PAD = 14;
+  const flipTip = tip != null && tip.x + TIP_PAD + Math.max(tip.row.feature.length, 30) * 7 + 16 > width;
+
   return (
     <div
       ref={ref}
@@ -193,8 +199,8 @@ export function TargetBands({ targets, nSelected }: TargetBandsProps) {
         <div
           style={{
             position: "absolute",
-            left: tip.x + 14,
-            top: tip.y + 14,
+            ...(flipTip ? { right: width - tip.x + TIP_PAD } : { left: tip.x + TIP_PAD }),
+            top: tip.y + TIP_PAD,
             pointerEvents: "none",
             background: theme.surface,
             border: `1px solid ${theme.textPrimary}`,

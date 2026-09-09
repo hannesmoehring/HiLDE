@@ -307,6 +307,45 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 .banner--error strong { border-color: var(--neg); color: var(--neg); }
 .banner--error button { margin-left: auto; }
 
+/* Counterfactual session: the standing reminder that the data below is edited.
+   Chips list the chain; the actions sit at the right like the error banner's. */
+.banner--cf { flex-wrap: wrap; row-gap: 4px; border-bottom-color: var(--ink); }
+.banner--cf strong { background: var(--ink); color: #fff; }
+.banner__chips { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; }
+.banner__chip {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  font-size: 11.5px;
+  color: var(--ink);
+  cursor: help;
+}
+.banner__note { color: var(--muted); }
+.banner--cf button { padding: 1px 8px; font-size: 12px; }
+.banner--cf button:first-of-type { margin-left: auto; }
+.button-link {
+  padding: 1px 8px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.button-link:hover { border-color: var(--ink); color: var(--ink); }
+.cf-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  cursor: help;
+}
+
 .empty { padding: 60px 20px; background: var(--panel); color: var(--faint); font-size: 13px; }
 
 /* ── Analysis panels ──────────────────────────────────────────────────────── */
@@ -729,3 +768,172 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .cluster-chip { margin: 0 4px 4px 0; }
 .chart-placeholder { border: 1px dashed var(--border-strong); padding: 1rem; background: var(--panel-2); min-height: 120px; }
 .chart-placeholder__title { font-size: 12.5px; color: var(--muted); margin-bottom: 0.5rem; }
+
+/* ── Cluster movement ─────────────────────────────────────────────────────── */
+/* The chart-side marks (crosshair, ghosts, arrow, destination marker) are drawn
+   inline in ClusterScatter with the theme tokens — nothing here touches them.
+   Two pieces live here: the one-button start row in a layer's side column, and
+   the full-width row under the plot + characteristics that a running movement
+   turns into. Cluster hues stay reserved for cluster identity, so the only
+   colour used is the diverging polarity pair the characteristics bars already
+   carry (--pos / --neg), with --neg doubling as the caution tint. */
+
+/* Idle: a single button under LayerSide, nothing else. */
+.movement-start {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hair);
+}
+
+/* Active: a row of the layer card, under both columns. The left rule is the
+   standing reminder that drill-down on the projection above is suspended. */
+.layer__movement {
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--ink);
+  padding: 10px 16px 12px;
+}
+
+.mv { display: flex; flex-direction: column; gap: 8px; }
+
+/* Before an answer exists: one line and Cancel. */
+.mv--pending { flex-direction: row; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mv--pending .mv-cancel { margin-left: auto; }
+
+.mv-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) minmax(320px, 1.6fr);
+  gap: 0 18px;
+}
+@media (max-width: 900px) {
+  .mv-grid { grid-template-columns: minmax(0, 1fr); gap: 10px 0; }
+}
+.mv-col { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.mv-col__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.mv-route { font-size: 13px; }
+.mv-route .hint { font-size: 12px; }
+.mv-error { font-size: 12.5px; color: var(--neg); }
+
+.mv-strength { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+.mv-strength label { color: var(--muted); cursor: help; }
+.mv-strength__track { position: relative; flex: 1 1 auto; min-width: 90px; padding-bottom: 11px; }
+.mv-strength__track input[type="range"] { width: 100%; display: block; }
+/* The recommended strength, as a tick under the track. The thumb's own width
+   keeps its travel a few px short of the full width; a hint, not a ruler. */
+.mv-strength__rec {
+  position: absolute;
+  top: 15px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+  padding-top: 4px;
+}
+.mv-strength__rec::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 4px;
+  background: var(--border-strong);
+}
+.mv-strength output { min-width: 34px; text-align: right; font-weight: 600; }
+
+.mv-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mv-actions button, .mv-cancel { padding: 2px 9px; font-size: 12px; }
+
+/* Stat tiles: value on top, label with the (i) underneath, sentence in `title`. */
+.mv-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.mv-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--panel);
+  padding: 5px 9px;
+  min-width: 0;
+  cursor: help;
+}
+.mv-tile b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mv-tile i { font-style: normal; font-size: 11px; color: var(--muted); }
+.mv-tile i span { color: var(--faint); }
+.mv-tile--caution b { color: var(--neg); }
+
+/* Sparkline for the UMAP α grid. One series, no axes, no interaction — the
+   numbers that matter are in the tiles. */
+.mv-spark { display: flex; align-items: center; gap: 8px; cursor: help; }
+.mv-spark__label { font-size: 11px; color: var(--muted); }
+.movement__spark { display: block; border: 1px solid var(--border); background: var(--panel-2); }
+.movement__spark-line { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.movement__spark-dot { fill: var(--ink); }
+.movement__spark-cursor { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+
+/* Deterministic-subsample flag. Same shape as the .banner kicker so a badge
+   reads as a badge wherever it turns up. */
+.movement__badge {
+  border: 1px solid var(--border-strong);
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* One-line warning chips; the long sentence is the tooltip and the About block. */
+.mv-chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.mv-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--border-strong);
+  border-left-width: 3px;
+  background: var(--panel-2);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-2);
+  cursor: help;
+}
+.mv-chip--caution { border-color: var(--neg); color: var(--neg); }
+
+.movement__table { max-height: 220px; }
+.movement__table .num { text-align: right; }
+.mv-held { font-size: 11.5px; color: var(--faint); cursor: help; }
+
+/* Standardized magnitude, as a track. Sign takes the diverging polarity pair —
+   the same one the characteristics bars use — never a categorical cluster hue. */
+.movement__bar {
+  display: inline-block;
+  width: 62px;
+  height: 7px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  background: #f3f1ec; /* theme.track — the faint range track used by the predicate bands */
+}
+.movement__bar-fill { display: block; height: 100%; }
+.movement__bar-fill.is-up { background: var(--pos); }
+.movement__bar-fill.is-down { background: var(--neg); }
+.movement__bar-value { font-variant-numeric: tabular-nums; }
+
+/* Everything explanatory, collapsed. Every tooltip sentence is repeated here so
+   nothing is hover-only. */
+.mv-about { font-size: 12px; color: var(--ink-2); }
+.mv-about summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.mv-about dl { margin: 6px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; }
+.mv-about dl > div { display: contents; }
+.mv-about dt { font-weight: 600; color: var(--ink); }
+.mv-about dd { margin: 0; }

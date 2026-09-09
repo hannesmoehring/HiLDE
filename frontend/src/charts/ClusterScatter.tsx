@@ -3,15 +3,41 @@
 // (rows in no child) as grey ×, and a clickable legend. Clicking a point, a
 // legend chip, or a centroid label selects that child — the same drill-down the
 // KDE centroids triggered.
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from "react";
+//
+// With `movementMode` on, that drill-down is SUSPENDED for this projection and
+// the same three click targets resolve to a cluster-movement destination
+// instead (see ../movement.ts for the precedence and the coordinate inversion).
+// With it off — the default — nothing below behaves differently than it always
+// did.
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactElement,
+} from "react";
 import * as d3 from "d3";
 import { useResize } from "../hooks/useResize";
 import { theme } from "./theme";
+import {
+  embeddingToPlot,
+  resolveMovementTarget,
+  type MovementClick,
+  type PlotFrame,
+  type PlotPoint,
+} from "../movement";
 import type { TreeNode } from "../types";
 import type { ClusterScatterProps } from "./props";
 
 const PLOT_HEIGHT = 384;
 const MARGIN = 12;
+// A pan that ends over empty space must not silently create a target, so a
+// pointer that travelled further than this between down and up is a drag.
+const DRAG_SLOP_PX = 3;
 
 const BG = theme.surface;
 const TEXT = theme.textPrimary;
@@ -20,17 +46,37 @@ const ACCENT = theme.accent;
 
 const clusterColor = (ci: number) => theme.categorical[ci % theme.categorical.length];
 
+const MOVE_PROMPT =
+  "Click an empty position, or click another cluster to use it as the destination.";
+
 interface PlottedPoint {
   px: number;
   py: number;
+  x: number; // embedding_original units — what a movement target carries
+  y: number;
   child: number; // index into node.children; -1 = noise (in no child cluster)
   row: number; // source dataframe row id, for the outlier-table highlight ring
 }
 
-export function ClusterScatter({ node, onSelectCluster, selectedChild, title, highlightRow }: ClusterScatterProps) {
+export function ClusterScatter({
+  node,
+  onSelectCluster,
+  selectedChild,
+  title,
+  highlightRow,
+  movementMode,
+  movementSource,
+  movementTarget,
+  movementPreview,
+  onMovementTarget,
+}: ClusterScatterProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const children: TreeNode[] = node.children ?? [];
   const width = size.width;
+
+  const inMovement = !!movementMode;
+  // −2, not −1: −1 is the noise label, and noise must never read as the source.
+  const sourceChild = movementSource ?? -2;
 
   // Latest onSelectCluster without invalidating the memoized points layer
   // (App passes a fresh closure every render).
@@ -40,7 +86,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
   // Screen-space geometry: child membership per point (via row index), equal-
   // aspect projection of embedding_original into the plot area, centroid label
   // anchors, and the outlier count for the legend.
-  const { plotted, centroids, outlierCount } = useMemo(() => {
+  const { plotted, centroids, outlierCount, frame } = useMemo(() => {
     const byRow = new Map<number, number>();
     children.forEach((c, ci) => c.row_indices.forEach((r) => byRow.set(r, ci)));
     const membership = node.row_indices.map((r) => byRow.get(r) ?? -1);
@@ -52,7 +98,12 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
       valid.push({ x, y, child: membership[i] ?? -1, row: node.row_indices[i] });
     });
     if (valid.length === 0 || width <= 0) {
-      return { plotted: [] as PlottedPoint[], centroids: [], outlierCount };
+      return {
+        plotted: [] as PlottedPoint[],
+        centroids: [],
+        outlierCount,
+        frame: null as PlotFrame | null,
+      };
     }
 
     let [xmin, xmax] = d3.extent(valid, (p) => p.x) as [number, number];
@@ -72,10 +123,15 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
     const k = Math.min(pw / (xmax - xmin), ph / (ymax - ymin));
     const x0 = MARGIN + pw / 2;
     const y0 = MARGIN + ph / 2;
+    // The same five numbers, handed to movement.ts so a click can be inverted
+    // back into embedding_original units.
+    const frame: PlotFrame = { k, x0, y0, cx, cy };
 
     const plotted: PlottedPoint[] = valid.map((p) => ({
       px: x0 + (p.x - cx) * k,
       py: y0 - (p.y - cy) * k,
+      x: p.x,
+      y: p.y,
       child: p.child,
       row: p.row,
     }));
@@ -90,11 +146,61 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
       }];
     });
 
-    return { plotted, centroids, outlierCount };
+    return { plotted, centroids, outlierCount, frame };
   }, [node, children, width]);
 
   // Point size shrinks with density so large layers stay readable.
   const R = plotted.length > 4000 ? 2 : plotted.length > 1500 ? 2.5 : plotted.length > 500 ? 3 : 4;
+
+  const hasChart = plotted.length > 0;
+  const highlighted = highlightRow == null ? null : plotted.find((p) => p.row === highlightRow);
+
+  // Zoom/pan (same interaction as the old topography): scroll/pinch to zoom,
+  // drag to pan. Marks scale geometrically; centroid labels stay constant size.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
+
+  // Drag/zoom suppression for background target creation: a pan fires zoom
+  // events between pointerdown and click, and moves the pointer.
+  const zoomFiredRef = useRef(false);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Why a click did nothing (source cluster clicked), shown under the toolbar.
+  const [hint, setHint] = useState<string | null>(null);
+  useEffect(() => {
+    if (!inMovement) setHint(null);
+  }, [inMovement]);
+
+  // Every click in the chart funnels through here. Normal mode: the drill-down
+  // that has always been there. Movement mode: target resolution instead.
+  const onMovementTargetRef = useRef(onMovementTarget);
+  onMovementTargetRef.current = onMovementTarget;
+  const handleClick = (click: MovementClick) => {
+    if (!inMovement) {
+      if (click.kind === "cluster") onSelectRef.current(click.childIndex);
+      else if (click.kind === "point" && click.point.child >= 0) {
+        onSelectRef.current(click.point.child);
+      }
+      return; // noise and background were never clickable in normal mode
+    }
+    if (!frame) return;
+    const res = resolveMovementTarget(click, {
+      points: plotted,
+      sourceChildIndex: sourceChild,
+      zoom: transform,
+      frame,
+    });
+    if (res.target) {
+      setHint(null);
+      onMovementTargetRef.current?.(res.target);
+    } else {
+      setHint(res.hint);
+    }
+  };
+  // Read by the memoized points layer so its dependencies stay unchanged.
+  const clickRef = useRef(handleClick);
+  clickRef.current = handleClick;
 
   // Memoized marks: zooming only touches the wrapper <g> transform, never this
   // subtree. Draw order: noise ×, unselected clusters, selected cluster on top.
@@ -107,20 +213,32 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
       cross += `M${(p.px - R).toFixed(1)} ${(p.py + R).toFixed(1)}L${(p.px + R).toFixed(1)} ${(p.py - R).toFixed(1)}`;
     }
 
-    const circle = (p: PlottedPoint, i: number, selected: boolean): ReactElement => (
-      <circle
-        key={`${p.child}-${i}`}
-        cx={p.px.toFixed(1)}
-        cy={p.py.toFixed(1)}
-        r={R}
-        fill={clusterColor(p.child)}
-        fillOpacity={dim && !selected ? 0.18 : 0.85}
-        style={{ cursor: "pointer" }}
-        onClick={() => onSelectRef.current(p.child)}
-      >
-        <title>C{p.child} — click to explore</title>
-      </circle>
-    );
+    const circle = (p: PlottedPoint, i: number, selected: boolean): ReactElement => {
+      const isSource = inMovement && p.child === sourceChild;
+      return (
+        <circle
+          key={`${p.child}-${i}`}
+          cx={p.px.toFixed(1)}
+          cy={p.py.toFixed(1)}
+          r={R}
+          fill={clusterColor(p.child)}
+          fillOpacity={inMovement ? (isSource ? 0.9 : 0.45) : dim && !selected ? 0.18 : 0.85}
+          stroke={isSource ? TEXT : undefined}
+          strokeWidth={isSource ? 0.8 : undefined}
+          vectorEffect={isSource ? "non-scaling-stroke" : undefined}
+          style={{ cursor: inMovement ? "crosshair" : "pointer" }}
+          onClick={() => clickRef.current({ kind: "point", point: p })}
+        >
+          <title>
+            {!inMovement
+              ? `C${p.child} — click to explore`
+              : isSource
+                ? `C${p.child} — the cluster being moved`
+                : `C${p.child} — click to move here`}
+          </title>
+        </circle>
+      );
+    };
 
     return (
       <g>
@@ -129,7 +247,8 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
             d={cross}
             stroke={MUTED}
             strokeWidth={1.2}
-            strokeOpacity={dim ? 0.18 : 0.5}
+            // Movement mode keeps the × legible: they are click targets there.
+            strokeOpacity={dim && !inMovement ? 0.18 : 0.5}
             fill="none"
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
@@ -139,16 +258,33 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
         {dim && plotted.filter((p) => p.child === selectedChild).map((p, i) => circle(p, i, true))}
       </g>
     );
-  }, [plotted, R, selectedChild]);
+  }, [plotted, R, selectedChild, inMovement, sourceChild]);
 
-  const hasChart = plotted.length > 0;
-  const highlighted = highlightRow == null ? null : plotted.find((p) => p.row === highlightRow);
-
-  // Zoom/pan (same interaction as the old topography): scroll/pinch to zoom,
-  // drag to pan. Marks scale geometrically; centroid labels stay constant size.
-  const svgRef = useRef<SVGSVGElement>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
+  // Movement mode only: transparent hit targets over the noise ×, so a noise
+  // point can serve as a free-point destination. The visible × rendering above
+  // is untouched — these sit UNDER the cluster circles, which keep their clicks.
+  const noiseHits = useMemo(() => {
+    if (!inMovement) return null;
+    const noise = plotted.filter((p) => p.child < 0);
+    if (noise.length === 0) return null;
+    return (
+      <g>
+        {noise.map((p, i) => (
+          <circle
+            key={`noise-${i}`}
+            cx={p.px.toFixed(1)}
+            cy={p.py.toFixed(1)}
+            r={Math.max(R, 5)}
+            fill="transparent"
+            style={{ cursor: "crosshair" }}
+            onClick={() => clickRef.current({ kind: "point", point: p })}
+          >
+            <title>Outlier — click to move here</title>
+          </circle>
+        ))}
+      </g>
+    );
+  }, [inMovement, plotted, R]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -156,7 +292,10 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 12])
-      .on("zoom", (event) => setTransform(event.transform));
+      .on("zoom", (event) => {
+        zoomFiredRef.current = true;
+        setTransform(event.transform);
+      });
     zoomRef.current = zoom;
     const sel = d3.select(svg);
     sel.call(zoom);
@@ -181,6 +320,45 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
     const svg = svgRef.current;
     if (svg && zoomRef.current) d3.select(svg).transition().duration(180).call(zoomRef.current.transform, d3.zoomIdentity);
   };
+
+  // Background click → a free point, unless the gesture was a pan.
+  const onPlotPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    downRef.current = { x: e.clientX, y: e.clientY };
+    zoomFiredRef.current = false;
+  };
+  const onBackgroundClick = (e: ReactMouseEvent<SVGRectElement>) => {
+    const down = downRef.current;
+    const dragged = down != null && Math.hypot(e.clientX - down.x, e.clientY - down.y) > DRAG_SLOP_PX;
+    if (dragged || zoomFiredRef.current) return; // a pan or a zoom, not a click
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    handleClick({ kind: "background", sx: e.clientX - box.left, sy: e.clientY - box.top });
+  };
+
+  // ── Preview marks ─────────────────────────────────────────────────────────
+  // Ghosts live inside the zoom <g> so they scale with the real points; the
+  // centroids, arrow and target marker are drawn in screen space, like the
+  // centroid labels, so they keep a constant size. Categorical color stays
+  // reserved for clusters: every mark here is ink outline or dash.
+  const ghosts = useMemo(() => {
+    if (!inMovement || !movementPreview || !frame) return [] as PlotPoint[];
+    return movementPreview.preview_points.map((p) => embeddingToPlot(p, frame));
+  }, [inMovement, movementPreview, frame]);
+
+  const sourceCentroid = inMovement ? centroids.find((c) => c.index === sourceChild) : undefined;
+  const movedCentroid: PlotPoint | null = ghosts.length
+    ? { px: d3.mean(ghosts, (p) => p.px) as number, py: d3.mean(ghosts, (p) => p.py) as number }
+    : null;
+  const targetMark: PlotPoint | null = useMemo(() => {
+    if (!inMovement || !movementTarget || !frame) return null;
+    if (movementTarget.kind === "point") return embeddingToPlot(movementTarget, frame);
+    const c = centroids.find((x) => x.index === movementTarget.child_index);
+    return c ? { px: c.bx, py: c.by } : null;
+  }, [inMovement, movementTarget, frame, centroids]);
+
+  const arrowId = `hilde-move-arrow-${useId().replace(/:/g, "")}`;
+  const sx = (p: { px: number; py: number }) => transform.applyX(p.px);
+  const sy = (p: { px: number; py: number }) => transform.applyY(p.py);
 
   const ctrlBtn: CSSProperties = {
     background: "transparent",
@@ -228,6 +406,23 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
         )}
       </div>
 
+      {/* Movement mode: what to click, or why the last click did nothing.
+          Drill-down is suspended while this line is showing. */}
+      {inMovement && (
+        <div
+          role="status"
+          style={{
+            fontSize: 12,
+            lineHeight: 1.5,
+            marginBottom: 8,
+            color: hint ? TEXT : theme.textSecondary,
+            fontWeight: hint ? 600 : 400,
+          }}
+        >
+          {hint ?? `Moving C${sourceChild}. ${MOVE_PROMPT}`}
+        </div>
+      )}
+
       {/* Legend: one chip per child cluster (click = same drill-down as the
           points — the reliable target when a cluster is buried under others). */}
       {children.length > 0 && (
@@ -238,8 +433,14 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
               <button
                 key={ci}
                 type="button"
-                onClick={() => onSelectRef.current(ci)}
-                title={`Explore C${ci}`}
+                onClick={() => clickRef.current({ kind: "cluster", childIndex: ci })}
+                title={
+                  !inMovement
+                    ? `Explore C${ci}`
+                    : ci === sourceChild
+                      ? `C${ci} — the cluster being moved`
+                      : `Move C${sourceChild} to C${ci}`
+                }
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -251,7 +452,7 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
                   color: sel ? theme.accentInk : TEXT,
                   fontSize: 13,
                   lineHeight: 1.6,
-                  cursor: "pointer",
+                  cursor: inMovement ? "crosshair" : "pointer",
                 }}
               >
                 <span
@@ -296,9 +497,49 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
           ref={svgRef}
           width={width}
           height={PLOT_HEIGHT}
-          style={{ display: "block", cursor: "grab", touchAction: "none", border: `1px solid ${theme.border}` }}
+          onPointerDown={inMovement ? onPlotPointerDown : undefined}
+          style={{
+            display: "block",
+            cursor: inMovement ? "crosshair" : "grab",
+            touchAction: "none",
+            border: `1px solid ${theme.border}`,
+          }}
         >
-          <g transform={transform.toString()}>{pointsLayer}</g>
+          {/* Movement mode only: the empty-space click target. Points, labels
+              and their handlers sit above it and never reach it. */}
+          {inMovement && (
+            <rect
+              x={0}
+              y={0}
+              width={width}
+              height={PLOT_HEIGHT}
+              fill="transparent"
+              onClick={onBackgroundClick}
+            />
+          )}
+
+          <g transform={transform.toString()}>
+            {noiseHits}
+            {pointsLayer}
+            {ghosts.length > 0 && (
+              <g pointerEvents="none">
+                {ghosts.map((g, i) => (
+                  <circle
+                    key={`ghost-${i}`}
+                    cx={g.px.toFixed(1)}
+                    cy={g.py.toFixed(1)}
+                    r={R}
+                    fill="none"
+                    stroke={TEXT}
+                    strokeOpacity={0.55}
+                    strokeWidth={1}
+                    strokeDasharray="1.6 1.6"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </g>
+            )}
+          </g>
 
           {/* Ring on the point picked in the GLOSH outlier table. Constant screen
               size, and a surface halo underneath so it reads over dense marks. */}
@@ -323,6 +564,74 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
             </g>
           )}
 
+          {/* Destination marker, drawn as soon as the target resolves — before
+              the recommendation comes back. */}
+          {targetMark && (
+            <g pointerEvents="none">
+              <circle
+                cx={sx(targetMark).toFixed(1)}
+                cy={sy(targetMark).toFixed(1)}
+                r={movementTarget?.kind === "cluster" ? 17 : 8}
+                fill="none"
+                stroke={TEXT}
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+              />
+              {movementTarget?.kind === "point" && (
+                <path
+                  d={`M${(sx(targetMark) - 12).toFixed(1)} ${sy(targetMark).toFixed(1)}h24M${sx(targetMark).toFixed(1)} ${(sy(targetMark) - 12).toFixed(1)}v24`}
+                  stroke={TEXT}
+                  strokeWidth={1}
+                  strokeOpacity={0.7}
+                />
+              )}
+            </g>
+          )}
+
+          {/* Original centroid → proposed centroid. */}
+          {sourceCentroid && movedCentroid && (
+            <g pointerEvents="none">
+              <defs>
+                <marker
+                  id={arrowId}
+                  viewBox="0 0 10 10"
+                  refX={9}
+                  refY={5}
+                  markerWidth={6}
+                  markerHeight={6}
+                  orient="auto-start-reverse"
+                >
+                  <path d="M0 0L10 5L0 10z" fill={TEXT} />
+                </marker>
+              </defs>
+              <circle
+                cx={transform.applyX(sourceCentroid.bx).toFixed(1)}
+                cy={transform.applyY(sourceCentroid.by).toFixed(1)}
+                r={5}
+                fill={BG}
+                stroke={TEXT}
+                strokeWidth={1.5}
+              />
+              <line
+                x1={transform.applyX(sourceCentroid.bx).toFixed(1)}
+                y1={transform.applyY(sourceCentroid.by).toFixed(1)}
+                x2={sx(movedCentroid).toFixed(1)}
+                y2={sy(movedCentroid).toFixed(1)}
+                stroke={TEXT}
+                strokeWidth={1.5}
+                markerEnd={`url(#${arrowId})`}
+              />
+              <circle
+                cx={sx(movedCentroid).toFixed(1)}
+                cy={sy(movedCentroid).toFixed(1)}
+                r={5}
+                fill={TEXT}
+                stroke={BG}
+                strokeWidth={1.5}
+              />
+            </g>
+          )}
+
           {/* Centroid labels: constant screen size, clickable like the points. */}
           {centroids.map((c) => {
             const sel = selectedChild === c.index;
@@ -340,8 +649,8 @@ export function ClusterScatter({ node, onSelectCluster, selectedChild, title, hi
                 strokeWidth={3.5}
                 strokeLinejoin="round"
                 paintOrder="stroke"
-                style={{ cursor: "pointer" }}
-                onClick={() => onSelectRef.current(c.index)}
+                style={{ cursor: inMovement ? "crosshair" : "pointer" }}
+                onClick={() => clickRef.current({ kind: "cluster", childIndex: c.index })}
               >
                 C{c.index}
               </text>
