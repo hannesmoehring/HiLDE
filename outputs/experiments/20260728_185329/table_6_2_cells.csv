@@ -1,0 +1,4 @@
+dataset,depth_median,depth_builds,n_leaves,noise_fraction,median_leaf_size,mean_trust,mean_cont,degenerate_builds
+Wine quality (Low),3†,4† 3 3 3 4†,16 (15–17),0.26 (0.20–0.32),40 (37–47),0.81 (0.80–0.83),0.83 (0.83–0.85),0
+Breast cancer (Low),3†,3 3 4† 3 3,7 (6–9),0.43 (0.32–0.59),37 (27–54),0.78 (0.76–0.79),0.81 (0.76–0.81),0
+Digits (Low),3,3 2 2 3 3,16 (15–17),0.10 (0.09–0.18),52 (40–60),0.83 (0.83–0.84),0.85 (0.84–0.86),0

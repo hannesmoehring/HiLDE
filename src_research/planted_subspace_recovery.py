@@ -1,12 +1,11 @@
 """RQ1-S experiment: planted-subspace recovery (thesis).
 
-Implements the design in ``src_research/EXPERIMENT_planted_subspace_recovery.md``. It is the
-clean synthetic counterpart to the benchmark H1b result in ``hierarchical_vs_flat.py``: that
-prior work showed the recursive hierarchy is *not* a better clustering of benchmark class
-labels. This experiment plants the one structure class labels cannot express - **nested,
-multi-scale subspace clusters that are globally hidden but conditionally visible** - and asks
-whether recursion recovers the *fine* sub-clusters better than a single flat clustering, and
-where the crossover is.
+The clean synthetic counterpart to the benchmark H1b result in
+``hierarchical_vs_flat.py``: that prior work showed the recursive hierarchy is *not* a
+better clustering of benchmark class labels. This experiment plants the one structure
+class labels cannot express - **nested, multi-scale subspace clusters that are globally
+hidden but conditionally visible** - and asks whether recursion recovers the *fine*
+sub-clusters better than a single flat clustering, and where the crossover is.
 
 Hypotheses (design SS1):
     H2a - conditional recovery.  The hierarchy recovers the fine (level-2) sub-clusters better
@@ -51,6 +50,9 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
 Run with::
 
     uv run python -m src_research.planted_subspace_recovery
+
+``design SSN`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -448,8 +450,8 @@ def run_cell(rho: float, nesting: str, seed: int) -> tuple[list[dict], list[dict
 
     faith: list[dict] = []
     if RUN_FAITHFULNESS:
-        # `_embed_original` returns None for a region it could not project (it used to
-        # fabricate an all-zeros embedding, whose kNN agreement is meaningless but finite).
+        # `_embed_original` returns None for a region it could not project, rather than a
+        # fabricated all-zeros embedding — whose kNN agreement is meaningless but finite.
         # An unprojected arm is recorded as None and flagged, never scored and never fatal.
         e_global, _ = _embed_original(x_all, cfg)
         for g in np.unique(y_coarse):

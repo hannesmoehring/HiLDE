@@ -1,3 +1,4 @@
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,6 +10,21 @@ from src.types import Config
 from src.util import console as clog
 
 KDE_NONLINEAR_MIN_PTS = 15  # minimum points before using UMAP/t-SNE locally
+
+# UMAP — and pynndescent underneath it — runs Numba `parallel=True` regions.
+# Numba's default `workqueue` threading layer is NOT thread-safe: two threads
+# entering a parallel region at the same time make it ABORT THE PROCESS
+# ("Numba workqueue threading layer is terminating: Concurrent access has been
+# detected"). The thread-safe TBB layer has no macOS arm64 wheel and the OpenMP
+# layer needs a libomp that is not shipped, so instead every Numba-parallel call
+# in this process is serialized through this one lock: UMAP fits here, and UMAP
+# `transform` / `inverse_transform` in backend/movement.py. The server runs
+# analysis builds and movement refits on job threads and warm UMAP movements on
+# request threads, so without it a strength slider dragged during a build was
+# enough to kill the backend. Re-entrant, so a caller already holding it (a
+# build wrapping its own fits) can re-enter. The cost is that UMAP work queues
+# rather than overlapping — it is CPU-bound and parallel internally anyway.
+NUMBA_PARALLEL_LOCK = threading.RLock()
 
 
 @dataclass
@@ -39,10 +55,6 @@ def fit_dimensionality_reducer(
     config: Config,
     n_components: int = 2,
 ) -> ReductionResult:
-    # if normalize:
-    #     scaler = StandardScaler()
-    #     X = scaler.fit_transform(X)
-
     clog.substep(
         f"Dim reduction: {method.upper()}  {X.shape[0]}x{X.shape[1]} -> {n_components}D"
     )
@@ -110,7 +122,8 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
     # which places the components outside the seeded path. A PCA init is deterministic
     # whatever the graph structure.
     umap_reducer = umap.UMAP(n_components=n_components, init="pca", **kwargs)
-    embedding = umap_reducer.fit_transform(X)
+    with NUMBA_PARALLEL_LOCK:
+        embedding = umap_reducer.fit_transform(X)
     return ReductionResult(embedding=embedding, reducer=umap_reducer)
 
 

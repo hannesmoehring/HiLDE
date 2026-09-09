@@ -144,6 +144,13 @@ def _predicate_db(
                 in_predicate=False,
                 predicate_step=None,
                 predicate_f1=0.0,
+                predicate_f1_before=None,
+                predicate_f1_after=None,
+                predicate_f1_gain=None,
+                predicate_n_matched=None,
+                predicate_precision=None,
+                predicate_recall=None,
+                predicate_baseline_f1=0.0,
             )
         return rows
 
@@ -158,28 +165,53 @@ def _predicate_db(
             clause_recall=clause_recall,
             in_predicate=False,
             predicate_step=None,
+            predicate_f1_before=None,
+            predicate_f1_after=None,
+            predicate_f1_gain=None,
+            predicate_n_matched=None,
+            predicate_precision=None,
+            predicate_recall=None,
         )
 
     # Greedy conjunction: keep adding the clause that most improves F1.
     current_mask = np.ones(X_scaled_full.shape[0], dtype=bool)
-    best_f1 = _f1(current_mask, y)[0]
+    # F1 of the EMPTY conjunction, which matches every background point: 2|S|/(N+|S|).
+    # A function of selection and background size only, so it is a floor, not a score.
+    baseline_f1 = _f1(current_mask, y)[0]
+    best_f1 = baseline_f1
     remaining = set(range(len(rows)))
     step = 0
 
     while remaining:
         scored = [(_f1(current_mask & clause_masks[j], y)[0], j) for j in remaining]
-        candidate_f1, best_j = max(scored, key=lambda s: s[0])
+        # Ties resolve to the lowest feature-column index. CPython's `max` over an
+        # ascending `set(range(n))` already did that; the explicit key makes it
+        # independent of the set's iteration order.
+        candidate_f1, best_j = max(scored, key=lambda s: (s[0], -s[1]))
         if candidate_f1 <= best_f1 + 1e-6:
             break
         current_mask &= clause_masks[best_j]
+        # Same mask the winning candidate was scored on — precision/recall of the
+        # conjunction as it stands after this step, which `_f1` computed and the
+        # scoring pass discarded.
+        _, precision, recall = _f1(current_mask, y)
+        rows[best_j].update(
+            in_predicate=True,
+            predicate_step=step,
+            predicate_f1_before=best_f1,
+            predicate_f1_after=candidate_f1,
+            predicate_f1_gain=candidate_f1 - best_f1,
+            predicate_n_matched=int(np.count_nonzero(current_mask)),
+            predicate_precision=precision,
+            predicate_recall=recall,
+        )
         best_f1 = candidate_f1
-        rows[best_j]["in_predicate"] = True
-        rows[best_j]["predicate_step"] = step
         remaining.discard(best_j)
         step += 1
 
     for row in rows:
         row["predicate_f1"] = best_f1
+        row["predicate_baseline_f1"] = baseline_f1
 
     return rows
 

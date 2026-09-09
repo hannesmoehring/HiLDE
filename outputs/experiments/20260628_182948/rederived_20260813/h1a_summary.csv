@@ -1,0 +1,16 @@
+dataset,method,region_def,metric,n_pairs,median_delta,win_rate,wilcoxon_p,rank_biserial,primary
+Concentric rings (Low),PCA,gt_class,trustworthiness,3,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,continuity,3,0.0,0.0,,,True
+Concentric rings (Low),PCA,gt_class,mrre_false,3,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,mrre_missing,3,0.0,0.0,,,False
+Concentric rings (Low),PCA,gt_class,stress,3,-5.645082276683418e-17,0.6666666666666666,,0.3333333333333333,False
+Concentric rings (Low),PCA,hier_leaf,trustworthiness,15,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,continuity,15,0.0,0.0,,,True
+Concentric rings (Low),PCA,hier_leaf,mrre_false,15,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,mrre_missing,15,0.0,0.0,,,False
+Concentric rings (Low),PCA,hier_leaf,stress,15,-1.7227634210843601e-15,0.9333333333333333,,0.8666666666666667,False
+Swiss roll (Low),PCA,hier_leaf,trustworthiness,17,0.030952380952381175,0.8235294117647058,0.0001220703125,1.0,True
+Swiss roll (Low),PCA,hier_leaf,continuity,17,0.01666666666666683,0.8235294117647058,0.0001220703125,1.0,True
+Swiss roll (Low),PCA,hier_leaf,mrre_false,17,0.057334257334257566,1.0,1.52587890625e-05,1.0,False
+Swiss roll (Low),PCA,hier_leaf,mrre_missing,17,0.053378378378378555,1.0,1.52587890625e-05,1.0,False
+Swiss roll (Low),PCA,hier_leaf,stress,17,-0.1460119407655757,1.0,1.52587890625e-05,1.0,False

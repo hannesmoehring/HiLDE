@@ -771,12 +771,12 @@ def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> No
         plt.close(fig)
 
     # 4. Internal vs external: does DBCV gain track an ARI gain? (Track A, needs ground truth)
-    # `ari_base` is now recorded on the row by run_cell. It used to be joined in from the
-    # `sampler == "none"` rows, which exist only for untunable cells and therefore never for
-    # Track A: the join returned an all-NaN column, and `.fillna(0)` turned the y axis into
-    # raw tuned ARI while the label still read "ARI change vs baseline". A cell whose tuning
-    # *lowered* ARI plotted as a gain. No fill: a pair without both halves is not plotted,
-    # and the count that dropped out is printed.
+    # `ari_base` is recorded on the row by run_cell, not joined in from the
+    # `sampler == "none"` rows: those exist only for untunable cells and therefore never for
+    # Track A, so that join returns an all-NaN column, and a `.fillna(0)` on it would turn
+    # the y axis into raw tuned ARI under an "ARI change vs baseline" label — a cell whose
+    # tuning *lowered* ARI would plot as a gain. No fill: a pair without both halves is not
+    # plotted, and the count that dropped out is printed.
     a_ext = a.dropna(subset=["ari", "ari_base"]) if not a.empty else a
     if not a_ext.empty:
         dropped = len(a) - len(a_ext)

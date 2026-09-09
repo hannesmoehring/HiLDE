@@ -1,0 +1,6 @@
+dataset,dbcv_ground_truth,status,n_classes
+Iris (Low),-0.14375230452801643,ok,3
+Breast cancer (Low),-0.7234976422604991,ok,2
+Concentric rings (Low),0.1997248080631688,ok,3
+Digits (Low),-0.4536194957100049,ok,10
+Wine quality (Low),-0.6784474971173763,ok,2

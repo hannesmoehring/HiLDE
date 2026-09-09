@@ -5,7 +5,7 @@ records CSV without repeating the sweep::
 
     uv run python -m src_research.predicate_stability_analysis outputs/experiments/<ts>
 
-Implements design SS5/SS7 of ``EXPERIMENT_predicate_stability.md``:
+Implements SS5/SS7 of the pre-registered RQ2 design:
     * unit of analysis = the selection (replicate pairs were aggregated at record time);
     * H2a: per t < 1.0, paired Wilcoxon of per-selection jaccard_admitted(t) - (1.0),
       Holm-corrected across the three thresholds; same (secondary) for f1_sd;
@@ -20,6 +20,9 @@ Implements design SS5/SS7 of ``EXPERIMENT_predicate_stability.md``:
 Pre-registered primary: jaccard_admitted, threshold method, severity split, delta = 0.1.
 Everything else (db, f1_sd, the delta sweep, bound_sd, seed-perturbation) is secondary /
 exploratory and labelled as such.
+
+``design SSN`` below marks a rule fixed by the pre-registered design, which is
+recorded in the thesis and no longer kept in this repository.
 """
 
 from __future__ import annotations

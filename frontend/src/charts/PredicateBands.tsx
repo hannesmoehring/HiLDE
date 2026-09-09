@@ -2,7 +2,8 @@
 // One horizontal row per feature (from props.full). Each feature is normalized to its
 // OWN [global_min, global_max] range: a faint global track, a translucent "Full range"
 // band (RCM 1.0), and a solid inner "Core range" band (RCM 0.9, matched from props.trimmed
-// by feature name). Predicate-clause features are indigo and sorted to the top.
+// by feature name). Predicate-clause features are indigo, sort to the top in greedy
+// step order, and carry the marginal F1 gain they bought at that step.
 import { scaleLinear } from "d3";
 import { useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
@@ -28,22 +29,40 @@ const LEFT_MIN = 44;
 const LEFT_MAX = 160; // past this, long names clip rather than eat the whole width
 const RIGHT = 24;
 const TOP = 8;
+const HEAD = 14; // header over the ΔF1 gutter, only drawn when a clause was selected
+const GAIN_W = 96; // right gutter holding "+0.214 · 47"
 const BOTTOM = 26; // x-axis (0% / 50% / 100%)
 const PITCH = 22; // vertical distance between rows
 const BAND_H = 13;
+const TIP_PAD = 14; // cursor → tooltip offset
+const TIP_CHAR_W = 7; // ≈ mean advance of the 13px tooltip face
+
+const GAIN_HEADER_TITLE =
+  "Per clause, in the order the greedy search added it: the F1 the predicate gained when " +
+  "the clause was added, and the number of background points the conjunction still " +
+  "matched after that step (the selection is a subset of them; precision = selected ÷ matched).";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const fmt = (v: number) => v.toFixed(2);
+// The stopping tolerance is 1e-6, so an accepted clause can legitimately round to
+// +0.000 here — that is why the match count is shown next to it.
+const gain = (v: number) => `+${v.toFixed(3)}`;
 
-export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
+export function PredicateBands({ full, trimmed, nBackground }: PredicateBandsProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const [tip, setTip] = useState<{ row: PredicateRow; x: number; y: number } | null>(null);
 
-  // Predicate clauses on top, then clause_f1 descending (mirrors the Streamlit lexsort).
+  // Predicate clauses on top in the order the greedy loop added them, then the rest
+  // by clause_f1 descending (mirrors the Streamlit lexsort).
+  // NOTE: this order is the RCM 1.0 construction. `trimmed` is a SEPARATE greedy
+  // pass — its clause membership and its step order can both differ, which is why
+  // the tooltip carries its own core-run block rather than reusing these steps.
   const rows = useMemo(
     () =>
       [...full].sort((a, b) => {
         if (a.in_predicate !== b.in_predicate) return a.in_predicate ? -1 : 1;
+        if (a.in_predicate && b.in_predicate)
+          return (a.predicate_step ?? 0) - (b.predicate_step ?? 0);
         return b.clause_f1 - a.clause_f1;
       }),
     [full],
@@ -62,13 +81,39 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
   if (full.length === 0) return null;
 
   const width = size.width > 0 ? size.width : 680;
-  const trackWidth = Math.max(width - left - RIGHT, 10);
-  const height = TOP + rows.length * PITCH + BOTTOM;
+  const hasGains = rows.some((r) => r.in_predicate && r.predicate_f1_gain !== null);
+  const gainW = hasGains ? GAIN_W : 0;
+  const top = hasGains ? TOP + HEAD : TOP;
+  const trackWidth = Math.max(width - left - RIGHT - gainW, 10);
+  const height = top + rows.length * PITCH + BOTTOM;
 
   const handleMove = (e: ReactMouseEvent<SVGRectElement>, row: PredicateRow) => {
     const rect = ref.current?.getBoundingClientRect();
     setTip({ row, x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) });
   };
+
+  const matchedLine = (row: PredicateRow) =>
+    nBackground != null
+      ? `Matches ${row.predicate_n_matched} of ${nBackground} background points`
+      : `Matches ${row.predicate_n_matched} background points`;
+
+  // The tooltip opens to the right of the cursor, and to its LEFT when that would
+  // run past the chart's edge — the column clips with overflow: hidden, so the
+  // rightmost rows (the gain gutter) otherwise lose half their tooltip. The
+  // width estimate only picks the side; the flipped tooltip is anchored by its
+  // right edge, so a poor estimate costs an early flip, never a clipped tip.
+  const tipWidth = (row: PredicateRow) => {
+    const core = coreByFeature.get(row.feature);
+    const lines = [
+      row.feature,
+      `Selection: ${fmt(row.sel_min)} – ${fmt(row.sel_max)}`,
+      `Standalone F1: ${fmt(row.clause_f1)}`,
+      `${matchedLine(row)} · P 0.00 · R 0.00`,
+      core ? `Core (RCM 0.9): step 0 · +0.000 · 0.00 → 0.00` : "",
+    ];
+    return Math.max(...lines.map((l) => l.length)) * TIP_CHAR_W + 16;
+  };
+  const flipTip = tip != null && tip.x + TIP_PAD + tipWidth(tip.row) > width;
 
   return (
     <div
@@ -101,8 +146,23 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
       </div>
 
       <svg width={width} height={height} role="img" aria-label="Predicate feature range bands">
+        {/* Header for the marginal-gain gutter. */}
+        {hasGains && (
+          <text
+            x={width - RIGHT}
+            y={TOP + 8}
+            textAnchor="end"
+            dominantBaseline="central"
+            fontSize={10.5}
+            fill={MUTED}
+          >
+            <title>{GAIN_HEADER_TITLE}</title>
+            ΔF1 when added · points matched
+          </text>
+        )}
+
         {/* Gridlines at 0% / 50% / 100% of every feature's normalized range. */}
-        <g transform={`translate(${left},${TOP})`}>
+        <g transform={`translate(${left},${top})`}>
           {[0, 0.5, 1].map((f) => (
             <line
               key={f}
@@ -153,11 +213,30 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
                     opacity={row.in_predicate ? 1 : 0.45}
                   />
                 )}
+                {/* Marginal F1 gain at the step this clause was added, plus the
+                    exact count of background points the conjunction still matched
+                    (counts never degenerate the way a rounded gain can). */}
+                {row.in_predicate && row.predicate_f1_gain !== null && (
+                  <text
+                    x={trackWidth + gainW}
+                    y={rowTop + PITCH / 2}
+                    textAnchor="end"
+                    dominantBaseline="central"
+                    fontSize={LABEL_FONT}
+                    fill={TEXT}
+                  >
+                    <title>
+                      {`ΔF1 when added ${gain(row.predicate_f1_gain)} at step ${row.predicate_step}; ${matchedLine(row).toLowerCase()} after this step`}
+                    </title>
+                    {gain(row.predicate_f1_gain)}
+                    <tspan fill={MUTED}> · {row.predicate_n_matched}</tspan>
+                  </text>
+                )}
                 {/* Transparent hover target across the full row */}
                 <rect
                   x={0}
                   y={rowTop}
-                  width={trackWidth}
+                  width={trackWidth + gainW}
                   height={PITCH}
                   fill="transparent"
                   onMouseMove={(e) => handleMove(e, row)}
@@ -173,7 +252,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
           <text
             key={row.feature}
             x={left - 8}
-            y={TOP + i * PITCH + PITCH / 2}
+            y={top + i * PITCH + PITCH / 2}
             textAnchor="end"
             dominantBaseline="central"
             fontSize={LABEL_FONT}
@@ -185,7 +264,7 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         ))}
 
         {/* X-axis ticks */}
-        <g transform={`translate(${left},${TOP + rows.length * PITCH + 6})`}>
+        <g transform={`translate(${left},${top + rows.length * PITCH + 6})`}>
           {[0, 0.5, 1].map((f, idx) => (
             <text
               key={f}
@@ -205,8 +284,10 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
         <div
           style={{
             position: "absolute",
-            left: tip.x + 14,
-            top: tip.y + 14,
+            // Flipped: anchor the tooltip's RIGHT edge left of the cursor, so it
+            // can never spill past the chart however wide it turns out to be.
+            ...(flipTip ? { right: width - tip.x + TIP_PAD } : { left: tip.x + TIP_PAD }),
+            top: tip.y + TIP_PAD,
             pointerEvents: "none",
             background: theme.surface,
             border: `1px solid ${theme.textPrimary}`,
@@ -226,10 +307,36 @@ export function PredicateBands({ full, trimmed }: PredicateBandsProps) {
           <div style={{ color: MUTED }}>
             Global: {fmt(tip.row.global_min)} – {fmt(tip.row.global_max)}
           </div>
-          <div>Clause F1: {fmt(tip.row.clause_f1)}</div>
-          <div style={{ color: tip.row.in_predicate ? INDIGO : MUTED }}>
-            {tip.row.in_predicate ? "In predicate" : "Not in predicate"}
-          </div>
+          <div>Standalone F1: {fmt(tip.row.clause_f1)}</div>
+          {tip.row.in_predicate && tip.row.predicate_f1_gain !== null ? (
+            <>
+              <div style={{ color: INDIGO }}>
+                Step {tip.row.predicate_step} · ΔF1 when added {gain(tip.row.predicate_f1_gain)}
+              </div>
+              <div style={{ color: MUTED }}>
+                Predicate F1: {fmt(tip.row.predicate_f1_before ?? 0)} →{" "}
+                {fmt(tip.row.predicate_f1_after ?? 0)}
+              </div>
+              <div style={{ color: MUTED }}>
+                {matchedLine(tip.row)} · P {fmt(tip.row.predicate_precision ?? 0)} · R{" "}
+                {fmt(tip.row.predicate_recall ?? 0)}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: MUTED }}>Not selected</div>
+          )}
+          {/* The core (RCM 0.9) run is its own greedy construction — different
+              membership and a different step order, so it gets its own block. */}
+          {(() => {
+            const core = coreByFeature.get(tip.row.feature);
+            if (!core?.in_predicate || core.predicate_f1_gain === null) return null;
+            return (
+              <div style={{ color: MUTED, marginTop: 2 }}>
+                Core (RCM 0.9): step {core.predicate_step} · {gain(core.predicate_f1_gain)} ·{" "}
+                {fmt(core.predicate_f1_before ?? 0)} → {fmt(core.predicate_f1_after ?? 0)}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

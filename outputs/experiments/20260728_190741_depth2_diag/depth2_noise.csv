@@ -1,0 +1,10 @@
+dataset,build,realized_depth,n_leaves,noise_fraction
+Wine quality (Low),0,2,5,0.038
+Wine quality (Low),1,2,11,0.162
+Wine quality (Low),2,2,12,0.098
+Breast cancer (Low),0,2,5,0.51
+Breast cancer (Low),1,2,4,0.095
+Breast cancer (Low),2,2,5,0.111
+Digits (Low),0,2,15,0.162
+Digits (Low),1,2,14,0.087
+Digits (Low),2,2,16,0.109

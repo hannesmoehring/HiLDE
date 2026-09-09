@@ -6,12 +6,15 @@
 .env
 hm_*
 datasets/*
-outputs/
+# outputs/
 .cache/
 CLAUDE.md
 .ruff_cache/
 .pytest_cache/
-
+*.png
+*.md
+!README.md
+!plans/*.md
 # Python-generated files
 __pycache__/
 *.py[oc]

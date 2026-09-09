@@ -8,6 +8,8 @@ client-side.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import sys
 from collections import OrderedDict
@@ -20,15 +22,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from backend import counterfactual as cf
 from backend import datasets as ds
 from backend import images as ds_images
-from backend import jobs, run_cache
+from backend import jobs, movement_jobs, run_cache
 from backend.characteristics import compute_selection_characteristics
+from backend.counterfactual_apply import (
+    ApplyRequestData,
+    apply_validated,
+    validate_apply,
+)
+from backend.movement import (
+    MovementError,
+    MovementRequestData,
+    compute_validated_movement,
+    needs_background,
+    validate_request,
+)
 from backend.predicate import compute_predicate
-from backend.serialize import serialize_tree
+from backend.serialize import (
+    SCHEMA_VERSION,
+    analysis_id,
+    effective_config,
+    serialize_tree,
+)
 from backend.targets import compute_targets
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
@@ -111,6 +132,30 @@ class TargetsRequest(BaseModel):
     selected_local_indices: list[int]
 
 
+class MovementRequest(BaseModel):
+    analysis_id: str
+    dataset: str
+    feature_cols: list[str]
+    config: dict[str, Any] = {}
+    node_id: str
+    source_child_index: int
+    target: dict[str, Any]
+    strength: float | None = None
+
+
+class CounterfactualApplyRequest(BaseModel):
+    """`MovementRequest` with a required, positive strength (backend/counterfactual_apply.py)."""
+
+    analysis_id: str
+    dataset: str  # the base, or an existing counterfactual key to stack on
+    feature_cols: list[str]
+    config: dict[str, Any] = {}
+    node_id: str
+    source_child_index: int
+    target: dict[str, Any]
+    strength: float | None = None
+
+
 class RowsRequest(BaseModel):
     dataset: str
     ids: list[int]
@@ -120,6 +165,20 @@ class RowsRequest(BaseModel):
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _load_dataset(key: str) -> Any:
+    """`ds.load`, with the two ways a key can be unknown told apart: a base that
+    does not exist, and a counterfactual id that was never registered or has
+    expired (see backend/counterfactual.py)."""
+    try:
+        return ds.load(key)
+    except cf.CounterfactualUnknown as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Counterfactual expired or unknown: {key}"
+        ) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {key}") from exc
 
 
 @app.get("/api/mode")
@@ -141,31 +200,28 @@ def list_datasets() -> list[dict[str, str]]:
 @app.get("/api/datasets/{key}/columns")
 def dataset_columns(key: str) -> dict[str, Any]:
     """Loads (and caches) the dataset to report its columns + default feature selection."""
-    try:
-        df = ds.load(key)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {key}") from exc
+    df = _load_dataset(key)
     return {
         "key": key,
         "n_rows": len(df),
         "columns": [str(c) for c in df.columns],
         "default_feature_cols": ds.default_feature_cols(df),
-        "image": ds_images.spec(key),  # non-null = rows can be rendered as images
+        # Non-null = rows can be rendered as images. A counterfactual key keeps
+        # its base's image form.
+        "image": ds_images.spec(ds.base_key(key)),
     }
 
 
 @app.get("/api/datasets/{key}/image/{row_id}")
 def dataset_image(key: str, row_id: int) -> dict[str, Any]:
     """Greyscale pixels of a single row, for the image-valued datasets."""
-    if ds_images.spec(key) is None:
+    base = ds.base_key(key)
+    if ds_images.spec(base) is None:
         raise HTTPException(status_code=404, detail=f"Dataset has no image form: {key}")
-    try:
-        df = ds.load(key)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unknown dataset: {key}") from exc
+    df = _load_dataset(key)
     if not 0 <= row_id < len(df):
         raise HTTPException(status_code=404, detail=f"Row out of range: {row_id}")
-    return ds_images.pixels(df, key, row_id)
+    return ds_images.pixels(df, base, row_id)
 
 
 def _cached_payload(key: str) -> dict[str, Any] | None:
@@ -190,11 +246,21 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
             "feature_cols": req.feature_cols,
             "config": req.config,
             "n_total": len(df),
+            # Movement prerequisites (backend/movement.py). `config` above is
+            # what the client sent; `effective_config` is what the tree was
+            # built with after `compute_analysis_tree` clamped it in place —
+            # `start_evaluation` has returned, so `config` now holds the mutated
+            # values, and that is the only config a refit may read.
+            "analysis_id": analysis_id(req.dataset, req.feature_cols, req.config),
+            "effective_config": effective_config(config),  # type: ignore[arg-type]
+            "schema_version": SCHEMA_VERSION,
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
     _cache_put(key, payload)
-    if run_cache.is_hosting():
+    # A counterfactual run is session state: hosting mode must never write it
+    # to disk, where it would outlive the history that gives its key meaning.
+    if run_cache.is_hosting() and not cf.is_counterfactual_key(req.dataset):
         run_cache.store(key, payload)  # a forced rerun replaces the stored entry
 
 
@@ -220,12 +286,7 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
     A cache hit still answers inline — only the runs that would outlast a proxy's
     response timeout go through the job path.
     """
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"Unknown dataset: {req.dataset}"
-        ) from exc
+    df = _load_dataset(req.dataset)
 
     key = _cache_key(req.dataset, req.feature_cols, req.config)
 
@@ -248,12 +309,7 @@ def analysis_job(job_id: str) -> dict[str, Any]:
 
 @app.post("/api/predicate")
 def predicate(req: PredicateRequest) -> dict[str, Any]:
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"Unknown dataset: {req.dataset}"
-        ) from exc
+    df = _load_dataset(req.dataset)
     normalize = bool(req.config.get("normalize", True))
     try:
         return compute_predicate(
@@ -268,15 +324,146 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Predicate failed: {exc}") from exc
 
 
+@app.post("/api/movement")
+def movement(req: MovementRequest) -> dict[str, Any]:
+    """A counterfactual preview: move one child cluster toward a point or a sibling.
+
+    PCA answers inline, always — the displacement is one pinv solve against an
+    already cached projection artifact, and it is what the strength slider calls;
+    routing it through a poll would turn an instant interaction into a round
+    trip. So does a UMAP request whose reducer is already in the artifact LRU.
+    Only a UMAP request that still has to refit the node's projection becomes a
+    job: the analysis discards its fitted reducers, so that first movement pays
+    for a full UMAP fit, which can outlast a proxy's response timeout.
+
+    Validation runs here either way, before any job is submitted, so a bad
+    request is an HTTP 400/409 rather than a job that fails one poll later.
+
+    Nothing is written back: the dataframe, the tree and the cached payload are
+    all read-only here, and the movement result itself is never persisted (see
+    backend/movement_jobs.py).
+
+    The movement is answered against the run the client is looking at, which is
+    the payload under this request's own cache key. `validate_request` compares
+    the stored `analysis_id` with the requested one and answers 409 when they
+    disagree, when the payload is gone, or when it predates `effective_config`.
+    """
+    df = _load_dataset(req.dataset)
+    payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
+    data = MovementRequestData(**req.model_dump())
+    try:
+        validated = validate_request(data, payload)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if needs_background(validated):
+        return movement_jobs.envelope(
+            movement_jobs.submit(
+                movement_jobs.job_key(data),
+                lambda: compute_validated_movement(validated, df),
+            )
+        )
+    try:
+        return compute_validated_movement(validated, df)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.get("/api/movement/jobs/{job_id}")
+def movement_job(job_id: str) -> dict[str, Any]:
+    """Poll a movement job. Terminal success returns the `MovementResponse` itself."""
+    job = movement_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown movement job")
+    return movement_jobs.envelope(job)
+
+
+@app.post("/api/counterfactual/apply")
+def counterfactual_apply(req: CounterfactualApplyRequest) -> dict[str, Any]:
+    """Write the previewed movement into a counterfactual copy of the dataset.
+
+    Same validation and the same job rule as `/api/movement`: the server
+    recomputes the movement at the requested strength (a cold UMAP node goes
+    through the job path — poll `/api/counterfactual/jobs/{job_id}`), then
+    records the edit on top of `req.dataset` and answers with the new dataset
+    key. Nothing about the original frame or any existing payload changes; the
+    client rebuilds the analysis on the new key with `/api/analysis`.
+    """
+    df = _load_dataset(req.dataset)
+    payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
+    data = ApplyRequestData(**req.model_dump())
+    try:
+        validated = validate_apply(data, payload)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if needs_background(validated):
+        return movement_jobs.envelope(
+            movement_jobs.submit(
+                "counterfactual:" + movement_jobs.job_key(data.as_movement()),
+                lambda: apply_validated(validated, df, req.dataset),
+            )
+        )
+    try:
+        return apply_validated(validated, df, req.dataset)
+    except MovementError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.get("/api/counterfactual/jobs/{job_id}")
+def counterfactual_job(job_id: str) -> dict[str, Any]:
+    """Poll an Apply that needed a refit. Terminal success is the apply response itself."""
+    job = movement_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown counterfactual job")
+    return movement_jobs.envelope(job)
+
+
+@app.get("/api/counterfactual/{cf_id}")
+def counterfactual_chain(cf_id: str) -> dict[str, Any]:
+    """The edit chain behind a counterfactual key, base first."""
+    try:
+        edits = cf.chain(cf_id)
+    except cf.CounterfactualUnknown as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Counterfactual expired or unknown: {cf_id}"
+        ) from exc
+    return {
+        "cf_id": cf_id,
+        "dataset_key": edits[-1].dataset_key,
+        "base_dataset": edits[-1].base_dataset,
+        "edits": [e.summary() for e in edits],
+    }
+
+
+@app.get("/api/counterfactual/{cf_id}/rows.csv")
+def counterfactual_rows_csv(cf_id: str) -> PlainTextResponse:
+    """The changed rows: row_id, then original and counterfactual values of
+    every feature any edit in the chain touched."""
+    try:
+        base = cf.get(cf_id).base_dataset
+        columns, records = cf.changed_rows(base, cf_id, ds.load)
+    except cf.CounterfactualUnknown as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Counterfactual expired or unknown: {cf_id}"
+        ) from exc
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=columns)
+    writer.writeheader()
+    writer.writerows(records)
+    return PlainTextResponse(
+        out.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="counterfactual_{cf_id}.csv"'
+        },
+    )
+
+
 @app.post("/api/characteristics")
 def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
     """A selection's characteristics, on the tree's own z-score baseline."""
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"Unknown dataset: {req.dataset}"
-        ) from exc
+    df = _load_dataset(req.dataset)
     normalize = bool(req.config.get("normalize", True))
     try:
         return {
@@ -297,12 +484,7 @@ def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
 @app.post("/api/targets")
 def targets(req: TargetsRequest) -> dict[str, Any]:
     """Label values for a selection — reported alongside, never inside, the predicate."""
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"Unknown dataset: {req.dataset}"
-        ) from exc
+    df = _load_dataset(req.dataset)
     try:
         return compute_targets(
             df, req.target_cols, req.row_indices, req.selected_local_indices
@@ -314,16 +496,11 @@ def targets(req: TargetsRequest) -> dict[str, Any]:
 @app.post("/api/rows")
 def rows(req: RowsRequest) -> dict[str, Any]:
     """On-demand raw feature values for a set of row ids (selected-points table)."""
-    try:
-        df = ds.load(req.dataset)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"Unknown dataset: {req.dataset}"
-        ) from exc
+    df = _load_dataset(req.dataset)
     # Ids are positions into *this* dataset's frame. A client holding a tree built on
     # another dataset sends ids that are perfectly valid integers and simply too large,
-    # which pandas raises on — a bad request, not a server fault. Every sibling
-    # endpoint already answers 400 here; this one used to surface a 500 traceback.
+    # which pandas raises on — a bad request, not a server fault. Answer 400, as
+    # every sibling endpoint does, rather than letting it surface as a 500 traceback.
     if req.ids and (max(req.ids) >= len(df) or min(req.ids) < 0):
         raise HTTPException(
             status_code=400,

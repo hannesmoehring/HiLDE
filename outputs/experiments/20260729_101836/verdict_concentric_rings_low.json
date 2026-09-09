@@ -1,0 +1,51 @@
+{
+  "dataset": "Concentric rings (Low)",
+  "adopted": false,
+  "A1_separation": true,
+  "A2_view": true,
+  "A3_interactive": true,
+  "A4_reliable": true,
+  "A5_granularity": false,
+  "A6_ari": false,
+  "baseline_dbcv_mean": 0.1997248080631688,
+  "baseline_dbcv_max": 0.1997248080631688,
+  "preset_dbcv_mean": 0.3234655642538314,
+  "preset_dbcv_min": 0.3234655642538314,
+  "baseline_tnc_mean": 0.9976451809765571,
+  "preset_tnc_mean": 0.9971461526240926,
+  "baseline_ari_mean": 1.0,
+  "preset_ari_mean": 0.7682756286009895,
+  "baseline_noise_mean": 0.0,
+  "preset_noise_mean": 0.19722222222222222,
+  "baseline_seconds_median": 25.37332057952881,
+  "preset_seconds_median": 19.50724148750305,
+  "baseline_leaves": [
+    3,
+    3,
+    3,
+    3,
+    3
+  ],
+  "preset_leaves": [
+    6,
+    6,
+    6,
+    6,
+    6
+  ],
+  "config": {
+    "hierarchical_layers": 3,
+    "hclust_umap_n_components": 2,
+    "hclust_min_cluster_size": 119,
+    "hclust_min_samples": 38,
+    "umap_n_neighbors": 28,
+    "umap_min_dist": 0.1654736541250219,
+    "method": "t-SNE",
+    "tsne_perplexity": 24.18559997423423,
+    "tsne_learning_rate": 367.07240503550105
+  },
+  "feature_cols": [
+    "x",
+    "y"
+  ]
+}
