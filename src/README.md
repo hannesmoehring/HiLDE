@@ -259,6 +259,17 @@ Every loader returns a DataFrame with a `row_id` column and label columns named
 `row_id` and every `target_*` out of the feature space, so labels never reach the
 clustering, the projection or the predicate.
 
+**Counterfactual data arrives here as an ordinary frame.** The app's *Apply* action edits
+a copy of a dataset and rebuilds on it, but that copy is made in
+`backend/counterfactual.py` and resolved from its `"{base}@cf:{id}"` key by
+`backend/datasets.py::load`; `start_evaluation` is handed a plain DataFrame and knows
+nothing about it. So a counterfactual build is a normal build:
+HDBSCAN re-partitions the edited data from scratch, and the resulting hierarchy — cluster
+count, membership, node ids — need not correspond to the run the edit was previewed on.
+Nothing in this layer preserves that correspondence, and the moved cluster is not
+guaranteed to merge with its destination. See
+[`backend/README.md`](../backend/README.md#counterfactual-sessions-apply).
+
 ### `types.py` and `config_defaults.py`
 
 `Config` is a flat `TypedDict` of every knob; `default_config()` returns a complete,

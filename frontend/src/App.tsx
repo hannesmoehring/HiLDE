@@ -305,10 +305,17 @@ export default function App() {
               </div>
 
               <div className="cfg__build">
+                {/* `cfBusy` gates this the way it gates the dataset selector and
+                    Undo/Reset. Build is the one control that can move App state
+                    from under an apply that is already out: it nulls `analysis`,
+                    which the pending rebuild reads, and it commits a run built on
+                    the key it captured. The counterfactual hook's stale check
+                    cannot see either — Build changes no base, generation or head. */}
                 <button
                   className="primary"
                   onClick={build}
-                  disabled={loading || featureCols.length === 0}
+                  disabled={loading || featureCols.length === 0 || cfBusy}
+                  title={cfBusy ? "Waiting for the counterfactual rebuild" : undefined}
                 >
                   {loading ? "Building…" : "Build & Apply"}
                 </button>
