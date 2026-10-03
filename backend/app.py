@@ -190,6 +190,7 @@ def mode() -> dict[str, Any]:
         "hosting": hosting,
         "cache_dir": str(run_cache.cache_dir()) if hosting else None,
         "cache_only": run_cache.is_cache_only(),
+        "maintenance": run_cache.is_maintenance(),
     }
 
 

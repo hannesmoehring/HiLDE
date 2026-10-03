@@ -100,13 +100,15 @@ export default function App() {
   useEffect(() => {
     getMode()
       .then(setMode)
-      .catch(() => setMode({ hosting: false, cache_dir: null, cache_only: false }));
+      .catch(() =>
+        setMode({ hosting: false, cache_dir: null, cache_only: false, maintenance: false }),
+      );
   }, []);
 
   // Waits for the mode: a cache-only server offers the datasets that have a stored
   // run, not the registry.
   useEffect(() => {
-    if (!mode) return;
+    if (!mode || mode.maintenance) return; // under maintenance nothing is requested
     if (mode.cache_only) {
       listCachedRuns()
         .then((runs) => {
@@ -236,6 +238,25 @@ export default function App() {
     `${config.hierarchical_layers} layers`,
     `mcs ${config.hclust_min_cluster_size}`,
   ].join(", ");
+
+  if (mode?.maintenance) {
+    return (
+      <div className="app">
+        <header className="topbar">
+          <span className="topbar__brand">HiLDE</span>
+        </header>
+        <main className="canvas">
+          <div className="banner" role="alert">
+            <strong>Maintenance</strong>
+            <span>
+              HiLDE is under maintenance and does not work right now. Please check back
+              later.
+            </span>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app">

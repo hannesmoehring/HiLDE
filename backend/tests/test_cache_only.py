@@ -100,8 +100,23 @@ def test_cache_only_implies_hosting_and_is_reported():
             "hosting": True,
             "cache_dir": str(tmp),
             "cache_only": True,
+            "maintenance": False,
         }
     assert backend_app.mode()["cache_only"] is False
+
+
+def test_maintenance_is_reported_and_off_by_default():
+    before = os.environ.get("HILDE_MAINTENANCE")
+    try:
+        os.environ.pop("HILDE_MAINTENANCE", None)
+        assert backend_app.mode()["maintenance"] is False
+        os.environ["HILDE_MAINTENANCE"] = "1"
+        assert backend_app.mode()["maintenance"] is True
+    finally:
+        if before is None:
+            os.environ.pop("HILDE_MAINTENANCE", None)
+        else:
+            os.environ["HILDE_MAINTENANCE"] = before
 
 
 def test_listing_names_exactly_the_runs_a_request_can_reach():

@@ -17,6 +17,7 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
     HILDE_HOSTING=1 \
     HILDE_CACHE_ONLY=1 \
+    HILDE_MAINTENANCE=1 \
     SCIKIT_LEARN_DATA=/app/datasets/sklearn
 
 # build-essential for any source builds (hdbscan/llvmlite fallbacks)

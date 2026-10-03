@@ -26,6 +26,7 @@ from typing import Any
 
 HOSTING_ENV = "HILDE_HOSTING"
 CACHE_ONLY_ENV = "HILDE_CACHE_ONLY"
+MAINTENANCE_ENV = "HILDE_MAINTENANCE"
 CACHE_DIR_ENV = "HILDE_CACHE_DIR"
 
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / ".cache" / "hilde_runs"
@@ -37,6 +38,11 @@ def _flag(name: str) -> bool:
 
 def is_cache_only() -> bool:
     return _flag(CACHE_ONLY_ENV)
+
+
+def is_maintenance() -> bool:
+    """The UI shows a maintenance notice instead of the app and requests nothing."""
+    return _flag(MAINTENANCE_ENV)
 
 
 def is_hosting() -> bool:

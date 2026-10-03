@@ -10,6 +10,9 @@ run cache off so every build recomputes.
 On this branch the server is cache-only by default: it serves the runs already
 in the run cache and refuses to build new ones. `HILDE_CACHE_ONLY=0` turns the
 builds back on.
+
+It also starts under maintenance for now: the UI shows a notice instead of the
+app. `HILDE_MAINTENANCE=0` brings the app back.
 """
 
 from __future__ import annotations
@@ -83,11 +86,14 @@ def main() -> None:
 
     os.environ["HILDE_HOSTING"] = "1"
     os.environ.setdefault("HILDE_CACHE_ONLY", "1")
+    os.environ.setdefault("HILDE_MAINTENANCE", "1")
     from backend import run_cache
 
     _say(f"run cache: {run_cache.cache_dir()}")
     if run_cache.is_cache_only():
         _say("cache-only: serving stored runs, builds are disabled")
+    if run_cache.is_maintenance():
+        _say("maintenance: the UI shows a notice instead of the app")
     _say(f"serving on http://{args.host}:{args.port}")
 
     import uvicorn

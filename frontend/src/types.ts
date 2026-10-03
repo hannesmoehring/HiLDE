@@ -74,6 +74,7 @@ export interface ModeInfo {
   hosting: boolean;
   cache_dir: string | null;
   cache_only: boolean; // the server refuses to build; only stored runs can be shown
+  maintenance: boolean; // show a notice instead of the app, and request nothing
 }
 
 // One stored run, as the request that reproduces its cache key (cache-only mode).

@@ -116,7 +116,19 @@ To build on this branch anyway:
 HILDE_CACHE_ONLY=0 uv run host.py
 ```
 
-The two-terminal development setup below never sets the variable and builds as usual.
+**Maintenance notice.** For now this branch also defaults `HILDE_MAINTENANCE=1` in
+`host.py` and the Docker image: the UI shows a "Maintenance" notice instead of the app
+and requests nothing beyond `/api/mode`. The API itself is not blocked. Bring the app
+back with:
+
+```bash
+HILDE_MAINTENANCE=0 uv run host.py
+```
+
+Under Docker, add `HILDE_MAINTENANCE=0` to `environment:` in `docker-compose.yml` and
+recreate the container; no rebuild is needed.
+
+The two-terminal development setup below sets neither variable and builds as usual.
 
 ### Development (two terminals, hot reload)
 
