@@ -183,12 +183,46 @@ def _load_dataset(key: str) -> Any:
 
 @app.get("/api/mode")
 def mode() -> dict[str, Any]:
-    """Whether the server runs in hosting mode (persistent run cache + UI banner)."""
+    """Whether the server runs in hosting mode (persistent run cache + UI banner),
+    and whether it is restricted to the runs already in that cache."""
     hosting = run_cache.is_hosting()
     return {
         "hosting": hosting,
         "cache_dir": str(run_cache.cache_dir()) if hosting else None,
+        "cache_only": run_cache.is_cache_only(),
     }
+
+
+_CACHE_ONLY_DETAIL = (
+    "This server only serves precomputed runs — computing is disabled here."
+)
+
+
+@app.get("/api/cached-runs")
+def cached_runs() -> list[dict[str, Any]]:
+    """The stored runs, as the (dataset, feature_cols, config) to request them with.
+
+    Only runs `/api/analysis` will actually answer are listed: the dataset must be
+    in the registry, and the entry must sit under the file name its own signature
+    hashes to (a copied-in file that does not is unreachable by any request).
+    """
+    known = set(ds.dataset_keys())
+    runs = []
+    for meta in run_cache.list_metas():
+        try:
+            key = _cache_key(meta["dataset"], meta["feature_cols"], meta["config"])
+        except (KeyError, TypeError):
+            continue
+        if meta["dataset"] in known and run_cache.is_stored(key):
+            runs.append(
+                {
+                    "dataset": meta["dataset"],
+                    "feature_cols": meta["feature_cols"],
+                    "config": meta["config"],
+                    "n_total": meta.get("n_total"),
+                }
+            )
+    return sorted(runs, key=lambda r: (r["dataset"], json.dumps(r, sort_keys=True)))
 
 
 @app.get("/api/datasets")
@@ -291,10 +325,17 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
     key = _cache_key(req.dataset, req.feature_cols, req.config)
 
     # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
-    if req.use_cache:
+    # Cache-only mode has nothing to recompute with: a hit is the only answer.
+    cache_only = run_cache.is_cache_only()
+    if req.use_cache or cache_only:
         payload = _cached_payload(key)
         if payload is not None:
             return {"status": "done", **payload, "cached": True}
+    if cache_only:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{_CACHE_ONLY_DETAIL} This dataset and configuration are not among them.",
+        )
 
     return _job_payload(jobs.submit(key, lambda: _build(req, df, key)))
 
@@ -357,6 +398,11 @@ def movement(req: MovementRequest) -> dict[str, Any]:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     if needs_background(validated):
+        if run_cache.is_cache_only():  # the job would be a full UMAP fit
+            raise HTTPException(
+                status_code=409,
+                detail=f"{_CACHE_ONLY_DETAIL} Moving a cluster of a UMAP run needs a refit.",
+            )
         return movement_jobs.envelope(
             movement_jobs.submit(
                 movement_jobs.job_key(data),
@@ -388,7 +434,14 @@ def counterfactual_apply(req: CounterfactualApplyRequest) -> dict[str, Any]:
     records the edit on top of `req.dataset` and answers with the new dataset
     key. Nothing about the original frame or any existing payload changes; the
     client rebuilds the analysis on the new key with `/api/analysis`.
+
+    Refused in cache-only mode: that rebuild is exactly what the server cannot do.
     """
+    if run_cache.is_cache_only():
+        raise HTTPException(
+            status_code=409,
+            detail=f"{_CACHE_ONLY_DETAIL} Applying a movement needs a rebuild.",
+        )
     df = _load_dataset(req.dataset)
     payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
     data = ApplyRequestData(**req.model_dump())

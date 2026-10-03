@@ -73,6 +73,15 @@ export type AnalysisJob =
 export interface ModeInfo {
   hosting: boolean;
   cache_dir: string | null;
+  cache_only: boolean; // the server refuses to build; only stored runs can be shown
+}
+
+// One stored run, as the request that reproduces its cache key (cache-only mode).
+export interface CachedRun {
+  dataset: string;
+  feature_cols: string[];
+  config: Partial<AnalysisConfig>; // the knobs the run was requested with, verbatim
+  n_total: number | null;
 }
 
 export interface DatasetInfo {

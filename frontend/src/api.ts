@@ -3,6 +3,7 @@ import type {
   AnalysisConfig,
   AnalysisJob,
   AnalysisResponse,
+  CachedRun,
   CharacteristicsResponse,
   CounterfactualApplyRequest,
   CounterfactualApplyResponse,
@@ -42,6 +43,11 @@ async function get<T>(url: string): Promise<T> {
 
 export function getMode(): Promise<ModeInfo> {
   return get("/api/mode");
+}
+
+/** The stored runs a cache-only server can show. */
+export function listCachedRuns(): Promise<CachedRun[]> {
+  return get("/api/cached-runs");
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {

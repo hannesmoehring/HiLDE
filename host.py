@@ -6,6 +6,10 @@ persistent run cache enabled (see `backend/run_cache.py`).
 
 For development use the two-terminal setup in README.md instead; that leaves the
 run cache off so every build recomputes.
+
+On this branch the server is cache-only by default: it serves the runs already
+in the run cache and refuses to build new ones. `HILDE_CACHE_ONLY=0` turns the
+builds back on.
 """
 
 from __future__ import annotations
@@ -78,9 +82,12 @@ def main() -> None:
     ensure_frontend()
 
     os.environ["HILDE_HOSTING"] = "1"
+    os.environ.setdefault("HILDE_CACHE_ONLY", "1")
     from backend import run_cache
 
     _say(f"run cache: {run_cache.cache_dir()}")
+    if run_cache.is_cache_only():
+        _say("cache-only: serving stored runs, builds are disabled")
     _say(f"serving on http://{args.host}:{args.port}")
 
     import uvicorn

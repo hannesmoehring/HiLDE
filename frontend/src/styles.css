@@ -205,6 +205,17 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   overflow-y: auto;
 }
 .config-grid { display: contents; }
+/* Wraps the config sections so one `disabled` locks them all (cache-only mode);
+   it repeats the rail's hairline grid so the sections lay out as before. */
+.cfg__lock {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
 
 .cfg__block,
 .config-section {

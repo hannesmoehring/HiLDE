@@ -83,6 +83,37 @@ rm -rf .cache/hilde_runs
 
 Read the limitation on this cache below before trusting it after a code change.
 
+### Cache-only (the `cache-only` branch)
+
+For a server that cannot afford a build. On this branch `host.py` and the Docker image
+both default `HILDE_CACHE_ONLY=1`: the server shows the runs already in
+`.cache/hilde_runs/` and computes nothing new. The UI says so in a standing notice,
+replaces the free-form configuration with a picker over the stored runs (the features
+and knobs of the chosen run are shown read-only), and disables *Build & Apply*.
+
+What still works is everything that is not a build: drill-down, predicates,
+characteristics, targets, row tables, images, and the movement preview on PCA runs.
+Refused with HTTP 409: a run that is not stored, a movement on a UMAP run (it needs a
+refit), and applying a movement (it needs a rebuild).
+
+To deploy, copy the contents of `.cache/hilde_runs/` from the machine that computed the
+runs to the same path on the server, or point `HILDE_CACHE_DIR` at wherever they are.
+Entries can be added while the server runs. Two things the cache does not carry:
+
+- **The datasets.** A stored run holds the tree, not the rows; predicates and row tables
+  read the dataset itself. The wine CSVs ship with the repo and the scikit-learn bundled
+  sets need nothing, but any other dataset with a stored run must be present under
+  `datasets/` on the server (or the loader will download it on first use).
+- **The code version.** Entries are served as-is; see the run-cache limitation below.
+
+To build on this branch anyway:
+
+```bash
+HILDE_CACHE_ONLY=0 uv run host.py
+```
+
+The two-terminal development setup below never sets the variable and builds as usual.
+
 ### Development (two terminals, hot reload)
 
 ```bash
