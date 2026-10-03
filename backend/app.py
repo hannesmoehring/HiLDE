@@ -15,7 +15,7 @@ import io
 import json
 import sys
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -545,7 +545,7 @@ def targets(req: TargetsRequest) -> dict[str, Any]:
 
 
 @app.post("/api/rows")
-def rows(req: RowsRequest) -> dict[str, Any]:
+def rows(req: RowsRequest) -> StreamingResponse:
     """On-demand raw feature values for a set of row ids (selected-points table)."""
     df = _load_dataset(req.dataset)
     # Ids are positions into *this* dataset's frame. A client holding a tree built on
@@ -570,10 +570,22 @@ def rows(req: RowsRequest) -> dict[str, Any]:
             )
         cols = req.columns
     sub = df.iloc[req.ids][cols]
-    records = json.loads(
-        sub.to_json(orient="records")
-    )  # to_json coerces NaN->null, np types->native
-    return {"columns": cols, "rows": records}
+    return StreamingResponse(_rows_json(cols, sub), media_type="application/json")
+
+
+_ROWS_CHUNK = 25  # rows per to_json call: a 400 x 4,137 table is 37 MB of JSON
+
+
+def _rows_json(cols: list[str], sub: Any) -> Iterator[str]:
+    """`{"columns": cols, "rows": records}`, written a few rows at a time: parsing
+    the whole table back into Python objects to re-encode it cost ~120 MiB a
+    request on Olivetti, enough for a few at once to kill a 640m container.
+    `to_json` writes NaN as null and numpy scalars as plain numbers."""
+    yield '{"columns":' + json.dumps(cols, separators=(",", ":")) + ',"rows":['
+    for start in range(0, len(sub), _ROWS_CHUNK):
+        chunk = sub.iloc[start : start + _ROWS_CHUNK].to_json(orient="records")
+        yield ("," if start else "") + chunk[1:-1]
+    yield "]}"
 
 
 # Serve the built frontend (production single-container). Mounted last so /api/*

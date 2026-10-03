@@ -81,7 +81,7 @@ rows, image pixels) come back to the server.
 | `POST` | `/api/predicate` | induce an axis-aligned predicate for a selection |
 | `POST` | `/api/characteristics` | z-scored column means for a selection |
 | `POST` | `/api/targets` | held-out `target_*` values for a selection |
-| `POST` | `/api/rows` | raw column values for a set of row ids |
+| `POST` | `/api/rows` | raw column values for a set of row ids (streamed a few rows at a time) |
 
 Request bodies are the `BaseModel` classes at the top of `app.py`. The four
 selection endpoints take `row_indices` (the node's rows, dataset positions) plus
