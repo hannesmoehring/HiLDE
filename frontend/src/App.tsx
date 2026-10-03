@@ -628,7 +628,9 @@ export default function App() {
           {!shownAnalysis && !loading && (
             <div className="empty">
               {cacheOnly
-                ? "Pick a stored run under Configuration."
+                ? cachedDatasets
+                  ? "Pick a stored run under Configuration."
+                  : "Listing the stored runs …"
                 : "Pick features and press Build & Apply to compute a run."}
             </div>
           )}

@@ -18,6 +18,7 @@ import contextlib
 import gzip
 import json
 import os
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -100,7 +101,7 @@ def load(root: Path) -> Index | None:
                 values[i] = MISSING
             index.files[name] = (mtime, g, tuple(values))
         return index
-    except (OSError, ValueError, EOFError, KeyError, TypeError):
+    except (OSError, ValueError, EOFError, KeyError, TypeError, zlib.error):
         return None
 
 

@@ -114,9 +114,18 @@ noticed only at the next change to the directory. Two things the cache does not 
   `datasets/` on the server (or the loader will download it on first use).
 - **The code version.** Entries are served as-is; see the run-cache limitation below.
 
-Copy `.cache/hilde_runs/.listing/` along with the entries and the server skips its first
-scan of them; without it, the first listing reads the head of every entry (about 10 s
-for 21,000 runs on a cold disk).
+Ship the listing index with the entries: without it, the server's first listing reads
+the head of every entry, which takes 10 s for 21,000 runs on a fast disk and over 100 s
+on a slow one. Write it on the machine that has the runs (about 10 s for 21,000), then
+copy `.cache/hilde_runs/.listing/` along with the entries; a copy that does not keep
+file times is fine, since an entry's name already says what it holds.
+
+```bash
+uv run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
+```
+
+While a first scan is still running, the listing endpoints answer 503 after 20 s and
+the UI asks again, so no request outlasts Cloudflare's 100 s.
 
 **Memory.** `docker-compose.yml` caps the container at 640 MB with no swap
 (`mem_limit`, `memswap_limit`); the comment there says how that follows from the VPS.

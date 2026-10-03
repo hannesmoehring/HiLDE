@@ -254,6 +254,48 @@ def test_listing_works_without_a_writable_index():
         assert (tmp / run_index.INDEX_DIR).read_text() == "not a directory"
 
 
+def test_listing_survives_a_copy_that_reset_mtimes_and_a_corrupt_index():
+    pca, _ = tm._payload("PCA")
+    dataset = pca["meta"]["dataset"]
+    with _cache_only(pca) as tmp:
+        assert len(_listed(dataset)) == 1
+        # A copy without -t: new mtimes, same names. The name is the hash of the
+        # signature, so the record is kept without reading the file again.
+        run_listing._index = None
+        path = run_cache._path_for(_key(pca))
+        path.write_bytes(gzip.compress(b"not read again"))
+        os.utime(path, ns=(1, 1))
+        assert len(_listed(dataset)) == 1
+        # A damaged index (a bit flip in the deflate stream) is a rescan, not a 500.
+        index = tmp / run_index.INDEX_DIR / run_index.INDEX_FILE
+        raw = bytearray(index.read_bytes())
+        raw[raw.index(0, 10) + 1] ^= 0xFF  # past the stored name: zlib.error
+        index.write_bytes(bytes(raw))
+        run_listing._index = None
+        run_cache.store(_key(pca), pca)
+        assert len(_listed(dataset)) == 1
+
+
+def test_a_listing_that_is_still_scanning_is_a_503(monkeypatch):
+    pca, _ = tm._payload("PCA")
+    monkeypatch.setattr(backend_app, "_LISTING_WAIT_S", 0.05)
+    with _cache_only(pca):
+        run_listing._index = None
+        with run_listing._lock:  # as the startup scan holds it
+            for call, args in (
+                (backend_app.cached_runs, ()),
+                (backend_app.cached_runs_of, (pca["meta"]["dataset"], "gzip")),
+            ):
+                try:
+                    call(*args)
+                except HTTPException as exc:
+                    assert exc.status_code == 503
+                    assert exc.headers == {"Retry-After": "3"}
+                else:
+                    raise AssertionError("expected a 503")
+        assert len(_listed(pca["meta"]["dataset"])) == 1
+
+
 def _served(response: Any) -> tuple[dict[str, Any], dict[str, str]]:
     """The JSON a client decodes from an `/api/analysis` hit, and the headers."""
 

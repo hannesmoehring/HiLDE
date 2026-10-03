@@ -9,7 +9,14 @@ index (`backend/run_index.py`), in memory and next to the cache.
 The index is valid while the cache directory's mtime stays what it was. Adding,
 replacing or removing an entry renames a file into or out of the directory,
 which bumps it (`run_cache.store` and rsync both do). When it did change, every
-entry is stat-ed and only new or changed ones are read.
+entry is stat-ed and only new ones are read: an entry's name is the hash of the
+signature its meta holds, so a listed name keeps its record even when a copy
+that did not preserve mtimes (cp, scp, docker cp) changed the file's.
+
+On a slow disk a first scan of a sweep-sized cache can outlast a proxy's
+timeout (Cloudflare's is 100 s), so a request waits for a running scan only so
+long (`wait`) and then gets `Busy`; the scan goes on. Writing the index ahead of
+a deploy avoids the scan: `python -m backend.run_listing` (see README.md).
 """
 
 from __future__ import annotations
@@ -35,6 +42,10 @@ KeyOf = Callable[[str, list[str], dict[str, Any]], str]
 
 _lock = threading.Lock()  # one scan at a time; the others wait for its result
 _index: Index | None = None
+
+
+class Busy(Exception):
+    """A scan of the stored runs is still running; ask again shortly."""
 
 
 def _dir_mtime(root: Path) -> int | None:
@@ -96,8 +107,10 @@ def _scan(prev: Index | None, root: Path, key_of: KeyOf) -> Index:
         except OSError:
             continue
         rec = old.get(entry.name)
-        if rec is None or rec[0] != mtime or rec[1] == UNREADABLE:
+        if rec is None or rec[1] == UNREADABLE or (rec[0] != mtime and rec[1] < 0):
             rec = _record(index, entry.name, mtime, key_of)
+        elif rec[0] != mtime:  # same name, same signature: the same meta
+            rec = (mtime, *rec[1:])
         index.files[entry.name] = rec
     racy = before is None or time.time_ns() - before < _RACY_S * 1e9
     index.stamp = None if racy or _dir_mtime(root) != before else before
@@ -106,10 +119,12 @@ def _scan(prev: Index | None, root: Path, key_of: KeyOf) -> Index:
     return index
 
 
-def _current(key_of: KeyOf) -> Index:
+def _current(key_of: KeyOf, wait: float | None) -> Index:
     global _index
     root = run_cache.cache_dir()
-    with _lock:
+    if not _lock.acquire(timeout=-1 if wait is None else wait):
+        raise Busy
+    try:
         index = _index if _index is not None and _index.root == root else None
         if index is None:
             try:  # before the mtime is taken: creating it bumps the directory's
@@ -129,16 +144,21 @@ def _current(key_of: KeyOf) -> Index:
         if prev is None or (prev.files, prev.stamp) != (_index.files, _index.stamp):
             run_index.save(_index)
         return _index
+    finally:
+        _lock.release()
 
 
-def summary(key_of: KeyOf, known: set[str]) -> list[dict[str, Any]]:
+def summary(
+    key_of: KeyOf, known: set[str], wait: float | None = None
+) -> list[dict[str, Any]]:
     """The datasets a request can reach a stored run of, with how many runs each.
 
     Reachable means: the dataset is in `known`, and the entry sits under the file
     name its own signature (`key_of`) hashes to — a copied-in file that does not
-    is one no request will ever look up. Unreadable entries are skipped.
+    is one no request will ever look up. Unreadable entries are skipped. Raises
+    `Busy` if a scan is still running after `wait` seconds (None: no limit).
     """
-    index = _current(key_of)
+    index = _current(key_of, wait)
     counts: dict[str, int] = {}
     for _, g, _ in index.files.values():
         dataset = index.groups[g][0] if g >= 0 else None
@@ -147,10 +167,22 @@ def summary(key_of: KeyOf, known: set[str]) -> list[dict[str, Any]]:
     return [{"dataset": d, "n_runs": n} for d, n in sorted(counts.items())]
 
 
-def encoded(key_of: KeyOf, dataset: str) -> bytes | None:
-    """The stored runs of `dataset`, gzipped (`run_index.encode`), or None if none."""
-    index = _current(key_of)
+def encoded(key_of: KeyOf, dataset: str, wait: float | None = None) -> bytes | None:
+    """The stored runs of `dataset`, gzipped (`run_index.encode`), or None if none;
+    `Busy` as `summary`."""
+    index = _current(key_of, wait)
     with _lock:
         if dataset not in index.encoded:
             index.encoded[dataset] = run_index.encode(index, dataset)
         return index.encoded[dataset] or None
+
+
+if __name__ == "__main__":  # write the index ahead of a deploy (README.md)
+    from backend.app import _cache_key
+    from backend.datasets import dataset_keys
+
+    for row in summary(_cache_key, set(dataset_keys())):
+        print(f"{row['n_runs']:6d}  {row['dataset']}")
+    print(
+        f"index: {run_cache.cache_dir() / run_index.INDEX_DIR / run_index.INDEX_FILE}"
+    )

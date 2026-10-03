@@ -61,7 +61,10 @@ from src.evaluation.evaluate import start_evaluation
 @contextlib.asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     if run_cache.is_cache_only():  # index the stored runs before the first visitor asks
-        threading.Thread(target=cached_runs, daemon=True).start()
+        known = set(ds.dataset_keys())
+        threading.Thread(
+            target=run_listing.summary, args=(_cache_key, known), daemon=True
+        ).start()
     yield
 
 
@@ -189,10 +192,21 @@ _CACHE_ONLY_DETAIL = (
 )
 
 
+_LISTING_WAIT_S = 20.0  # then 503: a cold scan on a slow disk outlasts a proxy
+
+
+def _listing_busy() -> HTTPException:
+    detail = "Still indexing the stored runs; retry shortly."
+    return HTTPException(status_code=503, detail=detail, headers={"Retry-After": "3"})
+
+
 @app.get("/api/cached-runs")
 def cached_runs() -> list[dict[str, Any]]:
     """The datasets `/api/analysis` has stored runs of, with how many each."""
-    return run_listing.summary(_cache_key, set(ds.dataset_keys()))
+    try:
+        return run_listing.summary(_cache_key, set(ds.dataset_keys()), _LISTING_WAIT_S)
+    except run_listing.Busy:
+        raise _listing_busy() from None
 
 
 @app.get("/api/cached-runs/{dataset}")
@@ -203,7 +217,10 @@ def cached_runs_of(
     sent back with its group's two, is a cache hit. Gzipped once, sent as is."""
     body = None
     if dataset in ds.dataset_keys():
-        body = run_listing.encoded(_cache_key, dataset)
+        try:
+            body = run_listing.encoded(_cache_key, dataset, _LISTING_WAIT_S)
+        except run_listing.Busy:
+            raise _listing_busy() from None
     if body is None:
         raise HTTPException(status_code=404, detail=f"No stored runs of {dataset}")
     if stored_run.accepts_gzip(accept_encoding):
