@@ -3,6 +3,7 @@ import {
   counterfactualRowsUrl,
   datasetColumns,
   getMode,
+  listCachedDatasets,
   listCachedRuns,
   listDatasets,
   runAnalysis,
@@ -24,6 +25,7 @@ import { getNodeAtPath } from "./treeNav";
 import type {
   AnalysisConfig,
   AnalysisResponse,
+  CachedDataset,
   CachedRun,
   DatasetColumns,
   DatasetInfo,
@@ -86,7 +88,8 @@ export default function App() {
   // Cache-only server: nothing can be built, so the stored runs are the only
   // inputs there are. `null` until the listing is in.
   const cacheOnly = mode?.cache_only ?? false;
-  const [cachedRuns, setCachedRuns] = useState<CachedRun[] | null>(null);
+  const [cachedDatasets, setCachedDatasets] = useState<CachedDataset[] | null>(null);
+  const [cachedRuns, setCachedRuns] = useState<CachedRun[] | null>(null); // of `datasetKey`
   const [runPick, setRunPick] = useState<CachedRun | null>(null);
   const runsHere = useMemo(
     () => (cachedRuns ?? []).filter((r) => r.dataset === datasetKey),
@@ -110,12 +113,11 @@ export default function App() {
   useEffect(() => {
     if (!mode || mode.maintenance) return; // under maintenance nothing is requested
     if (mode.cache_only) {
-      listCachedRuns()
-        .then((runs) => {
-          const keys = Array.from(new Set(runs.map((r) => r.dataset)));
-          setCachedRuns(runs);
-          setDatasets(keys.map((k) => ({ key: k, label: k })));
-          if (keys.length) setDatasetKey(keys[0]);
+      listCachedDatasets()
+        .then((list) => {
+          setCachedDatasets(list);
+          setDatasets(list.map((d) => ({ key: d.dataset, label: d.dataset })));
+          if (list.length) setDatasetKey(list[0].dataset);
         })
         .catch((e) => setError(String(e)));
       return;
@@ -127,6 +129,23 @@ export default function App() {
       })
       .catch((e) => setError(String(e)));
   }, [mode]);
+
+  // Cache-only: a dataset's stored runs are fetched when it is picked.
+  useEffect(() => {
+    if (!cacheOnly || !datasetKey) return;
+    let stale = false;
+    setCachedRuns(null);
+    listCachedRuns(datasetKey)
+      .then((runs) => {
+        if (!stale) setCachedRuns(runs);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [cacheOnly, datasetKey]);
 
   // On dataset change, load its columns and reset the feature selection to the default.
   useEffect(() => {
@@ -329,7 +348,7 @@ export default function App() {
                   <section className="cfg__block">
                     <h3>Cached run</h3>
                     <p className="hint cfg__note">
-                      {runsHere.length} stored for this dataset
+                      {cachedRuns ? runsHere.length : "…"} stored for this dataset
                       {facets.length > 0 && ". Choose among them by the settings they differ in"}
                       . The full settings of the run on screen are below, read-only.
                     </p>
@@ -486,7 +505,7 @@ export default function App() {
                 Only cached inputs are available at the moment: this server does not
                 have the computing capacity to build new runs. Pick a dataset and one
                 of its stored runs under <em>Configuration</em>.
-                {cachedRuns?.length === 0 && " No stored runs were found on this server."}
+                {cachedDatasets?.length === 0 && " No stored runs were found on this server."}
               </span>
             </div>
           )}

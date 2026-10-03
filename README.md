@@ -92,8 +92,10 @@ offers only the datasets that have a stored run, and disables *Build & Apply*. I
 of the free-form configuration it shows one selector per setting the dataset's stored
 runs differ in, limited to the stored values; a combination that was never stored snaps
 to the nearest one that was. The full settings of the run on screen stay visible,
-read-only. Listing the runs reads only the head of each entry, so a cache of thousands
-of runs is fine.
+read-only. Listing the runs reads only the head of each entry, once: what it read is
+kept in `.cache/hilde_runs/.listing/`, so a restart does not read the entries again (on a
+read-only mount it is kept in memory instead). The UI fetches one dataset's runs at a
+time, so a cache of thousands of runs is fine.
 
 What still works is everything that is not a build: drill-down, predicates,
 characteristics, targets, row tables, images, and the movement preview on PCA runs.
@@ -102,7 +104,9 @@ refit), and applying a movement (it needs a rebuild).
 
 To deploy, copy the contents of `.cache/hilde_runs/` from the machine that computed the
 runs to the same path on the server, or point `HILDE_CACHE_DIR` at wherever they are.
-Entries can be added while the server runs. Two things the cache does not carry:
+Entries can be added while the server runs, as long as each one appears under its name
+in one step (written elsewhere and moved in, as an rsync does); one written in place is
+noticed only at the next change to the directory. Two things the cache does not carry:
 
 - **The datasets.** A stored run holds the tree, not the rows; predicates and row tables
   read the dataset itself. The wine CSVs ship with the repo and the scikit-learn bundled

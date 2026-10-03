@@ -65,7 +65,8 @@ rows, image pixels) come back to the server.
 |---|---|---|
 | `GET` | `/api/health` | liveness probe |
 | `GET` | `/api/mode` | whether the run cache is active (drives the "Cached" banner), and whether the server is cache-only |
-| `GET` | `/api/cached-runs` | the stored runs, grouped by (dataset, feature columns) with the configs stored for each — the cache-only UI's run picker |
+| `GET` | `/api/cached-runs` | the datasets with a stored run, and how many each — the cache-only UI's dataset list |
+| `GET` | `/api/cached-runs/{dataset}` | that dataset's stored runs, compact and gzipped (see `run_index.encode`) — the cache-only UI's run picker |
 | `GET` | `/api/datasets` | the loader registry |
 | `GET` | `/api/datasets/{key}/columns` | column names + the default feature selection |
 | `GET` | `/api/datasets/{key}/image/{row_id}` | raw greyscale pixels for one row |
@@ -268,7 +269,8 @@ moved, with the original and the counterfactual value of every feature any edit 
 | `serialize.py` | Walks the calc layer's tree of TypedDicts (numpy arrays, DataFrames) and emits the JSON `Node` schema. Its TypeScript counterpart is `frontend/src/types.ts`. `_finite()` maps NaN/Inf to `null`, because Starlette encodes with `allow_nan=False`. |
 | `jobs.py` | Build-on-a-worker-thread, keyed by the run-cache signature so a retry or reload re-attaches to the run already in flight. Keeps the last 64 jobs so a late poll can still read the outcome. |
 | `run_cache.py` | Gzipped on-disk payload cache, **hosting mode only** (`HILDE_HOSTING=1`, which `host.py` sets). Dev runs never touch the disk. A corrupt entry is deleted rather than served. With `HILDE_CACHE_ONLY=1` (implies hosting) the stored runs are the only runs: `/api/analysis` answers a miss with 409 instead of building, and nothing is written to or deleted from the cache directory. |
-| `run_listing.py` | What `/api/cached-runs` answers: every stored run a request can reach. Reads each entry's `meta` off the head of the file instead of parsing the payload, and memoizes the listing until the cache directory changes. |
+| `run_listing.py` | What `/api/cached-runs` answers: every stored run a request can reach. Reads each entry's `meta` off the head of the file instead of parsing the payload, once: the result is indexed in memory and in `<cache dir>/.listing/`, and only new or changed entries are read when the cache directory changes. |
+| `run_index.py` | The listing's index: what was read off each entry, its on-disk form (`<cache dir>/.listing/index.json.gz`, valid while the cache directory's mtime is unchanged) and the compact per-dataset form `/api/cached-runs/{dataset}` sends. |
 | `tree_cache.py` | The in-memory LRU of parsed runs (8 entries). In cache-only mode, where only `/api/movement` parses an entry, it is also bounded by an estimate of the parsed size (12x the gzipped file, 48 MiB in all), and entries are parsed one at a time. |
 | `stored_run.py` | Cache-only `/api/analysis` hits: sends the entry file itself with `Content-Encoding: gzip` (inflated chunk by chunk for a client that does not accept gzip), so serving a run never parses it. The body is the stored `{meta, tree}`, without `status`/`cached`. A truncated entry is still a 409. |
 | `movement.py` | Cluster movement: one shared feature-space displacement that translates a child cluster toward a clicked point or a sibling. Refits the parent's reducer, aligns it to the stored embedding, solves for the displacement, and answers entirely in *visible* coordinates. Its module docstring is the HTTP contract. |

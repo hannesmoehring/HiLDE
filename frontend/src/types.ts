@@ -85,13 +85,22 @@ export interface CachedRun {
   n_total: number | null;
 }
 
-// How /api/cached-runs ships them: the runs of one dataset on one set of feature
-// columns share everything but the config, and the columns are the bulk of it.
-export interface CachedRunGroup {
+// /api/cached-runs: the datasets a cache-only server has stored runs of.
+export interface CachedDataset {
   dataset: string;
-  feature_cols: string[];
-  n_total: number | null;
-  configs: Partial<AnalysisConfig>[];
+  n_runs: number;
+}
+
+// How /api/cached-runs/{dataset} ships its runs (see backend/run_listing.py):
+// the knobs every run shares once, the others as value tables plus, per run, its
+// feature-column group and one index per knob (-1: requested without it).
+export interface CachedRunListing {
+  dataset: string;
+  groups: { feature_cols: string[]; n_total: number | null }[];
+  fixed: Partial<AnalysisConfig>;
+  knobs: (keyof AnalysisConfig)[];
+  values: (string | number | boolean | null)[][];
+  runs: number[][];
 }
 
 export interface DatasetInfo {

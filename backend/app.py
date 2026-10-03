@@ -8,10 +8,14 @@ client-side.
 
 from __future__ import annotations
 
+import contextlib
 import csv
+import gzip
 import io
 import json
 import sys
+import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -53,7 +57,15 @@ from backend.targets import compute_targets
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
-app = FastAPI(title="HiLDE API", version="0.1.0")
+
+@contextlib.asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if run_cache.is_cache_only():  # index the stored runs before the first visitor asks
+        threading.Thread(target=cached_runs, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="HiLDE API", version="0.1.0", lifespan=_lifespan)
 
 # Dev: Vite dev server (5173) calls the API cross-origin. Tightened in prod (single container).
 app.add_middleware(
@@ -179,9 +191,25 @@ _CACHE_ONLY_DETAIL = (
 
 @app.get("/api/cached-runs")
 def cached_runs() -> list[dict[str, Any]]:
-    """The stored runs `/api/analysis` will answer, grouped by dataset and feature
-    columns; each config, sent back with its group's two, is a cache hit."""
-    return run_listing.list_runs(_cache_key, set(ds.dataset_keys()))
+    """The datasets `/api/analysis` has stored runs of, with how many each."""
+    return run_listing.summary(_cache_key, set(ds.dataset_keys()))
+
+
+@app.get("/api/cached-runs/{dataset}")
+def cached_runs_of(
+    dataset: str, accept_encoding: Annotated[str, Header()] = ""
+) -> Response:
+    """The stored runs of one dataset, compact (`run_index.encode`); each config,
+    sent back with its group's two, is a cache hit. Gzipped once, sent as is."""
+    body = None
+    if dataset in ds.dataset_keys():
+        body = run_listing.encoded(_cache_key, dataset)
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"No stored runs of {dataset}")
+    if stored_run.accepts_gzip(accept_encoding):
+        headers = {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"}
+        return Response(body, media_type="application/json", headers=headers)
+    return Response(gzip.decompress(body), media_type="application/json")
 
 
 @app.get("/api/datasets")

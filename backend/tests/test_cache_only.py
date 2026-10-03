@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import gzip
 import json
 import os
@@ -25,7 +26,14 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
 from backend import app as backend_app
-from backend import jobs, movement_jobs, run_cache, run_listing, tree_cache
+from backend import (
+    jobs,
+    movement_jobs,
+    run_cache,
+    run_index,
+    run_listing,
+    tree_cache,
+)
 from backend.movement import clear_artifact_cache
 from backend.tests import test_movement as tm
 
@@ -121,6 +129,29 @@ def test_maintenance_is_reported_and_off_by_default():
             os.environ["HILDE_MAINTENANCE"] = before
 
 
+def _listed(dataset: str) -> list[tuple[list[str], dict[str, Any]]]:
+    """`/api/cached-runs/{dataset}` decoded the way `frontend/src/api.ts` does."""
+    try:
+        response = backend_app.cached_runs_of(dataset, "gzip")
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        return []
+    assert response.headers["content-encoding"] == "gzip"
+    doc = json.loads(gzip.decompress(response.body))
+    runs = []
+    for g, *idx in doc["runs"]:
+        config = dict(doc["fixed"])
+        for k, i in enumerate(idx):
+            if i >= 0:
+                config[doc["knobs"][k]] = doc["values"][k][i]
+        runs.append((doc["groups"][g]["feature_cols"], config))
+    return runs
+
+
+def _entries(tmp: Path) -> list[Path]:
+    return sorted(tmp.glob("*.json.gz"))
+
+
 def test_listing_names_exactly_the_runs_a_request_can_reach():
     pca, _ = tm._payload("PCA")
     umap, _ = tm._payload("UMAP")
@@ -128,54 +159,99 @@ def test_listing_names_exactly_the_runs_a_request_can_reach():
         # Present on disk, but under a name no request hashes to.
         run_cache.store("not the signature of this payload", umap)
         (tmp / f"{'0' * 32}.json.gz").write_bytes(b"truncated upload")
-        assert len(list(tmp.iterdir())) == 3
+        assert len(_entries(tmp)) == 3
 
-        listed = backend_app.cached_runs()
-        assert listed == [
-            {
-                "dataset": pca["meta"]["dataset"],
-                "feature_cols": pca["meta"]["feature_cols"],
-                "n_total": pca["meta"]["n_total"],
-                "configs": [pca["meta"]["config"]],
-            }
-        ]
+        dataset = pca["meta"]["dataset"]
+        assert backend_app.cached_runs() == [{"dataset": dataset, "n_runs": 1}]
+        ((cols, config),) = _listed(dataset)
+        assert (cols, config) == (pca["meta"]["feature_cols"], pca["meta"]["config"])
+        other = next(
+            d["key"] for d in backend_app.list_datasets() if d["key"] != dataset
+        )
+        assert _listed(other) == [], "a dataset without stored runs is a 404"
         # The listing is what the client sends back, and that has to be a hit.
         answer = backend_app.analysis(
             backend_app.AnalysisRequest(
-                dataset=listed[0]["dataset"],
-                feature_cols=listed[0]["feature_cols"],
-                config=listed[0]["configs"][0],
+                dataset=dataset, feature_cols=cols, config=config
             )
         )
         assert _served(answer)[0]["meta"] == pca["meta"]
-        assert len(list(tmp.iterdir())) == 3, "cache-only mode deleted an entry"
+        assert len(_entries(tmp)) == 3, "cache-only mode deleted an entry"
 
 
 def test_listing_reads_the_head_of_an_entry_and_follows_the_directory():
     pca, _ = tm._payload("PCA")
     umap, _ = tm._payload("UMAP")
+    dataset = pca["meta"]["dataset"]
     with _cache_only(pca) as tmp:
         # Only the head is parsed: a tree that is not JSON at all goes unnoticed.
         path = run_cache._path_for(_key(pca))
         head = json.dumps({"meta": pca["meta"]})[:-1]
         with gzip.open(path, "wt", encoding="utf-8") as fh:
             fh.write(head + ', "tree": <not parsed by the listing>')
-        assert [g["configs"] for g in backend_app.cached_runs()] == [
-            [pca["meta"]["config"]]
-        ]
-        # A meta that outgrows the head falls back to parsing the whole entry.
-        head_chars = run_listing._HEAD_CHARS
-        run_listing._HEAD_CHARS = 40
+        assert [c for _, c in _listed(dataset)] == [pca["meta"]["config"]]
+        # A meta longer than the first read is read on to its end.
+        chunk = run_listing._CHUNK
+        run_listing._CHUNK = 16
         try:
             run_cache.store(_key(pca), pca)
-            assert len(backend_app.cached_runs()) == 1
+            assert len(_listed(dataset)) == 1
         finally:
-            run_listing._HEAD_CHARS = head_chars
+            run_listing._CHUNK = chunk
         # Same dataset and columns: one group, and it picks up the new entry.
         run_cache.store(_key(umap), umap)
-        (group,) = backend_app.cached_runs()
-        assert len(group["configs"]) == 2
-        assert len(list(tmp.iterdir())) == 2
+        assert sorted(c["method"] for _, c in _listed(dataset)) == ["PCA", "UMAP"]
+        assert len(_entries(tmp)) == 2
+
+
+def test_the_listing_sends_each_run_with_its_exact_config():
+    pca, umap = (copy.deepcopy(tm._payload(m)[0]) for m in ("PCA", "UMAP"))
+    # A knob one run was requested without, and one stored as 1 vs 1.0: either
+    # would change the cache key if the listing filled it in or normalized it.
+    umap["meta"]["config"].pop("normalize", None)
+    umap["meta"]["config"]["umap_min_dist"] = 1.0
+    pca["meta"]["config"]["umap_min_dist"] = 1
+    dataset = pca["meta"]["dataset"]
+    with _cache_only(pca, umap):
+        listed = [backend_app._cache_key(dataset, *run) for run in _listed(dataset)]
+        assert sorted(listed) == sorted([_key(pca), _key(umap)])
+        plain = backend_app.cached_runs_of(dataset, "identity")
+        assert "content-encoding" not in plain.headers
+        assert len(json.loads(plain.body)["runs"]) == 2
+
+
+def test_listing_is_kept_next_to_the_cache_and_survives_a_restart():
+    pca, _ = tm._payload("PCA")
+    umap, _ = tm._payload("UMAP")
+    dataset = pca["meta"]["dataset"]
+    with _cache_only(pca, umap) as tmp:
+        assert len(_listed(dataset)) == 2
+        index = tmp / run_index.INDEX_DIR / run_index.INDEX_FILE
+        assert index.is_file()
+        # A restart reads the index, not the entries: hide one entry's meta
+        # behind an unchanged mtime and directory, and it is still listed.
+        run_listing._index = None
+        path = run_cache._path_for(_key(umap))
+        stat = path.stat()
+        doc = json.loads(gzip.decompress(index.read_bytes()))
+        doc["stamp"] = tmp.stat().st_mtime_ns  # as if indexed long after the change
+        index.write_bytes(gzip.compress(json.dumps(doc).encode()))
+        path.write_bytes(gzip.compress(b"not an entry"))
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        os.utime(tmp, ns=(tmp.stat().st_atime_ns, doc["stamp"]))
+        assert len(_listed(dataset)) == 2
+        # Any change to the directory is noticed, and the changed entry re-read.
+        path.unlink()
+        assert len(_listed(dataset)) == 1
+
+
+def test_listing_works_without_a_writable_index():
+    pca, _ = tm._payload("PCA")
+    with _cache_only(pca) as tmp:
+        run_listing._index = None
+        (tmp / run_index.INDEX_DIR).write_text("not a directory")  # like a ro mount
+        assert len(_listed(pca["meta"]["dataset"])) == 1
+        assert (tmp / run_index.INDEX_DIR).read_text() == "not a directory"
 
 
 def _served(response: Any) -> tuple[dict[str, Any], dict[str, str]]:
@@ -252,7 +328,7 @@ def test_an_unstored_run_is_refused_without_starting_a_build():
         other = {**pca["meta"]["config"], "hclust_min_cluster_size": 7}
         _expect_409(backend_app.analysis, _analysis_request(pca, config=other))
         assert jobs._jobs == jobs_before, "a build was started"
-        assert len(list(tmp.iterdir())) == 1
+        assert len(_entries(tmp)) == 1
 
 
 def test_a_corrupt_entry_is_a_miss_and_is_left_on_disk():

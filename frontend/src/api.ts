@@ -3,8 +3,9 @@ import type {
   AnalysisConfig,
   AnalysisJob,
   AnalysisResponse,
+  CachedDataset,
   CachedRun,
-  CachedRunGroup,
+  CachedRunListing,
   CharacteristicsResponse,
   CounterfactualApplyRequest,
   CounterfactualApplyResponse,
@@ -46,12 +47,22 @@ export function getMode(): Promise<ModeInfo> {
   return get("/api/mode");
 }
 
-/** The stored runs a cache-only server can show. */
-export async function listCachedRuns(): Promise<CachedRun[]> {
-  const groups = await get<CachedRunGroup[]>("/api/cached-runs");
-  return groups.flatMap(({ configs, ...shared }) =>
-    configs.map((config) => ({ ...shared, config })),
-  );
+/** The datasets a cache-only server has stored runs of. */
+export function listCachedDatasets(): Promise<CachedDataset[]> {
+  return get("/api/cached-runs");
+}
+
+/** The stored runs of one dataset, each config exactly as it was requested. */
+export async function listCachedRuns(dataset: string): Promise<CachedRun[]> {
+  const l = await get<CachedRunListing>(`/api/cached-runs/${encodeURIComponent(dataset)}`);
+  const groups = l.groups.map((g) => ({ dataset: l.dataset, ...g }));
+  return l.runs.map(([g, ...idx]) => {
+    const config: Record<string, unknown> = { ...l.fixed };
+    idx.forEach((i, k) => {
+      if (i >= 0) config[l.knobs[k]] = l.values[k][i];
+    });
+    return { ...groups[g], config: config as CachedRun["config"] };
+  });
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {
