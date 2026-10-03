@@ -1,4 +1,3 @@
-import hdbscan  # sklearn contrib hdbscan version
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.mixture import GaussianMixture
@@ -26,6 +25,8 @@ def compute_clusters(
             )
             return model.fit_predict(X_scaled)
         case "HDBSCAN":
+            import hdbscan  # sklearn contrib hdbscan version; deferred, build-only
+
             model = hdbscan.HDBSCAN(
                 min_cluster_size=config["hclust_min_cluster_size"],
                 min_samples=config["hclust_min_samples"],
