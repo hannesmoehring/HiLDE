@@ -7,6 +7,7 @@ import {
   listDatasets,
   runAnalysis,
 } from "./api";
+import { defaultRun, nearestRun, runFacets } from "./cachedRuns";
 import { ClusterScatter } from "./charts/ClusterScatter";
 import {
   ClusterMovementPanel,
@@ -29,16 +30,6 @@ import type {
   ImageSpec,
   ModeInfo,
 } from "./types";
-
-function runLabel(run: CachedRun): string {
-  const c = { ...DEFAULT_CONFIG, ...run.config };
-  return [
-    c.method,
-    `${c.hierarchical_layers} layers`,
-    `mcs ${c.hclust_min_cluster_size}`,
-    `${run.feature_cols.length} features`,
-  ].join(", ");
-}
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -101,9 +92,10 @@ export default function App() {
     () => (cachedRuns ?? []).filter((r) => r.dataset === datasetKey),
     [cachedRuns, datasetKey],
   );
-  // A dataset switch leaves `runPick` on the old dataset; fall to the first run here.
-  const selectedRun =
-    runPick && runsHere.includes(runPick) ? runPick : (runsHere[0] ?? null);
+  const facets = useMemo(() => runFacets(runsHere), [runsHere]);
+  const firstRun = useMemo(() => defaultRun(runsHere), [runsHere]);
+  // A dataset switch leaves `runPick` on the old dataset; fall to this one's default.
+  const selectedRun = runPick && runsHere.includes(runPick) ? runPick : firstRun;
 
   useEffect(() => {
     getMode()
@@ -315,23 +307,35 @@ export default function App() {
                 {cacheOnly && (
                   <section className="cfg__block">
                     <h3>Cached run</h3>
-                    <label className="field">
-                      <span>
-                        {runsHere.length} stored for this dataset — its features and
-                        settings are shown below, read-only
-                      </span>
-                      <select
-                        value={selectedRun ? runsHere.indexOf(selectedRun) : ""}
-                        onChange={(e) => setRunPick(runsHere[Number(e.target.value)])}
-                        disabled={runsHere.length === 0}
-                      >
-                        {runsHere.map((r, i) => (
-                          <option key={i} value={i}>
-                            {runLabel(r)}
-                          </option>
+                    <p className="hint cfg__note">
+                      {runsHere.length} stored for this dataset
+                      {facets.length > 0 && ". Choose among them by the settings they differ in"}
+                      . The full settings of the run on screen are below, read-only.
+                    </p>
+                    {/* A plain wrapper: the rail gives a block's first direct field
+                        the stacked layout, and these are all label-and-value rows. */}
+                    <div>
+                      {selectedRun &&
+                        facets.map((f) => (
+                          <label className="field" key={f.label}>
+                            <span>{f.label}</span>
+                            <select
+                              value={f.valueOf(selectedRun)}
+                              onChange={(e) =>
+                                setRunPick(
+                                  nearestRun(runsHere, facets, selectedRun, f, e.target.value),
+                                )
+                              }
+                            >
+                              {f.values.map((v) => (
+                                <option key={v} value={v}>
+                                  {v === "true" ? "yes" : v === "false" ? "no" : v}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                         ))}
-                      </select>
-                    </label>
+                    </div>
                   </section>
                 )}
 

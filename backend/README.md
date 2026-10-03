@@ -65,7 +65,7 @@ rows, image pixels) come back to the server.
 |---|---|---|
 | `GET` | `/api/health` | liveness probe |
 | `GET` | `/api/mode` | whether the run cache is active (drives the "Cached" banner), and whether the server is cache-only |
-| `GET` | `/api/cached-runs` | the stored runs, as the (dataset, feature columns, config) that requests each — the cache-only UI's run picker |
+| `GET` | `/api/cached-runs` | the stored runs, grouped by (dataset, feature columns) with the configs stored for each — the cache-only UI's run picker |
 | `GET` | `/api/datasets` | the loader registry |
 | `GET` | `/api/datasets/{key}/columns` | column names + the default feature selection |
 | `GET` | `/api/datasets/{key}/image/{row_id}` | raw greyscale pixels for one row |
@@ -268,6 +268,7 @@ moved, with the original and the counterfactual value of every feature any edit 
 | `serialize.py` | Walks the calc layer's tree of TypedDicts (numpy arrays, DataFrames) and emits the JSON `Node` schema. Its TypeScript counterpart is `frontend/src/types.ts`. `_finite()` maps NaN/Inf to `null`, because Starlette encodes with `allow_nan=False`. |
 | `jobs.py` | Build-on-a-worker-thread, keyed by the run-cache signature so a retry or reload re-attaches to the run already in flight. Keeps the last 64 jobs so a late poll can still read the outcome. |
 | `run_cache.py` | Gzipped on-disk payload cache, **hosting mode only** (`HILDE_HOSTING=1`, which `host.py` sets). Dev runs never touch the disk. A corrupt entry is deleted rather than served. With `HILDE_CACHE_ONLY=1` (implies hosting) the stored runs are the only runs: `/api/analysis` answers a miss with 409 instead of building, and nothing is written to or deleted from the cache directory. |
+| `run_listing.py` | What `/api/cached-runs` answers: every stored run a request can reach. Reads each entry's `meta` off the head of the file instead of parsing the payload, and memoizes the listing until the cache directory changes. |
 | `movement.py` | Cluster movement: one shared feature-space displacement that translates a child cluster toward a clicked point or a sibling. Refits the parent's reducer, aligns it to the stored embedding, solves for the displacement, and answers entirely in *visible* coordinates. Its module docstring is the HTTP contract. |
 | `movement_jobs.py` | The same worker-thread pattern as `jobs.py`, for the one movement case that can be slow (a UMAP refit). Keyed on the whole request so a duplicate POST re-attaches; keeps 16 jobs; results live in memory only and are never written to `run_cache.py`. Also carries an Apply that needs a refit. |
 | `counterfactual.py` | Counterfactual sessions: the immutable, content-addressed edit history, the bounded LRU of materialized frames (replayed from the base on a miss), the `{base}@cf:{id}` key convention, and the changed-rows export. Its module docstring is the design. |

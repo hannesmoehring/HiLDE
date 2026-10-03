@@ -294,6 +294,7 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 
 .error { color: var(--neg); font-size: 12.5px; }
 .hint { color: var(--faint); font-size: 12.5px; }
+.cfg__note { margin: 0 0 9px; }
 
 .banner {
   display: flex;

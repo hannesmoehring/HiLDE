@@ -12,6 +12,8 @@ are shared with `test_movement` (memoized).
 from __future__ import annotations
 
 import contextlib
+import gzip
+import json
 import os
 import tempfile
 from collections.abc import Iterator
@@ -21,7 +23,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from backend import app as backend_app
-from backend import jobs, movement_jobs, run_cache
+from backend import jobs, movement_jobs, run_cache, run_listing
 from backend.movement import clear_artifact_cache
 from backend.tests import test_movement as tm
 
@@ -116,14 +118,47 @@ def test_listing_names_exactly_the_runs_a_request_can_reach():
             {
                 "dataset": pca["meta"]["dataset"],
                 "feature_cols": pca["meta"]["feature_cols"],
-                "config": pca["meta"]["config"],
                 "n_total": pca["meta"]["n_total"],
+                "configs": [pca["meta"]["config"]],
             }
         ]
         # The listing is what the client sends back, and that has to be a hit.
-        answer = backend_app.analysis(backend_app.AnalysisRequest(**listed[0]))
+        answer = backend_app.analysis(
+            backend_app.AnalysisRequest(
+                dataset=listed[0]["dataset"],
+                feature_cols=listed[0]["feature_cols"],
+                config=listed[0]["configs"][0],
+            )
+        )
         assert answer["status"] == "done" and answer["cached"] is True
         assert len(list(tmp.iterdir())) == 3, "cache-only mode deleted an entry"
+
+
+def test_listing_reads_the_head_of_an_entry_and_follows_the_directory():
+    pca, _ = tm._payload("PCA")
+    umap, _ = tm._payload("UMAP")
+    with _cache_only(pca) as tmp:
+        # Only the head is parsed: a tree that is not JSON at all goes unnoticed.
+        path = run_cache._path_for(_key(pca))
+        head = json.dumps({"meta": pca["meta"]})[:-1]
+        with gzip.open(path, "wt", encoding="utf-8") as fh:
+            fh.write(head + ', "tree": <not parsed by the listing>')
+        assert [g["configs"] for g in backend_app.cached_runs()] == [
+            [pca["meta"]["config"]]
+        ]
+        # A meta that outgrows the head falls back to parsing the whole entry.
+        head_chars = run_listing._HEAD_CHARS
+        run_listing._HEAD_CHARS = 40
+        try:
+            run_cache.store(_key(pca), pca)
+            assert len(backend_app.cached_runs()) == 1
+        finally:
+            run_listing._HEAD_CHARS = head_chars
+        # Same dataset and columns: one group, and it picks up the new entry.
+        run_cache.store(_key(umap), umap)
+        (group,) = backend_app.cached_runs()
+        assert len(group["configs"]) == 2
+        assert len(list(tmp.iterdir())) == 2
 
 
 def test_a_stored_run_is_served_even_when_a_recompute_is_asked_for():

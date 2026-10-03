@@ -10,9 +10,9 @@ frontend surfaces that with a banner, and the "Use cached results" toggle
 bypasses this module entirely.
 
 Cache-only mode (`HILDE_CACHE_ONLY=1`, implies hosting) is for a server too weak
-to build anything: the stored runs are the only runs there are. `list_metas()`
-is what the UI offers in place of the free-form configuration, and nothing in
-this module writes to or deletes from the cache directory in that mode.
+to build anything: the stored runs are the only runs there are —
+`backend/run_listing.py` lists them for the UI — and nothing in this module
+writes to or deletes from the cache directory in that mode.
 """
 
 from __future__ import annotations
@@ -29,10 +29,6 @@ CACHE_ONLY_ENV = "HILDE_CACHE_ONLY"
 CACHE_DIR_ENV = "HILDE_CACHE_DIR"
 
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / ".cache" / "hilde_runs"
-
-# (file name, mtime) -> that entry's `meta`. Reading a meta means decompressing
-# and parsing the whole payload, which a listing must not redo on every request.
-_meta_memo: dict[tuple[str, int], dict[str, Any]] = {}
 
 
 def _flag(name: str) -> bool:
@@ -57,10 +53,6 @@ def _path_for(key: str) -> Path:
     return cache_dir() / f"{digest}.json.gz"
 
 
-def is_stored(key: str) -> bool:
-    return _path_for(key).is_file()
-
-
 def load(key: str) -> dict[str, Any] | None:
     """Return the stored payload for `key`, or None if absent/unreadable."""
     path = _path_for(key)
@@ -79,21 +71,6 @@ def load(key: str) -> dict[str, Any] | None:
         if not is_cache_only():
             path.unlink(missing_ok=True)
         return None
-
-
-def list_metas() -> list[dict[str, Any]]:
-    """The `meta` block of every readable stored run. Unreadable entries are skipped."""
-    metas = []
-    for path in sorted(cache_dir().glob("*.json.gz")):
-        try:
-            memo_key = (path.name, path.stat().st_mtime_ns)
-            if memo_key not in _meta_memo:
-                with gzip.open(path, "rt", encoding="utf-8") as fh:
-                    _meta_memo[memo_key] = json.load(fh)["meta"]
-            metas.append(_meta_memo[memo_key])
-        except (OSError, ValueError, EOFError, KeyError, TypeError):
-            continue
-    return metas
 
 
 def store(key: str, payload: dict[str, Any]) -> None:

@@ -88,8 +88,12 @@ Read the limitation on this cache below before trusting it after a code change.
 For a server that cannot afford a build. On this branch `host.py` and the Docker image
 both default `HILDE_CACHE_ONLY=1`: the server shows the runs already in
 `.cache/hilde_runs/` and computes nothing new. The UI says so in a standing notice,
-replaces the free-form configuration with a picker over the stored runs (the features
-and knobs of the chosen run are shown read-only), and disables *Build & Apply*.
+offers only the datasets that have a stored run, and disables *Build & Apply*. In place
+of the free-form configuration it shows one selector per setting the dataset's stored
+runs differ in, limited to the stored values; a combination that was never stored snaps
+to the nearest one that was. The full settings of the run on screen stay visible,
+read-only. Listing the runs reads only the head of each entry, so a cache of thousands
+of runs is fine.
 
 What still works is everything that is not a build: drill-down, predicates,
 characteristics, targets, row tables, images, and the movement preview on PCA runs.

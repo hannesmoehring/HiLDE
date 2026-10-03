@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from backend import counterfactual as cf
 from backend import datasets as ds
 from backend import images as ds_images
-from backend import jobs, movement_jobs, run_cache
+from backend import jobs, movement_jobs, run_cache, run_listing
 from backend.characteristics import compute_selection_characteristics
 from backend.counterfactual_apply import (
     ApplyRequestData,
@@ -200,29 +200,9 @@ _CACHE_ONLY_DETAIL = (
 
 @app.get("/api/cached-runs")
 def cached_runs() -> list[dict[str, Any]]:
-    """The stored runs, as the (dataset, feature_cols, config) to request them with.
-
-    Only runs `/api/analysis` will actually answer are listed: the dataset must be
-    in the registry, and the entry must sit under the file name its own signature
-    hashes to (a copied-in file that does not is unreachable by any request).
-    """
-    known = set(ds.dataset_keys())
-    runs = []
-    for meta in run_cache.list_metas():
-        try:
-            key = _cache_key(meta["dataset"], meta["feature_cols"], meta["config"])
-        except (KeyError, TypeError):
-            continue
-        if meta["dataset"] in known and run_cache.is_stored(key):
-            runs.append(
-                {
-                    "dataset": meta["dataset"],
-                    "feature_cols": meta["feature_cols"],
-                    "config": meta["config"],
-                    "n_total": meta.get("n_total"),
-                }
-            )
-    return sorted(runs, key=lambda r: (r["dataset"], json.dumps(r, sort_keys=True)))
+    """The stored runs `/api/analysis` will answer, grouped by dataset and feature
+    columns; each config, sent back with its group's two, is a cache hit."""
+    return run_listing.list_runs(_cache_key, set(ds.dataset_keys()))
 
 
 @app.get("/api/datasets")

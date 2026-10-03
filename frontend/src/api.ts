@@ -4,6 +4,7 @@ import type {
   AnalysisJob,
   AnalysisResponse,
   CachedRun,
+  CachedRunGroup,
   CharacteristicsResponse,
   CounterfactualApplyRequest,
   CounterfactualApplyResponse,
@@ -46,8 +47,11 @@ export function getMode(): Promise<ModeInfo> {
 }
 
 /** The stored runs a cache-only server can show. */
-export function listCachedRuns(): Promise<CachedRun[]> {
-  return get("/api/cached-runs");
+export async function listCachedRuns(): Promise<CachedRun[]> {
+  const groups = await get<CachedRunGroup[]>("/api/cached-runs");
+  return groups.flatMap(({ configs, ...shared }) =>
+    configs.map((config) => ({ ...shared, config })),
+  );
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {

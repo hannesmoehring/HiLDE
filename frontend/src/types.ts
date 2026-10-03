@@ -84,6 +84,15 @@ export interface CachedRun {
   n_total: number | null;
 }
 
+// How /api/cached-runs ships them: the runs of one dataset on one set of feature
+// columns share everything but the config, and the columns are the bulk of it.
+export interface CachedRunGroup {
+  dataset: string;
+  feature_cols: string[];
+  n_total: number | null;
+  configs: Partial<AnalysisConfig>[];
+}
+
 export interface DatasetInfo {
   key: string;
   label: string;
