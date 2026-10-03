@@ -2,7 +2,12 @@ services:
   shd:
     build: .
     image: shd:latest
-    mem_limit: 12g
+    # The VPS has 1862 MB RAM, ~1120 MB free with HiLDE stopped, and shares it with
+    # Portainer, NPM and cloudflared. 640m is ~57% of that, leaving ~480 MB for
+    # their growth, the kernel and page cache; no swap for the container, so it
+    # cannot push the box into swapping. Cache-only serving peaks well under it.
+    mem_limit: 640m
+    memswap_limit: 640m
     ports:
       - "8000:8000"
     environment:

@@ -114,6 +114,19 @@ noticed only at the next change to the directory. Two things the cache does not 
   `datasets/` on the server (or the loader will download it on first use).
 - **The code version.** Entries are served as-is; see the run-cache limitation below.
 
+Copy `.cache/hilde_runs/.listing/` along with the entries and the server skips its first
+scan of them; without it, the first listing reads the head of every entry (about 10 s
+for 21,000 runs on a cold disk).
+
+**Memory.** `docker-compose.yml` caps the container at 640 MB with no swap
+(`mem_limit`, `memswap_limit`); the comment there says how that follows from the VPS.
+Serving fits in it because a stored run is sent as the gzip bytes it already is rather
+than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
+kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
+the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
+Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
+session keeps under ~330 MiB. A build needs far more: build without this cap.
+
 To build on this branch anyway:
 
 ```bash
