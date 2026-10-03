@@ -11,6 +11,7 @@ are shared with `test_movement` (memoized).
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import gzip
 import json
@@ -21,9 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
+from fastapi.responses import FileResponse
 
 from backend import app as backend_app
-from backend import jobs, movement_jobs, run_cache, run_listing
+from backend import jobs, movement_jobs, run_cache, run_listing, tree_cache
 from backend.movement import clear_artifact_cache
 from backend.tests import test_movement as tm
 
@@ -38,13 +40,13 @@ def _cache_only(*payloads: dict[str, Any]) -> Iterator[Path]:
         os.environ.pop("HILDE_HOSTING", None)  # cache-only must imply it
         os.environ["HILDE_CACHE_ONLY"] = "1"
         os.environ["HILDE_CACHE_DIR"] = tmp
-        backend_app._tree_cache.clear()  # every hit below has to come off the disk
+        tree_cache.clear()  # every hit below has to come off the disk
         try:
             for payload in payloads:
                 run_cache.store(_key(payload), payload)
             yield Path(tmp)
         finally:
-            backend_app._tree_cache.clear()
+            tree_cache.clear()
             for k, v in before.items():
                 if v is None:
                     os.environ.pop(k, None)
@@ -145,7 +147,7 @@ def test_listing_names_exactly_the_runs_a_request_can_reach():
                 config=listed[0]["configs"][0],
             )
         )
-        assert answer["status"] == "done" and answer["cached"] is True
+        assert _served(answer)[0]["meta"] == pca["meta"]
         assert len(list(tmp.iterdir())) == 3, "cache-only mode deleted an entry"
 
 
@@ -176,15 +178,71 @@ def test_listing_reads_the_head_of_an_entry_and_follows_the_directory():
         assert len(list(tmp.iterdir())) == 2
 
 
+def _served(response: Any) -> tuple[dict[str, Any], dict[str, str]]:
+    """The JSON a client decodes from an `/api/analysis` hit, and the headers."""
+
+    async def drain() -> bytes:
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    if isinstance(response, FileResponse):
+        body = Path(response.path).read_bytes()
+    else:
+        body = asyncio.run(drain())
+    if response.headers.get("content-encoding") == "gzip":
+        body = gzip.decompress(body)
+    return json.loads(body), dict(response.headers)
+
+
 def test_a_stored_run_is_served_even_when_a_recompute_is_asked_for():
     pca, _ = tm._payload("PCA")
     with _cache_only(pca):
         jobs_before = dict(jobs._jobs)
         for use_cache in (True, False):
             answer = backend_app.analysis(_analysis_request(pca, use_cache=use_cache))
-            assert answer["status"] == "done" and answer["cached"] is True
-            assert answer["tree"] == pca["tree"]
+            served, _ = _served(answer)
+            assert served["tree"] == pca["tree"] and served["meta"] == pca["meta"]
         assert jobs._jobs == jobs_before, "a build was started"
+        assert not tree_cache.keys(), "a stored run was parsed to serve it"
+
+
+def test_a_stored_run_is_sent_as_its_gzip_bytes_only_when_accepted():
+    pca, _ = tm._payload("PCA")
+    with _cache_only(pca):
+        req = _analysis_request(pca)
+        path = run_cache._path_for(_key(pca))
+        for accept, gz in [
+            ("gzip, deflate, br", True),
+            ("br;q=1.0, gzip;q=0.8", True),
+            ("*", True),
+            ("", False),
+            ("identity", False),
+            ("gzip;q=0", False),
+        ]:
+            answer = backend_app.analysis(req, accept)
+            served, headers = _served(answer)
+            assert served["tree"] == pca["tree"], accept
+            assert (headers.get("content-encoding") == "gzip") is gz, accept
+            assert headers["vary"] == "Accept-Encoding"
+            if gz:
+                assert Path(answer.path) == path
+
+
+def test_the_parsed_tree_cache_is_bounded_by_bytes_in_cache_only_mode():
+    pca, _ = tm._payload("PCA")
+    umap, _ = tm._payload("UMAP")
+    with _cache_only(pca, umap):
+        sizes = [run_cache._path_for(_key(p)).stat().st_size for p in (pca, umap)]
+        budget = tree_cache.MAX_BYTES
+        try:  # room for one parsed entry, not two
+            tree_cache.MAX_BYTES = max(sizes) * tree_cache.PARSED_PER_GZ_BYTE
+            assert backend_app._cached_payload(_key(pca)) is not None
+            assert backend_app._cached_payload(_key(umap)) is not None
+            assert tree_cache.keys() == [_key(umap)]
+            tree_cache.MAX_BYTES = 1  # the newest stays even over budget
+            assert backend_app._cached_payload(_key(pca)) is not None
+            assert tree_cache.keys() == [_key(pca)]
+        finally:
+            tree_cache.MAX_BYTES = budget
 
 
 def test_an_unstored_run_is_refused_without_starting_a_build():

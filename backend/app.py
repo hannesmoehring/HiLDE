@@ -12,24 +12,23 @@ import csv
 import io
 import json
 import sys
-from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 # Make the repo root importable so `src.*` resolves when uvicorn is started from
 # elsewhere; PYTHONPATH=. does the same thing for the documented dev command.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import counterfactual as cf
 from backend import datasets as ds
 from backend import images as ds_images
-from backend import jobs, movement_jobs, run_cache, run_listing
+from backend import jobs, movement_jobs, run_cache, run_listing, stored_run, tree_cache
 from backend.characteristics import compute_selection_characteristics
 from backend.counterfactual_apply import (
     ApplyRequestData,
@@ -63,27 +62,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Cache serialized trees by request signature; tree build (UMAP+HDBSCAN+ZADU) is expensive.
-# Bounded LRU: a payload is ~8-10 MB on the smallest realistic dataset, and a
-# hyperparameter sweep visits a new key every build, so an unbounded dict grows
-# monotonically into the container's memory limit.
-_TREE_CACHE_MAX = 8
-_tree_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
-
-
-def _cache_put(key: str, payload: dict[str, Any]) -> None:
-    _tree_cache[key] = payload
-    _tree_cache.move_to_end(key)
-    while len(_tree_cache) > _TREE_CACHE_MAX:
-        _tree_cache.popitem(last=False)
-
-
-def _cache_get(key: str) -> dict[str, Any] | None:
-    payload = _tree_cache.get(key)
-    if payload is not None:
-        _tree_cache.move_to_end(key)
-    return payload
 
 
 def _merge_config(partial: dict[str, Any]) -> dict[str, Any]:
@@ -240,11 +218,16 @@ def dataset_image(key: str, row_id: int) -> dict[str, Any]:
 
 
 def _cached_payload(key: str) -> dict[str, Any] | None:
-    payload = _cache_get(key)
-    if payload is None and run_cache.is_hosting():
-        payload = run_cache.load(key)
-        if payload is not None:
-            _cache_put(key, payload)
+    payload = tree_cache.get(key)
+    if payload is not None or not run_cache.is_hosting():
+        return payload
+    if run_cache.is_cache_only():  # byte-bounded, one parse at a time
+        path = run_cache._path_for(key)
+        size = path.stat().st_size if path.is_file() else 0
+        return tree_cache.load(key, size, run_cache.load)
+    payload = run_cache.load(key)
+    if payload is not None:
+        tree_cache.put(key, payload)
     return payload
 
 
@@ -272,7 +255,7 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
-    _cache_put(key, payload)
+    tree_cache.put(key, payload)
     # A counterfactual run is session state: hosting mode must never write it
     # to disk, where it would outlive the history that gives its key meaning.
     if run_cache.is_hosting() and not cf.is_counterfactual_key(req.dataset):
@@ -284,7 +267,7 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
         return {"status": "running", "job_id": job.id}
     if job.status == "error":
         return {"status": "error", "job_id": job.id, "detail": job.detail}
-    payload = _cache_get(job.key)
+    payload = tree_cache.get(job.key)
     if payload is None:  # only if the entry was evicted between finishing and polling
         return {
             "status": "error",
@@ -294,8 +277,10 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
     return {"status": "done", "job_id": job.id, **payload, "cached": False}
 
 
-@app.post("/api/analysis")
-def analysis(req: AnalysisRequest) -> dict[str, Any]:
+@app.post("/api/analysis", response_model=None)
+def analysis(
+    req: AnalysisRequest, accept_encoding: Annotated[str, Header()] = ""
+) -> dict[str, Any] | Response:
     """Starts a build and returns a job id; the client polls /api/analysis/jobs/{id}.
 
     A cache hit still answers inline — only the runs that would outlast a proxy's
@@ -308,7 +293,11 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
     # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
     # Cache-only mode has nothing to recompute with: a hit is the only answer.
     cache_only = run_cache.is_cache_only()
-    if req.use_cache or cache_only:
+    if cache_only:  # the stored bytes, never parsed (backend/stored_run.py)
+        stored = stored_run.response(key, accept_encoding)
+        if stored is not None:
+            return stored
+    elif req.use_cache:
         payload = _cached_payload(key)
         if payload is not None:
             return {"status": "done", **payload, "cached": True}
