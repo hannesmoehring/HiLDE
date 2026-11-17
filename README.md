@@ -83,10 +83,16 @@ rm -rf .cache/hilde_runs
 
 Read the limitation on this cache below before trusting it after a code change.
 
-### Cache-only (the `cache-only` branch)
+### Cache-only
 
-For a server that cannot afford a build. On this branch `host.py` and the Docker image
-both default `HILDE_CACHE_ONLY=1`: the server shows the runs already in
+For a server that cannot afford a build. It is opt-in: `host.py` and the Docker image
+build by default, and `HILDE_CACHE_ONLY=1` turns builds off.
+
+```bash
+HILDE_CACHE_ONLY=1 uv run host.py
+```
+
+The server then shows the runs already in
 `.cache/hilde_runs/` and computes nothing new. The UI says so in a standing notice,
 offers only the datasets that have a stored run, and disables *Build & Apply*. In place
 of the free-form configuration it shows one selector per setting the dataset's stored
@@ -127,31 +133,26 @@ uv run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
 While a first scan is still running, the listing endpoints answer 503 after 20 s and
 the UI asks again, so no request outlasts Cloudflare's 100 s.
 
-**Memory.** `docker-compose.yml` caps the container at 640 MB with no swap
-(`mem_limit`, `memswap_limit`); the comment there says how that follows from the VPS.
+**Memory.** `docker-compose.yml` is the deployment file for the VPS: it caps the
+container at 640 MB with no swap (`mem_limit`, `memswap_limit`) and sets
+`HILDE_CACHE_ONLY=1`; the comment there says how the cap follows from the VPS.
 Serving fits in it because a stored run is sent as the gzip bytes it already is rather
 than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
 kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
 the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
 Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
-session keeps under ~330 MiB. A build needs far more: build without this cap.
+session keeps under ~330 MiB. A build needs far more and would be killed under this cap:
+to build in Docker, remove `HILDE_CACHE_ONLY=1` and both memory limits together.
 
-To build on this branch anyway:
-
-```bash
-HILDE_CACHE_ONLY=0 uv run host.py
-```
-
-**Maintenance notice.** For now this branch also defaults `HILDE_MAINTENANCE=1` in
-`host.py` and the Docker image: the UI shows a "Maintenance" notice instead of the app
-and requests nothing beyond `/api/mode`. The API itself is not blocked. Bring the app
-back with:
+**Maintenance notice.** Also opt-in. With `HILDE_MAINTENANCE=1` the UI shows a
+"Maintenance" notice instead of the app and requests nothing beyond `/api/mode`. The API
+itself is not blocked.
 
 ```bash
-HILDE_MAINTENANCE=0 uv run host.py
+HILDE_MAINTENANCE=1 uv run host.py
 ```
 
-Under Docker, add `HILDE_MAINTENANCE=0` to `environment:` in `docker-compose.yml` and
+Under Docker, add `HILDE_MAINTENANCE=1` to `environment:` in `docker-compose.yml` and
 recreate the container; no rebuild is needed.
 
 The two-terminal development setup below sets neither variable and builds as usual.
