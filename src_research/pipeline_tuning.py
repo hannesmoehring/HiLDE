@@ -34,7 +34,8 @@ from typing import Any
 import numpy as np
 
 # kdbcv 1.0.0 type-hints reference the removed np.float_ / np.int_ aliases; the project
-# overrides its stale numpy cap (see pyproject.toml), so the aliases are shimmed here.
+# overrides its stale numpy cap (see [tool.pixi.pypi-options.dependency-overrides] in
+# pyproject.toml), so the aliases are shimmed here.
 if not hasattr(np, "float_"):
     np.float_ = np.float64  # type: ignore[attr-defined]
 if not hasattr(np, "int_"):

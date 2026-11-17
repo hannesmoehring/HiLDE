@@ -1,4 +1,4 @@
-"""Hosting-mode launcher — `uv run host.py`.
+"""Hosting-mode launcher — `pixi run hilde`.
 
 Builds the frontend if `frontend/dist` is missing or older than `frontend/src`,
 then serves the API and the built UI from a single uvicorn process with the

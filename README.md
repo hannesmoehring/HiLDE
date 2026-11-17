@@ -24,9 +24,9 @@ React + D3 frontend (`frontend/`) served from the same process in production.
 
 ## Quickstart
 
-Both paths below were run verbatim from a fresh `git clone` into `/tmp` on macOS
-(darwin 24.6.0 arm64, Docker 27.5.1, Node 22.14, npm 10.9, uv 0.11.9). Run them from the
-repository root.
+Both paths below were run verbatim from a fresh `git clone` into `/tmp` on macOS arm64:
+the Docker path on darwin 24.6.0 with Docker 27.5.1, the local path on darwin 27.2.0 with
+pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the repository root.
 
 ### Docker (no local Python or Node needed)
 
@@ -56,19 +56,27 @@ populate it) and `./.cache/hilde_runs` from the host.
 ### Local
 
 ```bash
-bash scripts/prepare_env.sh
-uv run host.py
+pixi install --locked
+pixi run hilde
 ```
 
-`prepare_env.sh` requires [uv](https://docs.astral.sh/uv/); it installs Python 3.13 and
-syncs `uv.lock`. `host.py` runs `npm install` and `npm run build` itself when
-`frontend/dist` is missing or older than `frontend/src`, then serves on
-<http://0.0.0.0:8000>. Node is therefore needed for the first run.
+`pixi install --locked` requires [pixi](https://pixi.sh); it installs Python 3.13 and
+Node 22 from conda-forge and the Python packages exactly as `pixi.lock` records them.
+`host.py` runs `npm install` and `npm run build` itself when `frontend/dist` is missing
+or older than `frontend/src`, then serves on <http://0.0.0.0:8000>. Node comes from the
+pixi environment, so it needs no separate install.
+
+The tasks (`hilde`, `test`, `check`, ...) are defined under `[tool.pixi.tasks]` in
+`pyproject.toml`; any other command runs as `pixi run python ...`. `pixi run <task>` uses
+the environment of the committed `pixi.lock`, and `pixi install --locked` and
+`pixi run --locked` refuse to change that file. The experiment harnesses run as
+`pixi run experiment <module>` and write into `outputs/`; read
+[`src_research/README.md`](./src_research/README.md) before running one.
 
 Bind elsewhere with:
 
 ```bash
-uv run host.py --port 9000 --host 127.0.0.1
+pixi run hilde --port 9000 --host 127.0.0.1
 ```
 
 `host.py` is the only mode with a **persistent run cache**: a completed `/api/analysis`
@@ -86,10 +94,11 @@ Read the limitation on this cache below before trusting it after a code change.
 ### Cache-only
 
 For a server that cannot afford a build. It is opt-in: `host.py` and the Docker image
-build by default, and `HILDE_CACHE_ONLY=1` turns builds off.
+build by default, and `HILDE_CACHE_ONLY=1` turns builds off. The `hilde-low-mem` task
+sets it:
 
 ```bash
-HILDE_CACHE_ONLY=1 uv run host.py
+pixi run hilde-low-mem
 ```
 
 The server then shows the runs already in
@@ -127,7 +136,7 @@ copy `.cache/hilde_runs/.listing/` along with the entries; a copy that does not 
 file times is fine, since an entry's name already says what it holds.
 
 ```bash
-uv run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
+pixi run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
 ```
 
 While a first scan is still running, the listing endpoints answer 503 after 20 s and
@@ -149,7 +158,7 @@ to build in Docker, remove `HILDE_CACHE_ONLY=1` and both memory limits together.
 itself is not blocked.
 
 ```bash
-HILDE_MAINTENANCE=1 uv run host.py
+HILDE_MAINTENANCE=1 pixi run hilde
 ```
 
 Under Docker, add `HILDE_MAINTENANCE=1` to `environment:` in `docker-compose.yml` and
@@ -161,12 +170,12 @@ The two-terminal development setup below sets neither variable and builds as usu
 
 ```bash
 # terminal 1 — API on :8000
-PYTHONPATH=. uv run uvicorn backend.app:app --port 8000 --reload
+pixi run dev-api
 ```
 
 ```bash
 # terminal 2 — Vite dev server on :5173, proxying /api to :8000
-cd frontend && npm install && npm run dev
+cd frontend && pixi run npm install && pixi run dev-web
 ```
 
 Open <http://localhost:5173> (Vite binds `[::1]`, so `localhost` resolves but a literal
@@ -176,41 +185,46 @@ no cache banner appears.
 To produce a production bundle by hand instead of letting `host.py` do it:
 
 ```bash
-cd frontend && npm install && npm run build
+cd frontend && pixi run npm install && pixi run npm run build
 ```
 
 `backend/app.py` mounts `frontend/dist` at `/` whenever that directory exists.
 
 ### Tests and checks
 
-The test suite is five scripts, run as modules:
+The test suite is seven files in `backend/tests/` (96 tests), run under pytest (a dev
+dependency, part of the default pixi environment):
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
+pixi run test
 ```
 
-The same files run under pytest (a dev dependency, installed by `uv sync`):
+Five of the files also run standalone as modules; `test_rows.py` and
+`test_cache_only.py` need pytest:
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q
+pixi run python -m backend.tests.test_serialize
+pixi run python -m backend.tests.test_targets
+pixi run python -m backend.tests.test_predicate
+pixi run python -m backend.tests.test_movement
+pixi run python -m backend.tests.test_counterfactual
 ```
 
 `scripts/checks/` holds four regression checks retained from the pre-release code
 review; `scripts/checks/README.md` states what each one proves. They must run from
-outside the repository so no relative dataset path resolves into it:
+outside the repository so no relative dataset path resolves into it, and the `check`
+task runs them with `/tmp` as the working directory. The first line runs all four, the
+second only those whose filename starts with `02`:
 
 ```bash
-cd /tmp && PYTHONPATH=<repo> <repo>/.venv/bin/python <repo>/scripts/checks/02_zadu_equivalence.py
+pixi run check
+pixi run check 02
 ```
 
 Formatting:
 
 ```bash
-uv run ruff format --check .
+pixi run fmt-check
 ```
 
 ---
@@ -350,7 +364,7 @@ frontend/      React + D3 (Vite, TypeScript). src/App.tsx owns navigation state;
 src_research/  Offline experiment harnesses, one per thesis experiment, each next to
                its pre-registered design document. rederive/ holds the post-hoc
                correction driver.
-scripts/       prepare_env.sh (environment) and checks/ (retained regression checks).
+scripts/       checks/ (retained regression checks).
 host.py        Single-process launcher: build the frontend if stale, then serve.
 main.py        Minimal smoke script — loads the wine CSV and runs one PCA.
 ```
@@ -401,7 +415,7 @@ nothing, an inflated n). No experiment was re-executed and no original file was 
 what turned out not to be derivable at all.
 
 The driver is `src_research/rederive/`. The run directories it needs ship with the
-repository, so from any clone `uv run python -m src_research.rederive`
+repository, so from any clone `pixi run rederive`
 regenerates every `rederived_20260813/` byte-identically.
 
 ---
@@ -416,11 +430,14 @@ the randomized solver on wide or small matrices and draws from the unseeded proc
 RNG.
 
 **Pinned environment.** The Docker image installs `backend/requirements.txt`, whose
-versions are pinned to the resolved `uv.lock` at this release freeze (including the
+versions were pinned to the resolved `uv.lock` at this release freeze (including the
 transitive `llvmlite`, `pynndescent`, `faiss-cpu` and `joblib`, which had drifted between
 the lockfile and the image before). `pyproject.toml` caps the scientific core
 (`numpy<2.5`, `scipy<2`, `scikit-learn<2`, `umap-learn<0.6`, `hdbscan<0.9`, `numba<0.68`,
-`zadu<0.5`) and `uv.lock` fixes everything for the local path. If `pyproject.toml`
+`zadu<0.5`) and `pixi.lock` fixes everything for the local path. `pixi.lock` replaced
+`uv.lock` after the freeze and resolves the same package versions, with the same hashes,
+as the frozen `uv.lock`; the solve is date-frozen by `exclude-newer = "2026-08-14"` in
+`[tool.pixi.workspace]`, so a re-lock does not pull newer releases. If `pyproject.toml`
 changes, re-lock and re-pin `backend/requirements.txt` to match.
 
 **Do not mix reruns with pre-freeze outputs in one table.** The numbers under
@@ -456,12 +473,12 @@ as one.
   remaining 2195 are noise. They are not lost — the layer view, via *Explore entire
   layer*, is where they can be selected — but child cluster sizes do not sum to the
   parent's.
-- **The test suite is backend-only.** Five scripts (`backend/tests/`) covering tree
-  serialization, target statistics, predicate clause bookkeeping, cluster movement and
-  counterfactual sessions,
+- **The test suite is backend-only.** Seven files (`backend/tests/`) covering tree
+  serialization, target statistics, predicate clause bookkeeping, cluster movement,
+  counterfactual sessions, row tables and cache-only mode,
   plus the four regression checks in `scripts/checks/`. There is no test runner
-  configuration and no automated coverage of the frontend. `uv run ruff format --check .`
-  passes; `uv run ruff check .` does not (33 findings).
+  configuration beyond the `test` task and no automated coverage of the frontend.
+  `pixi run fmt-check` passes; `pixi run ruff check .` does not (33 findings).
 - **Movement previews are not a promise about clustering.** A cluster moved onto another
   in the frozen projection may still not merge with it on a rebuild: HDBSCAN decides over
   the whole dataset in the pre-reduction space, not from the picture on screen.

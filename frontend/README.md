@@ -22,7 +22,7 @@ npm run typecheck  # tsc -b --noEmit
 ```
 
 In production nothing runs here: `backend/app.py` mounts `dist/` at `/` and serves the UI
-from the same uvicorn process. `uv run host.py` rebuilds `dist/` when it is missing or
+from the same uvicorn process. `pixi run hilde` rebuilds `dist/` when it is missing or
 older than `src/`.
 
 > `npm run typecheck` reports `TS6310` on `tsconfig.node.json` — a pre-existing
@@ -168,7 +168,7 @@ The analysis and movement fixtures come from ONE live run, captured together by
 `scripts/capture_movement_fixture.py` (standard library only) against a running backend:
 
 ```bash
-PYTHONPATH=. uv run uvicorn backend.app:app --port 8000
+pixi run uvicorn backend.app:app --port 8000
 python frontend/scripts/capture_movement_fixture.py --base-url http://127.0.0.1:8000
 ```
 

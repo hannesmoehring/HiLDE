@@ -1,9 +1,7 @@
 """Cache-only mode: stored runs are served, nothing is built.
 
-Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_cache_only
-or with pytest (a dev dependency):
-    PYTHONPATH=. .venv/bin/python -m pytest backend/tests/test_cache_only.py
+Run with pytest, as part of the suite (one test needs pytest's `monkeypatch`):
+    pixi run test
 
 The routes are called as functions, as in `test_counterfactual`. The Iris payloads
 are shared with `test_movement` (memoized).

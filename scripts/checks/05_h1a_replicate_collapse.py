@@ -18,7 +18,7 @@ same data through the same code path -- and then shows what each does to the Wil
 H1a summary reports.
 
 Run:
-  cd /tmp && PYTHONPATH=<repo> <repo>/.venv/bin/python <repo>/scripts/checks/05_h1a_replicate_collapse.py
+  pixi run check 05
 """
 
 import warnings

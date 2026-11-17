@@ -1,9 +1,9 @@
 """Round-trip test for the tree serializer against a real analysis tree.
 
 Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
-or with pytest:
-    PYTHONPATH=. pytest backend/tests/test_serialize.py
+    pixi run python -m backend.tests.test_serialize
+or with pytest, as part of the suite:
+    pixi run test
 """
 
 from __future__ import annotations

@@ -11,6 +11,10 @@ Standalone checks retained from the 2026-08 pre-freeze code review.
 - `09_mrre_direction_inverted.py` — live check that MRRE direction is
   declared correctly (both terms are 1 - error similarities, higher better).
 
-Run from /tmp so no CWD-relative dataset path resolves into the repo:
+Run all four, or only those whose filename starts with a given prefix:
 
-    cd /tmp && PYTHONPATH=<repo> <repo>/.venv/bin/python <repo>/scripts/checks/<script>.py
+    pixi run check
+    pixi run check 02
+
+The task itself changes to /tmp so no CWD-relative dataset path resolves into the
+repo, and PYTHONPATH is the absolute repo root.

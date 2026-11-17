@@ -282,8 +282,8 @@ moved, with the original and the counterfactual value of every feature any edit 
 | `targets.py` | The separate question the predicate must not answer: what are the *labels* of these points? Reported against the whole-dataset range so the selection has a scale to sit in. |
 | `images.py` | Pixel lookup for the four image datasets. Returns plain numbers — the frontend draws the canvas, so there is no image library on the server. |
 | `datasets.py` | Thin access to `src/datasets.py`. Also defines `default_feature_cols`: everything except `row_id` and `target_*`. |
-| `requirements.txt` | Pinned to the resolved `uv.lock` for the Docker image. If `pyproject.toml` changes, re-lock and re-pin this to match. |
-| `tests/` | `test_serialize.py` (tree → JSON contract), `test_targets.py` (target statistics), `test_predicate.py` (clause ΔF1 bookkeeping), `test_movement.py` (alignment, PCA and UMAP movement) and `test_counterfactual.py` (edits, keys, frames, the rebuild on a counterfactual key). Run as modules, see below. |
+| `requirements.txt` | Pinned to the resolved `pixi.lock` (linux-64) for the Docker image. If `pyproject.toml` changes, re-lock with `pixi lock` and re-pin this to match. |
+| `tests/` | `test_serialize.py` (tree → JSON contract), `test_targets.py` (target statistics), `test_predicate.py` (clause ΔF1 bookkeeping), `test_movement.py` (alignment, PCA and UMAP movement), `test_counterfactual.py` (edits, keys, frames, the rebuild on a counterfactual key), `test_cache_only.py` (cache-only mode: stored runs and the run listing are served, unstored runs and refits are refused) and `test_rows.py` (`/api/rows` chunked output decodes to the same table). Run under pytest, see below. |
 
 ---
 
@@ -328,18 +328,21 @@ into it.
 
 ```bash
 # API only (frontend runs separately on :5173 in dev)
-PYTHONPATH=. uv run uvicorn backend.app:app --reload --port 8000
+pixi run dev-api
 
-# tests (each script also runs under pytest: PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q)
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
+# tests (python -m pytest backend/tests -q)
+pixi run test
+
+# the five original scripts also run standalone
+pixi run python -m backend.tests.test_serialize
+pixi run python -m backend.tests.test_targets
+pixi run python -m backend.tests.test_predicate
+pixi run python -m backend.tests.test_movement
+pixi run python -m backend.tests.test_counterfactual
 
 # formatting
-uv run ruff format --check .
+pixi run fmt-check
 ```
 
-`uv run ruff check .` is **not** clean at the release freeze — a nonzero exit there is
+`pixi run ruff check .` is **not** clean at the release freeze — a nonzero exit there is
 pre-existing, not something a change introduced.

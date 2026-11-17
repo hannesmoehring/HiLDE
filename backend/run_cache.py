@@ -1,6 +1,6 @@
 """On-disk cache of analysis runs — hosting mode only.
 
-In hosting mode (`uv run host.py`, or `HILDE_HOSTING=1`) a completed
+In hosting mode (`pixi run hilde`, or `HILDE_HOSTING=1`) a completed
 `/api/analysis` payload is written to disk keyed by (dataset, feature_cols,
 config), so restarting the server does not recompute it. Dev runs are
 unaffected: `is_hosting()` is false and nothing touches the disk.

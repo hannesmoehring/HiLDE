@@ -57,7 +57,7 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
 
 Run with::
 
-    uv run python -m src_research.hierarchical_vs_flat
+    pixi run experiment hierarchical_vs_flat
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
 recorded in the thesis and no longer kept in this repository.

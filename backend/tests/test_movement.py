@@ -1,9 +1,9 @@
 """Alignment, validation and refit-parity tests for cluster movement.
 
 Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
-or with pytest (a dev dependency):
-    PYTHONPATH=. .venv/bin/python -m pytest backend/tests/test_movement.py
+    pixi run python -m backend.tests.test_movement
+or with pytest, as part of the suite:
+    pixi run test
 
 The `__main__` block auto-discovers every module-level `test_*` function in
 definition order, so a new test only has to be defined — never registered.

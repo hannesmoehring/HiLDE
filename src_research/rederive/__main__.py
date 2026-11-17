@@ -1,6 +1,6 @@
 """Driver: run every re-derivation and print a digest.
 
-uv run python -m src_research.rederive
+pixi run rederive
 """
 
 from __future__ import annotations

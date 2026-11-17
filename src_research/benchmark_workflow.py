@@ -33,7 +33,7 @@ summary.md.
 
 Run with::
 
-    uv run python -m src_research.benchmark_workflow
+    pixi run experiment benchmark_workflow
 
 ``design §N`` below marks a rule fixed by the pre-registered design, which is
 recorded in the thesis and no longer kept in this repository.

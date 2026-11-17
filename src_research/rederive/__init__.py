@@ -15,7 +15,7 @@ never persisted, the re-derivation says so instead of substituting a rerun - see
 
 Run with::
 
-    uv run python -m src_research.rederive
+    pixi run rederive
 """
 
 from __future__ import annotations
