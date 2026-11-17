@@ -1,8 +1,9 @@
 # Runtime deps for the FastAPI backend + calc layer (production image).
 # Streamlit-free and free of research-only deps (plotly, optuna, kdbcv, …).
-# Pinned to the versions in uv.lock at the v0.1.0 release freeze (2026-08-14),
-# so an image built later reproduces the released environment. If pyproject.toml
-# changes, re-lock and re-pin these to match.
+# Pinned to the versions in pixi.lock (linux-64), which resolves the same versions
+# as the uv.lock of the v0.1.0 release freeze (2026-08-14), so an image built
+# later reproduces the released environment. If pyproject.toml changes, re-lock
+# (`pixi lock`) and re-pin these to match.
 fastapi==0.141.1
 uvicorn[standard]==0.52.3
 numpy==2.4.6

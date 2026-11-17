@@ -37,14 +37,6 @@ dev = [
     "ruff==0.16.3",
 ]
 
-[tool.uv]
-# kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1, which is
-# incompatible with this project's modern numpy 2.4 / scipy 1.18 stack. Its DBCV
-# code only uses APIs that are stable across those versions (verified), so we
-# override the stale caps. The one import-time incompatibility (a removed
-# np.float_ alias in kdbcv's type hints) is shimmed in src_research/dbcv_tuning.py.
-override-dependencies = ["numpy>=2.4.4,<2.5", "scipy>=1.17.1"]
-
 # ---------------------------------------------------------------------------
 # pixi (https://pixi.sh). Written by hand: `pixi init` would add an editable
 # self-install (`shd = { path = ".", editable = true }`), which must never be
@@ -117,5 +109,5 @@ cmd = """bash -c 'n="$0"; [ "$n" = all ] && n=""; cd /tmp && for f in "$PIXI_PRO
 # `ruff format` reformats Python blocks inside Markdown, which silently rewrote a
 # design document under plans/ — those are inputs to the work, not repo source,
 # and a formatter must not edit them. Excluded so the documented
-# `uv run ruff format .` stays safe to run from the repo root.
+# `pixi run fmt` stays safe to run from the repo root.
 extend-exclude = ["plans"]
