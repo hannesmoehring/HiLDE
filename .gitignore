@@ -41,3 +41,6 @@ datasets/wine_quality/.DS_Store
 
 
 outputs/mock_assets
+
+# pixi environments
+.pixi/

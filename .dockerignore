@@ -22,3 +22,5 @@ src_research
 datasets/*
 !datasets/wine_quality
 datasets/wine_quality/wine+quality.zip
+
+.pixi
