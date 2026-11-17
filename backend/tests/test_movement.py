@@ -23,6 +23,7 @@ from backend.movement import (
     MovementError,
     MovementRequestData,
     ProjectionArtifact,
+    _refit_node_projection,
     align_embeddings,
     build_projection_artifact,
     find_node,
@@ -36,6 +37,7 @@ from backend.serialize import (
     run_signature,
     serialize_tree,
 )
+from src.analysis.analysis_routine import fit_node_projection
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
@@ -499,6 +501,18 @@ def test_pca_refit_reproduces_the_serialized_embedding():
 def test_umap_refit_reproduces_the_serialized_embedding():
     measured = _canary("UMAP", UMAP_CANARY_RMSE)
     print(f"   UMAP canary RMSE: max={max(measured.values()):.3e}  {measured}")
+
+
+def test_wide_pca_refit_matches_the_analysis_fit():
+    # More columns than rows (Olivetti's shape, scaled down): the refit takes the
+    # thin-SVD path instead of covariance_eigh and must give the same projection.
+    X = np.random.default_rng(0).standard_normal((40, 300))
+    config = default_config()
+    config["method"] = "PCA"
+    shared = fit_node_projection(X, config)
+    refit = _refit_node_projection(X, config)
+    assert shared is not None and refit is not None
+    np.testing.assert_allclose(refit.embedding, shared.embedding, atol=1e-9)
 
 
 def test_refit_does_not_mutate_the_source_dataframe():

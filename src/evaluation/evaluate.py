@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from zadu.zadu import ZADU
 
 from src.analysis.analysis_routine import (
     AnalysisObject,
@@ -140,6 +139,8 @@ def _cadi(X: np.ndarray, emb: np.ndarray, labels: np.ndarray) -> float | None:
     uniq, counts = np.unique(lab, return_counts=True)
     if lab.shape[0] < 3 or len(uniq) < 2 or counts.max() < 2:
         return None
+    from zadu.zadu import ZADU  # deferred, build-only
+
     try:
         result = ZADU(
             [{"id": "cadi", "params": {"random_seed": CADI_RANDOM_SEED}}],

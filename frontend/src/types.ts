@@ -73,6 +73,34 @@ export type AnalysisJob =
 export interface ModeInfo {
   hosting: boolean;
   cache_dir: string | null;
+  cache_only: boolean; // the server refuses to build; only stored runs can be shown
+  maintenance: boolean; // show a notice instead of the app, and request nothing
+}
+
+// One stored run, as the request that reproduces its cache key (cache-only mode).
+export interface CachedRun {
+  dataset: string;
+  feature_cols: string[];
+  config: Partial<AnalysisConfig>; // the knobs the run was requested with, verbatim
+  n_total: number | null;
+}
+
+// /api/cached-runs: the datasets a cache-only server has stored runs of.
+export interface CachedDataset {
+  dataset: string;
+  n_runs: number;
+}
+
+// How /api/cached-runs/{dataset} ships its runs (see backend/run_listing.py):
+// the knobs every run shares once, the others as value tables plus, per run, its
+// feature-column group and one index per knob (-1: requested without it).
+export interface CachedRunListing {
+  dataset: string;
+  groups: { feature_cols: string[]; n_total: number | null }[];
+  fixed: Partial<AnalysisConfig>;
+  knobs: (keyof AnalysisConfig)[];
+  values: (string | number | boolean | null)[][];
+  runs: number[][];
 }
 
 export interface DatasetInfo {

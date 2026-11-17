@@ -3,6 +3,9 @@ import type {
   AnalysisConfig,
   AnalysisJob,
   AnalysisResponse,
+  CachedDataset,
+  CachedRun,
+  CachedRunListing,
   CharacteristicsResponse,
   CounterfactualApplyRequest,
   CounterfactualApplyResponse,
@@ -40,8 +43,40 @@ async function get<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** `get`, asked again while a cache-only server answers 503: its first scan of
+ * the stored runs is still running (see backend/run_listing.py). */
+async function getWhenListed<T>(url: string): Promise<T> {
+  for (;;) {
+    const res = await fetch(url);
+    if (res.status !== 503) {
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json() as Promise<T>;
+    }
+    const wait = Number(res.headers.get("Retry-After")) || 3;
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  }
+}
+
 export function getMode(): Promise<ModeInfo> {
   return get("/api/mode");
+}
+
+/** The datasets a cache-only server has stored runs of. */
+export function listCachedDatasets(): Promise<CachedDataset[]> {
+  return getWhenListed("/api/cached-runs");
+}
+
+/** The stored runs of one dataset, each config exactly as it was requested. */
+export async function listCachedRuns(dataset: string): Promise<CachedRun[]> {
+  const l = await getWhenListed<CachedRunListing>(`/api/cached-runs/${encodeURIComponent(dataset)}`);
+  const groups = l.groups.map((g) => ({ dataset: l.dataset, ...g }));
+  return l.runs.map(([g, ...idx]) => {
+    const config: Record<string, unknown> = { ...l.fixed };
+    idx.forEach((i, k) => {
+      if (i >= 0) config[l.knobs[k]] = l.values[k][i];
+    });
+    return { ...groups[g], config: config as CachedRun["config"] };
+  });
 }
 
 export function listDatasets(): Promise<DatasetInfo[]> {

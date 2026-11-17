@@ -16,7 +16,15 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PORT=8000 \
     HILDE_HOSTING=1 \
+    HILDE_CACHE_ONLY=1 \
+    HILDE_MAINTENANCE=1 \
     SCIKIT_LEARN_DATA=/app/datasets/sklearn
+# glibc malloc: a fixed trim threshold also pins the mmap threshold at 128 KiB, so
+# large freed buffers (parsed payloads, response bodies) go back to the kernel
+# instead of staying in the heap; two arenas cap per-thread heaps. Together they
+# cut the steady anon set of a browsing session by ~70-100 MiB.
+ENV MALLOC_TRIM_THRESHOLD_=131072 \
+    MALLOC_ARENA_MAX=2
 
 # build-essential for any source builds (hdbscan/llvmlite fallbacks)
 RUN apt-get update \

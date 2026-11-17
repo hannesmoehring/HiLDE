@@ -3,9 +3,12 @@ import {
   counterfactualRowsUrl,
   datasetColumns,
   getMode,
+  listCachedDatasets,
+  listCachedRuns,
   listDatasets,
   runAnalysis,
 } from "./api";
+import { defaultRun, nearestRun, runFacets } from "./cachedRuns";
 import { ClusterScatter } from "./charts/ClusterScatter";
 import {
   ClusterMovementPanel,
@@ -22,6 +25,8 @@ import { getNodeAtPath } from "./treeNav";
 import type {
   AnalysisConfig,
   AnalysisResponse,
+  CachedDataset,
+  CachedRun,
   DatasetColumns,
   DatasetInfo,
   ImageSpec,
@@ -80,20 +85,67 @@ export default function App() {
   const [mode, setMode] = useState<ModeInfo | null>(null);
   const [useCache, setUseCache] = useState(true);
 
+  // Cache-only server: nothing can be built, so the stored runs are the only
+  // inputs there are. `null` until the listing is in.
+  const cacheOnly = mode?.cache_only ?? false;
+  const [cachedDatasets, setCachedDatasets] = useState<CachedDataset[] | null>(null);
+  const [cachedRuns, setCachedRuns] = useState<CachedRun[] | null>(null); // of `datasetKey`
+  const [runPick, setRunPick] = useState<CachedRun | null>(null);
+  const runsHere = useMemo(
+    () => (cachedRuns ?? []).filter((r) => r.dataset === datasetKey),
+    [cachedRuns, datasetKey],
+  );
+  const facets = useMemo(() => runFacets(runsHere), [runsHere]);
+  const firstRun = useMemo(() => defaultRun(runsHere), [runsHere]);
+  // A dataset switch leaves `runPick` on the old dataset; fall to this one's default.
+  const selectedRun = runPick && runsHere.includes(runPick) ? runPick : firstRun;
+
   useEffect(() => {
     getMode()
       .then(setMode)
-      .catch(() => setMode({ hosting: false, cache_dir: null }));
+      .catch(() =>
+        setMode({ hosting: false, cache_dir: null, cache_only: false, maintenance: false }),
+      );
   }, []);
 
+  // Waits for the mode: a cache-only server offers the datasets that have a stored
+  // run, not the registry.
   useEffect(() => {
+    if (!mode || mode.maintenance) return; // under maintenance nothing is requested
+    if (mode.cache_only) {
+      listCachedDatasets()
+        .then((list) => {
+          setCachedDatasets(list);
+          setDatasets(list.map((d) => ({ key: d.dataset, label: d.dataset })));
+          if (list.length) setDatasetKey(list[0].dataset);
+        })
+        .catch((e) => setError(String(e)));
+      return;
+    }
     listDatasets()
       .then((d) => {
         setDatasets(d);
         if (d.length) setDatasetKey(d[0].key);
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [mode]);
+
+  // Cache-only: a dataset's stored runs are fetched when it is picked.
+  useEffect(() => {
+    if (!cacheOnly || !datasetKey) return;
+    let stale = false;
+    setCachedRuns(null);
+    listCachedRuns(datasetKey)
+      .then((runs) => {
+        if (!stale) setCachedRuns(runs);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [cacheOnly, datasetKey]);
 
   // On dataset change, load its columns and reset the feature selection to the default.
   useEffect(() => {
@@ -115,6 +167,35 @@ export default function App() {
       })
       .catch((e) => setError(String(e)));
   }, [datasetKey]);
+
+  // Cache-only: the selected stored run *is* the configuration. Once its dataset's
+  // columns are in (the effect above has just put that dataset's defaults on the
+  // rail), replace them with the run's own features and knobs and show the run.
+  // The request repeats the run's stored signature verbatim, so it is a cache hit.
+  useEffect(() => {
+    if (!selectedRun || columns?.key !== selectedRun.dataset) return;
+    let stale = false;
+    setFeatureCols(selectedRun.feature_cols);
+    setConfig({ ...DEFAULT_CONFIG, ...selectedRun.config });
+    setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    navigate([]);
+    runAnalysis(selectedRun.dataset, selectedRun.feature_cols, selectedRun.config)
+      .then((res) => {
+        if (!stale) setAnalysis(res);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+      setLoading(false);
+    };
+  }, [selectedRun, columns]);
 
   const maxDims = useMemo(() => Math.max(2, featureCols.length), [featureCols]);
 
@@ -176,6 +257,25 @@ export default function App() {
     `${config.hierarchical_layers} layers`,
     `mcs ${config.hclust_min_cluster_size}`,
   ].join(", ");
+
+  if (mode?.maintenance) {
+    return (
+      <div className="app">
+        <header className="topbar">
+          <span className="topbar__brand">HiLDE</span>
+        </header>
+        <main className="canvas">
+          <div className="banner" role="alert">
+            <strong>Maintenance</strong>
+            <span>
+              HiLDE is under maintenance and does not work right now. Please check back
+              later.
+            </span>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -244,6 +344,41 @@ export default function App() {
                   )}
                 </section>
 
+                {cacheOnly && (
+                  <section className="cfg__block">
+                    <h3>Cached run</h3>
+                    <p className="hint cfg__note">
+                      {cachedRuns ? runsHere.length : "…"} stored for this dataset
+                      {facets.length > 0 && ". Choose among them by the settings they differ in"}
+                      . The full settings of the run on screen are below, read-only.
+                    </p>
+                    {/* A plain wrapper: the rail gives a block's first direct field
+                        the stacked layout, and these are all label-and-value rows. */}
+                    <div>
+                      {selectedRun &&
+                        facets.map((f) => (
+                          <label className="field" key={f.label}>
+                            <span>{f.label}</span>
+                            <select
+                              value={f.valueOf(selectedRun)}
+                              onChange={(e) =>
+                                setRunPick(
+                                  nearestRun(runsHere, facets, selectedRun, f, e.target.value),
+                                )
+                              }
+                            >
+                              {f.values.map((v) => (
+                                <option key={v} value={v}>
+                                  {v === "true" ? "yes" : v === "false" ? "no" : v}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                    </div>
+                  </section>
+                )}
+
                 {columns && (
                   <section className="cfg__block">
                     <div className="cfg__head">
@@ -256,10 +391,13 @@ export default function App() {
                           onClick={() =>
                             setFeatureCols(columns.default_feature_cols)
                           }
+                          disabled={cacheOnly}
                         >
                           Reset
                         </button>
-                        <button onClick={() => setFeatureCols([])}>None</button>
+                        <button onClick={() => setFeatureCols([])} disabled={cacheOnly}>
+                          None
+                        </button>
                       </div>
                     </div>
                     <div className="feature-picker__list">
@@ -276,6 +414,7 @@ export default function App() {
                               type="checkbox"
                               checked={featureCols.includes(c)}
                               onChange={() => toggleFeature(c)}
+                              disabled={cacheOnly}
                             />
                             {c}
                           </label>
@@ -297,11 +436,14 @@ export default function App() {
                   </section>
                 )}
 
-                <ConfigPanel
-                  config={config}
-                  maxDims={maxDims}
-                  onChange={patchConfig}
-                />
+                {/* Cache-only: the knobs describe the stored run and cannot be changed. */}
+                <fieldset className="cfg__lock" disabled={cacheOnly}>
+                  <ConfigPanel
+                    config={config}
+                    maxDims={maxDims}
+                    onChange={patchConfig}
+                  />
+                </fieldset>
               </div>
 
               <div className="cfg__build">
@@ -314,12 +456,18 @@ export default function App() {
                 <button
                   className="primary"
                   onClick={build}
-                  disabled={loading || featureCols.length === 0 || cfBusy}
-                  title={cfBusy ? "Waiting for the counterfactual rebuild" : undefined}
+                  disabled={loading || featureCols.length === 0 || cfBusy || cacheOnly}
+                  title={
+                    cacheOnly
+                      ? "Disabled on this server — only cached runs are available"
+                      : cfBusy
+                        ? "Waiting for the counterfactual rebuild"
+                        : undefined
+                  }
                 >
                   {loading ? "Building…" : "Build & Apply"}
                 </button>
-                {mode?.hosting && (
+                {mode?.hosting && !cacheOnly && (
                   <label
                     className="field--check"
                     style={{ marginBottom: 0 }}
@@ -350,6 +498,18 @@ export default function App() {
         </aside>
 
         <main className="canvas">
+          {cacheOnly && (
+            <div className="banner" role="note">
+              <strong>Cached only</strong>
+              <span>
+                Only cached inputs are available at the moment: this server does not
+                have the computing capacity to build new runs. Pick a dataset and one
+                of its stored runs under <em>Configuration</em>.
+                {cachedDatasets?.length === 0 && " No stored runs were found on this server."}
+              </span>
+            </div>
+          )}
+
           {/* Failures report on the canvas, not in the rail: the rail collapses to a
               38px strip and would otherwise swallow the only sign anything went wrong. */}
           {error && (
@@ -427,7 +587,7 @@ export default function App() {
             </div>
           )}
 
-          {mode?.hosting && shownAnalysis?.cached && (
+          {mode?.hosting && !cacheOnly && shownAnalysis?.cached && (
             <div className="banner">
               <strong>Cached</strong>
               <span>
@@ -439,7 +599,9 @@ export default function App() {
           )}
 
           {loading && (
-            <div className="empty">Reducing, clustering and scoring …</div>
+            <div className="empty">
+              {cacheOnly ? "Loading the stored run …" : "Reducing, clustering and scoring …"}
+            </div>
           )}
 
           {shownAnalysis && (
@@ -459,12 +621,17 @@ export default function App() {
               config={config}
               charNonFeatureOnly={charNonFeatureOnly}
               imageSpec={columns?.image ?? null}
+              cacheOnly={cacheOnly}
             />
           )}
 
           {!shownAnalysis && !loading && (
             <div className="empty">
-              Pick features and press Build &amp; Apply to compute a run.
+              {cacheOnly
+                ? cachedDatasets
+                  ? "Pick a stored run under Configuration."
+                  : "Listing the stored runs …"
+                : "Pick features and press Build & Apply to compute a run."}
             </div>
           )}
         </main>
@@ -485,6 +652,7 @@ function Navigation(props: {
   config: AnalysisConfig;
   charNonFeatureOnly: boolean;
   imageSpec: ImageSpec | null;
+  cacheOnly: boolean;
 }) {
   const {
     analysis,
@@ -498,6 +666,7 @@ function Navigation(props: {
     config,
     charNonFeatureOnly,
     imageSpec,
+    cacheOnly,
   } = props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
@@ -518,15 +687,18 @@ function Navigation(props: {
   // A failed apply leaves the button usable again.
   const cfBusy =
     counterfactual.phase === "applying" || counterfactual.phase === "rebuilding";
-  const applyDisabledReason: string | null = cfBusy
-    ? "a counterfactual apply or rebuild is in progress"
-    : !analysis.meta.analysis_id
-      ? "this run predates movement support — rebuild it first"
-      : movement.state.phase !== "ready"
-        ? "pick a destination and wait for the preview"
-        : !movement.settled
-          ? "waiting for the preview at this strength"
-          : null;
+  // A cache-only server never applies: the rebuild that follows is a new run.
+  const applyDisabledReason: string | null = cacheOnly
+    ? "not available on this server — it needs a rebuild, and only cached runs are served"
+    : cfBusy
+      ? "a counterfactual apply or rebuild is in progress"
+      : !analysis.meta.analysis_id
+        ? "this run predates movement support — rebuild it first"
+        : movement.state.phase !== "ready"
+          ? "pick a destination and wait for the preview"
+          : !movement.settled
+            ? "waiting for the preview at this strength"
+            : null;
   const onApply = () => {
     const s = movement.state;
     if (s.phase !== "ready" || applyDisabledReason) return;
@@ -643,6 +815,7 @@ function Navigation(props: {
               nodeId={node.id}
               selectedChildIndex={selectedChild}
               builtMethod={builtMethod}
+              cacheOnly={cacheOnly}
               active={movingHere}
               onStart={movement.start}
             />

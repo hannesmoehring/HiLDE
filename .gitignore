@@ -38,3 +38,6 @@ wheels/
 datasets/wine_quality/wine+quality.zip
 datasets/wine_quality/wine+quality/winequality.names
 datasets/wine_quality/.DS_Store
+
+
+outputs/mock_assets

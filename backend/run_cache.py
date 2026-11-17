@@ -8,6 +8,11 @@ unaffected: `is_hosting()` is false and nothing touches the disk.
 Reusing a stored run means a re-request does not re-execute UMAP/HDBSCAN — the
 frontend surfaces that with a banner, and the "Use cached results" toggle
 bypasses this module entirely.
+
+Cache-only mode (`HILDE_CACHE_ONLY=1`, implies hosting) is for a server too weak
+to build anything: the stored runs are the only runs there are —
+`backend/run_listing.py` lists them for the UI — and nothing in this module
+writes to or deletes from the cache directory in that mode.
 """
 
 from __future__ import annotations
@@ -20,18 +25,28 @@ from pathlib import Path
 from typing import Any
 
 HOSTING_ENV = "HILDE_HOSTING"
+CACHE_ONLY_ENV = "HILDE_CACHE_ONLY"
+MAINTENANCE_ENV = "HILDE_MAINTENANCE"
 CACHE_DIR_ENV = "HILDE_CACHE_DIR"
 
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / ".cache" / "hilde_runs"
 
 
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no")
+
+
+def is_cache_only() -> bool:
+    return _flag(CACHE_ONLY_ENV)
+
+
+def is_maintenance() -> bool:
+    """The UI shows a maintenance notice instead of the app and requests nothing."""
+    return _flag(MAINTENANCE_ENV)
+
+
 def is_hosting() -> bool:
-    return os.environ.get(HOSTING_ENV, "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-    )
+    return _flag(HOSTING_ENV) or is_cache_only()
 
 
 def cache_dir() -> Path:
@@ -57,7 +72,10 @@ def load(key: str) -> dict[str, Any] | None:
         # gzip raises EOFError on truncation, which is not an OSError, hence the
         # explicit catch. Delete the file so the next build replaces it, instead of
         # every request for this config hitting the same bad entry forever.
-        path.unlink(missing_ok=True)
+        # Not in cache-only mode: no build will ever replace it, the directory may
+        # be mounted read-only, and the entry may simply still be uploading.
+        if not is_cache_only():
+            path.unlink(missing_ok=True)
         return None
 
 

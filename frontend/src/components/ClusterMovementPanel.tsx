@@ -301,6 +301,9 @@ export interface MovementStartRowProps {
   selectedChildIndex: number | null;
   /** The method the run on screen was BUILT with, never the live rail knob. */
   builtMethod: string;
+  /** The server only serves stored runs, so it refuses the refit a UMAP movement
+   *  needs. PCA movements answer without one and stay available. */
+  cacheOnly: boolean;
   /** True while this node's own movement is running: the full-width row is
    *  showing and carries Cancel, so the start button steps aside. */
   active: boolean;
@@ -311,21 +314,25 @@ export function MovementStartRow({
   nodeId,
   selectedChildIndex,
   builtMethod,
+  cacheOnly,
   active,
   onStart,
 }: MovementStartRowProps) {
   if (active) return null;
   const supported = SUPPORTED.includes(builtMethod);
+  const refused = cacheOnly && supported && builtMethod !== "PCA";
   const label = selectedChildIndex == null ? "Move a cluster…" : `Move C${selectedChildIndex}…`;
   const title = !supported
     ? `Not available for ${builtMethod}: no feature→2D mapping. Rebuild with PCA or UMAP.`
-    : selectedChildIndex == null
-      ? "Select a cluster in this projection first"
-      : `Move C${selectedChildIndex} toward a destination you pick in the projection — a counterfactual preview, nothing is written back`;
+    : refused
+      ? `Not available on this server for ${builtMethod}: it needs a refit, and only cached runs are served. Pick a PCA run.`
+      : selectedChildIndex == null
+        ? "Select a cluster in this projection first"
+        : `Move C${selectedChildIndex} toward a destination you pick in the projection — a counterfactual preview, nothing is written back`;
   return (
     <div className="movement-start">
       <button
-        disabled={!supported || selectedChildIndex == null}
+        disabled={!supported || refused || selectedChildIndex == null}
         title={title}
         onClick={() => selectedChildIndex != null && onStart(nodeId, selectedChildIndex)}
       >

@@ -83,6 +83,79 @@ rm -rf .cache/hilde_runs
 
 Read the limitation on this cache below before trusting it after a code change.
 
+### Cache-only (the `cache-only` branch)
+
+For a server that cannot afford a build. On this branch `host.py` and the Docker image
+both default `HILDE_CACHE_ONLY=1`: the server shows the runs already in
+`.cache/hilde_runs/` and computes nothing new. The UI says so in a standing notice,
+offers only the datasets that have a stored run, and disables *Build & Apply*. In place
+of the free-form configuration it shows one selector per setting the dataset's stored
+runs differ in, limited to the stored values; a combination that was never stored snaps
+to the nearest one that was. The full settings of the run on screen stay visible,
+read-only. Listing the runs reads only the head of each entry, once: what it read is
+kept in `.cache/hilde_runs/.listing/`, so a restart does not read the entries again (on a
+read-only mount it is kept in memory instead). The UI fetches one dataset's runs at a
+time, so a cache of thousands of runs is fine.
+
+What still works is everything that is not a build: drill-down, predicates,
+characteristics, targets, row tables, images, and the movement preview on PCA runs.
+Refused with HTTP 409: a run that is not stored, a movement on a UMAP run (it needs a
+refit), and applying a movement (it needs a rebuild).
+
+To deploy, copy the contents of `.cache/hilde_runs/` from the machine that computed the
+runs to the same path on the server, or point `HILDE_CACHE_DIR` at wherever they are.
+Entries can be added while the server runs, as long as each one appears under its name
+in one step (written elsewhere and moved in, as an rsync does); one written in place is
+noticed only at the next change to the directory. Two things the cache does not carry:
+
+- **The datasets.** A stored run holds the tree, not the rows; predicates and row tables
+  read the dataset itself. The wine CSVs ship with the repo and the scikit-learn bundled
+  sets need nothing, but any other dataset with a stored run must be present under
+  `datasets/` on the server (or the loader will download it on first use).
+- **The code version.** Entries are served as-is; see the run-cache limitation below.
+
+Ship the listing index with the entries: without it, the server's first listing reads
+the head of every entry, which takes 10 s for 21,000 runs on a fast disk and over 100 s
+on a slow one. Write it on the machine that has the runs (about 10 s for 21,000), then
+copy `.cache/hilde_runs/.listing/` along with the entries; a copy that does not keep
+file times is fine, since an entry's name already says what it holds.
+
+```bash
+uv run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
+```
+
+While a first scan is still running, the listing endpoints answer 503 after 20 s and
+the UI asks again, so no request outlasts Cloudflare's 100 s.
+
+**Memory.** `docker-compose.yml` caps the container at 640 MB with no swap
+(`mem_limit`, `memswap_limit`); the comment there says how that follows from the VPS.
+Serving fits in it because a stored run is sent as the gzip bytes it already is rather
+than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
+kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
+the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
+Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
+session keeps under ~330 MiB. A build needs far more: build without this cap.
+
+To build on this branch anyway:
+
+```bash
+HILDE_CACHE_ONLY=0 uv run host.py
+```
+
+**Maintenance notice.** For now this branch also defaults `HILDE_MAINTENANCE=1` in
+`host.py` and the Docker image: the UI shows a "Maintenance" notice instead of the app
+and requests nothing beyond `/api/mode`. The API itself is not blocked. Bring the app
+back with:
+
+```bash
+HILDE_MAINTENANCE=0 uv run host.py
+```
+
+Under Docker, add `HILDE_MAINTENANCE=0` to `environment:` in `docker-compose.yml` and
+recreate the container; no rebuild is needed.
+
+The two-terminal development setup below sets neither variable and builds as usual.
+
 ### Development (two terminals, hot reload)
 
 ```bash
