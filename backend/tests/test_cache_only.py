@@ -30,6 +30,7 @@ from backend import (
     run_cache,
     run_index,
     run_listing,
+    serialize,
     tree_cache,
 )
 from backend.movement import clear_artifact_cache
@@ -359,6 +360,45 @@ def test_the_parsed_tree_cache_is_bounded_by_bytes_in_cache_only_mode():
             assert tree_cache.keys() == [_key(pca)]
         finally:
             tree_cache.MAX_BYTES = budget
+
+
+def _as_a_browser_sends(payload: dict[str, Any]) -> dict[str, Any]:
+    """The run's config after JavaScript's `JSON.parse`/`stringify`: 30.0 is 30."""
+    config = payload["meta"]["config"]
+    sent = {
+        k: int(v) if isinstance(v, float) and v.is_integer() else v
+        for k, v in config.items()
+    }
+    assert json.dumps(sent) != json.dumps(config), "the fixture holds no 30.0"
+    return sent
+
+
+def test_a_run_stored_with_whole_number_floats_is_reached_from_a_browser():
+    # Python requested it with 30.0; the browser can only send 30 back.
+    payload = copy.deepcopy(tm._payload("PCA")[0])
+    meta = payload["meta"]
+    meta["config"] = {**meta["config"], "tsne_perplexity": 30.0}
+    meta["analysis_id"] = serialize.analysis_id(
+        meta["dataset"], meta["feature_cols"], meta["config"]
+    )
+    sent = _as_a_browser_sends(payload)
+    with _cache_only(payload):
+        body, _ = _served(
+            backend_app.analysis(_analysis_request(payload, config=sent), "gzip")
+        )
+        assert body["meta"]["config"] == payload["meta"]["config"]
+        assert json.dumps(body["meta"]["config"]) == json.dumps(
+            payload["meta"]["config"]
+        ), "served another run than the stored one"
+
+        fields = {**_movement_fields(payload), "config": sent}
+        moved = backend_app.movement(backend_app.MovementRequest(**fields))
+        assert moved["status"] == "ok"
+
+        other = {**sent, "tsne_perplexity": 31}
+        _expect_409(
+            backend_app.analysis, _analysis_request(payload, config=other), "gzip"
+        )
 
 
 def test_an_unstored_run_is_refused_without_starting_a_build():

@@ -177,6 +177,53 @@ def encoded(key_of: KeyOf, dataset: str, wait: float | None = None) -> bytes | N
         return index.encoded[dataset] or None
 
 
+def _plain(value: Any) -> Any:
+    """`value` as a browser's JSON round trip respells it: 200.0 becomes 200."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    return value
+
+
+def stored_config(
+    key_of: KeyOf,
+    dataset: str,
+    feature_cols: list[str],
+    config: dict[str, Any],
+    wait: float | None = None,
+) -> dict[str, Any] | None:
+    """The config a stored run of `dataset` and `feature_cols` was requested
+    with, if it is `config` up to how whole numbers are spelled; else None.
+
+    The cache key is taken from the JSON text, where 200 and 200.0 differ, and a
+    run requested from Python may hold either. JavaScript has one number type, so
+    the browser sends 200 for both and would miss the run the listing showed it.
+    `Busy` as `summary`.
+    """
+    index = _current(key_of, wait)
+    if not _lock.acquire(timeout=-1 if wait is None else wait):
+        raise Busy
+    try:
+        if index.spelled is None:
+            index.spelled = {}
+            for _, g, values in index.files.values():
+                if g < 0:
+                    continue
+                name, cols, _ = index.groups[g]
+                stored = {
+                    k: v
+                    for k, v in zip(index.keys, values, strict=False)
+                    if v is not run_index.MISSING
+                }
+                index.spelled[key_of(name, list(cols), _plain(stored))] = stored
+        return index.spelled.get(key_of(dataset, feature_cols, _plain(config)))
+    finally:
+        _lock.release()
+
+
 if __name__ == "__main__":  # write the index ahead of a deploy (README.md)
     from backend.app import _cache_key
     from backend.datasets import dataset_keys

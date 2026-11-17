@@ -44,6 +44,7 @@ class Index:
     groups: list[Group] = field(default_factory=list)
     files: dict[str, Record] = field(default_factory=dict)
     encoded: dict[str, bytes] = field(default_factory=dict)  # per dataset, lazily
+    spelled: dict[str, dict[str, Any]] | None = None  # `run_listing.stored_config`
 
     def __post_init__(self) -> None:
         self._ids = {g: i for i, g in enumerate(self.groups)}
@@ -117,7 +118,8 @@ def encode(index: Index, dataset: str) -> bytes:
     knobs: [name], values: [[value]], runs: [[group, value index per knob]]}`.
     A run's config is `fixed` plus `knobs[k]: values[k][i]` for each index
     `i >= 0` (-1: requested without it) — exactly the config it was stored
-    under, so sending it back is a cache hit."""
+    under. A browser sends it back with 200.0 respelled as 200, which
+    `run_listing.stored_config` undoes."""
     runs = [
         (g, values)
         for _, g, values in index.files.values()

@@ -276,6 +276,28 @@ def _cached_payload(key: str) -> dict[str, Any] | None:
     return payload
 
 
+def _respell_as_stored(req: AnalysisRequest | MovementRequest) -> None:
+    """Cache-only: give `req.config` the spelling its stored run was requested with.
+
+    A browser cannot send 200.0 back — `JSON.parse` made it 200 — and the cache
+    key differs between the two, so a run stored from Python under 200.0 would be
+    listed and then refused. Only looked up when the config as sent is a miss.
+    """
+    if not run_cache.is_cache_only():
+        return
+    key = _cache_key(req.dataset, req.feature_cols, req.config)
+    if run_cache._path_for(key).is_file():
+        return
+    try:
+        stored = run_listing.stored_config(
+            _cache_key, req.dataset, req.feature_cols, req.config, _LISTING_WAIT_S
+        )
+    except run_listing.Busy:
+        raise _listing_busy() from None
+    if stored is not None:
+        req.config = stored
+
+
 def _build(req: AnalysisRequest, df: Any, key: str) -> None:
     """The expensive part, run on a job thread (see backend/jobs.py)."""
     config = _merge_config(req.config)
@@ -333,6 +355,7 @@ def analysis(
     """
     df = _load_dataset(req.dataset)
 
+    _respell_as_stored(req)
     key = _cache_key(req.dataset, req.feature_cols, req.config)
 
     # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
@@ -405,6 +428,7 @@ def movement(req: MovementRequest) -> dict[str, Any]:
     disagree, when the payload is gone, or when it predates `effective_config`.
     """
     df = _load_dataset(req.dataset)
+    _respell_as_stored(req)
     payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
     data = MovementRequestData(**req.model_dump())
     try:

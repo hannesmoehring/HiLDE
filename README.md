@@ -34,6 +34,14 @@ pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the reposito
 docker compose up --build
 ```
 
+> **This starts the cache-only server, not a server that builds runs.**
+> `docker-compose.yml` is the VPS deployment file: it sets `HILDE_CACHE_ONLY=1` and caps
+> the container at 640 MB. It serves only the runs already in `./.cache/hilde_runs`,
+> which is empty in a fresh clone, so the UI reports that no stored runs were found and
+> every build is refused. To build runs, use the [Local](#local) path below, or remove
+> `HILDE_CACHE_ONLY=1`, `mem_limit` and `memswap_limit` from `docker-compose.yml`
+> together (see [Cache-only](#cache-only)).
+
 The image builds the frontend in a Node stage, installs `backend/requirements.txt` into a
 `python:3.13-slim` stage, and serves the API and the built UI from one uvicorn process.
 First build takes a few minutes (hdbscan compiles from source on arm64).
@@ -192,7 +200,7 @@ cd frontend && pixi run npm install && pixi run npm run build
 
 ### Tests and checks
 
-The test suite is seven files in `backend/tests/` (96 tests), run under pytest (a dev
+The test suite is seven files in `backend/tests/` (97 tests), run under pytest (a dev
 dependency, part of the default pixi environment):
 
 ```bash
