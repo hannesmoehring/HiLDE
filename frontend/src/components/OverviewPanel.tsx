@@ -5,8 +5,22 @@
 import { useMemo, useState } from "react";
 import { TreemapOverview } from "../charts/TreemapOverview";
 import { useMapFocus } from "../hooks/useMapFocus";
-import { buildOverview, flatten, pathKeys, pathLabelOf, type OverviewTile } from "../overview";
-import { CONSTANT_FILL, KIND_FILL, NO_VALUE_FILL, RAMP, metricsFor, scaleFor, type MetricScale } from "../overviewMetrics";
+import {
+  buildOverview,
+  flatten,
+  pathKeys,
+  pathLabelOf,
+  type OverviewTile,
+} from "../overview";
+import {
+  CONSTANT_FILL,
+  KIND_FILL,
+  NO_VALUE_FILL,
+  RAMP,
+  metricsFor,
+  scaleFor,
+  type MetricScale,
+} from "../overviewMetrics";
 import { maxClusterDepth, targetOf } from "../overviewTarget";
 import type { TreeNode } from "../types";
 import { ExploreAction } from "./ExploreAction";
@@ -36,7 +50,13 @@ function readOpen(): boolean {
   }
 }
 
-export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, onNavigate: navigateRaw }: Props) {
+export function OverviewPanel({
+  root,
+  treePath: rawPath,
+  nLayers,
+  normalized,
+  onNavigate: navigateRaw,
+}: Props) {
   const [open, setOpen] = useState(readOpen);
   const [metricKey, setMetricKey] = useState("kind");
   const [inspected, setInspected] = useState<OverviewTile | null>(null);
@@ -46,7 +66,10 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
   const treePath = rawPath.slice(0, depth);
   const onNavigate = (path: number[]) => navigateRaw(path.slice(0, depth));
 
-  const tree = useMemo(() => buildOverview(root, normalized), [root, normalized]);
+  const tree = useMemo(
+    () => buildOverview(root, normalized),
+    [root, normalized],
+  );
   const tiles = useMemo(() => flatten(tree), [tree]);
   const metrics = useMemo(() => metricsFor(tree), [tree]);
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
@@ -54,7 +77,9 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
   const onPath = pathKeys(root, treePath);
   // The stack cuts the tree off: say so wherever the map promises a target.
   const cut = maxClusterDepth(tiles) > depth;
-  const hasCharacteristics = tiles.some((t) => (t.node?.rel_characteristics.length ?? 0) > 0);
+  const hasCharacteristics = tiles.some(
+    (t) => (t.node?.rel_characteristics.length ?? 0) > 0,
+  );
 
   const currentKey = onPath[onPath.length - 1] ?? tree.key;
   const map = useMapFocus(tree, currentKey);
@@ -86,8 +111,13 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
     }
   }
 
-  const nClusters = tiles.filter((t) => t.kind === "internal" || t.kind === "leaf").length;
-  const crumbs: number[][] = [[], ...treePath.map((_, i) => treePath.slice(0, i + 1))].slice(0, onPath.length + 1);
+  const nClusters = tiles.filter(
+    (t) => t.kind === "internal" || t.kind === "leaf",
+  ).length;
+  const crumbs: number[][] = [
+    [],
+    ...treePath.map((_, i) => treePath.slice(0, i + 1)),
+  ].slice(0, onPath.length + 1);
 
   return (
     <section className="panel overview">
@@ -115,9 +145,13 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
                 <span key={i}>
                   {i > 0 && <span aria-hidden="true"> → </span>}
                   <button
-                    aria-current={i === crumbs.length - 1 ? "location" : undefined}
+                    aria-current={
+                      i === crumbs.length - 1 ? "location" : undefined
+                    }
                     onClick={() => onNavigate(p)}
-                    title={i === 0 ? "Back to the root" : `Open ${pathLabelOf(p)}`}
+                    title={
+                      i === 0 ? "Back to the root" : `Open ${pathLabelOf(p)}`
+                    }
                   >
                     {i === 0 ? "root" : `C${p[p.length - 1]}`}
                   </button>
@@ -126,7 +160,10 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             </nav>
             <label className="overview__select">
               <span>Colour tiles by</span>
-              <select value={metric.key} onChange={(e) => setMetricKey(e.target.value)}>
+              <select
+                value={metric.key}
+                onChange={(e) => setMetricKey(e.target.value)}
+              >
                 {groups.map((g) => (
                   <optgroup key={g} label={g}>
                     {metrics
@@ -142,7 +179,13 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             </label>
           </div>
 
-          <Legend metricLabel={metric.label} holeNote={metric.holeNote} format={metric.format} scale={scale} categorical={!metric.value} />
+          <Legend
+            metricLabel={metric.label}
+            holeNote={metric.holeNote}
+            format={metric.format}
+            scale={scale}
+            categorical={!metric.value}
+          />
 
           <div className="overview__cols">
             <div className="overview__map">
@@ -181,15 +224,8 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             />
           </div>
           <p className="hint overview__note">
-            Each tile’s second line names the feature whose mean moves most relative to its parent; under
-            0.3 SD it says “close to parent”. Hatched tiles are the points HDBSCAN left unassigned when it
-            split that node, so every node’s area equals its size. Clicking only moves the map: each click
-            zooms one level into the frame under the pointer, and clicking a leaf or unassigned tile pins it
-            beside the map. On the keyboard, Enter or Space zooms into a frame or selects a leaf. The top band,
-            Escape, Backspace or the Map crumbs zoom back out. To open a tile in the layers below, use Explore
-            (it opens the pinned tile, else the frame the map is zoomed into), double-click a leaf or
-            unassigned tile, or press E on any tile; an unassigned tile opens the layer that shows those
-            points as noise.
+            Each tile’s second line names the feature whose mean moves most
+            relative to its parent; under 0.3 SD it says “close to parent”.
             {cut &&
               ` The layer stack is limited to ${depth} layer${depth === 1 ? "" : "s"}: the map still zooms all the way down, but exploring a deeper tile opens its deepest ancestor the stack shows, and an unassigned tile at that depth or below opens its parent in the exploration panel without marking the noise.`}
           </p>
@@ -208,22 +244,42 @@ function Legend(props: {
 }) {
   const { metricLabel, holeNote, format, scale, categorical } = props;
   const { domain } = scale;
-  const hatch = <span className="overview__swatch overview__swatch--hatch" style={{ background: KIND_FILL.unassigned }} />;
+  const hatch = (
+    <span
+      className="overview__swatch overview__swatch--hatch"
+      style={{ background: KIND_FILL.unassigned }}
+    />
+  );
   if (categorical)
     return (
       <div className="overview__legend">
-        <span><span className="overview__swatch" style={{ background: KIND_FILL.internal }} />internal node (frames its sub-clusters)</span>
-        <span><span className="overview__swatch" style={{ background: KIND_FILL.leaf }} />leaf</span>
+        <span>
+          <span
+            className="overview__swatch"
+            style={{ background: KIND_FILL.internal }}
+          />
+          internal node (frames its sub-clusters)
+        </span>
+        <span>
+          <span
+            className="overview__swatch"
+            style={{ background: KIND_FILL.leaf }}
+          />
+          leaf
+        </span>
         <span>{hatch}unassigned (HDBSCAN noise)</span>
       </div>
     );
   // Only claim the hatched tiles sit on the ramp where they actually have a value.
-  const hatchNote = scale.unassigned !== "absent" && holeNote ? holeNote : {
-    all: "hatched = unassigned, same scale",
-    some: "hatched = unassigned, same scale where its mean is known",
-    none: "hatched = unassigned, no value under this metric",
-    absent: null,
-  }[scale.unassigned];
+  const hatchNote =
+    scale.unassigned !== "absent" && holeNote
+      ? holeNote
+      : {
+          all: "hatched = unassigned, same scale",
+          some: "hatched = unassigned, same scale where its mean is known",
+          none: "hatched = unassigned, no value under this metric",
+          absent: null,
+        }[scale.unassigned];
   return (
     <div className="overview__legend">
       {!domain ? (
@@ -231,7 +287,10 @@ function Legend(props: {
       ) : scale.constant ? (
         <span>
           {metricLabel}:
-          <span className="overview__swatch overview__swatch--after" style={{ background: CONSTANT_FILL }} />
+          <span
+            className="overview__swatch overview__swatch--after"
+            style={{ background: CONSTANT_FILL }}
+          />
           every tile = {format(domain[0])}
         </span>
       ) : (
@@ -245,8 +304,19 @@ function Legend(props: {
           {format(domain[1])}
         </span>
       )}
-      <span><span className="overview__swatch" style={{ background: NO_VALUE_FILL }} />no value</span>
-      {hatchNote && <span>{hatch}{hatchNote}</span>}
+      <span>
+        <span
+          className="overview__swatch"
+          style={{ background: NO_VALUE_FILL }}
+        />
+        no value
+      </span>
+      {hatchNote && (
+        <span>
+          {hatch}
+          {hatchNote}
+        </span>
+      )}
     </div>
   );
 }
