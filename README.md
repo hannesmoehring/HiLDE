@@ -300,7 +300,7 @@ cluster. It is the only way to reach the rows HDBSCAN labelled noise, which belo
 child cluster. Pressing it again returns to cluster picking; every navigation clears the
 flag, so it can never outlive the path it was set for.
 
-**Exploration panel.** The per-node embedding, with lasso and box selection. The
+**Exploration panel.** The per-node embedding, with lasso and box selection; scroll to zoom, and switch to *Pan* to drag the view. The
 selection drives three tabs. *Predicate* induces an axis-aligned conjunction describing
 the selection and reports its F1, precision and recall, scoped either against the whole
 dataset (global) or against the explored node (local). Clauses are listed in the order the

@@ -131,7 +131,7 @@ deliberate provenance — the files they name are not in this repository.
 |---|---|
 | `ClusterScatter.tsx` | **A** — parent node's embedding, coloured by child cluster, HDBSCAN noise as grey ×, clickable legend and centroid labels. Click to drill in. |
 | `CharacteristicsBar.tsx` | **B** — z-score bars per column with ±`z_std` error bars and sign-based colouring. |
-| `ProjectionScatter.tsx` | **C** — the exploration embedding (equal aspect) with lasso + box selection. |
+| `ProjectionScatter.tsx` | **C** — the exploration embedding (equal aspect) with lasso + box selection and zoom/pan (`hooks/usePlotZoom.ts`). |
 | `PcaVarianceBar.tsx` | **D** — compact stacked explained-variance strip that rides in the projection toolbar. |
 | `PredicateBands.tsx` | **E** — one row per feature, each normalised to its own global range: a faint track, a translucent full band (RCM 1.0) and a solid core band (RCM 0.9). Clause features are indigo and sort to the top in the order the greedy loop added them, each carrying its ΔF1 when added and its match count. |
 | `TargetBands.tsx` | **E2** — E's row geometry for the held-out `target_*` columns, drawn entirely in the target hue so an indigo band always means "predicate clause" and a teal one never does. |

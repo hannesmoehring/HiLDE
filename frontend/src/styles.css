@@ -1050,3 +1050,11 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 }
 .overview__shift-bar i { position: absolute; top: 0; bottom: 0; }
 .overview__shift-val { text-align: right; }
+
+/* ProjectionScatter's pan surface: an open hand that closes while dragging. */
+.plot-pan {
+  cursor: grab;
+}
+.plot-pan:active {
+  cursor: grabbing;
+}
