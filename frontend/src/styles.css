@@ -950,6 +950,107 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .mv-about dt { font-weight: 600; color: var(--ink); }
 .mv-about dd { margin: 0; }
 
+/* ── Overview (treemap of the whole hierarchy) ────────────────────────────── */
+.overview__toggle { margin-left: 12px; padding: 1px 8px; font-size: 11.5px; }
+/* Sized as a container: the rail beside the canvas opens and closes, so the
+   viewport width says nothing about how much room the map has. */
+.overview__body { padding: 10px 16px 12px; container-type: inline-size; }
+.overview__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.overview__crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.overview__crumbs button { padding: 1px 7px; font-size: 12px; }
+.overview__crumbs button[aria-current] { border-color: var(--ink); font-weight: 600; }
+.overview__select { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.overview__select select { max-width: 260px; }
+
+.overview__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.overview__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border: 1px solid var(--border-strong);
+}
+/* Same hatch as the SVG pattern: ink at 16% on a 45° grid. */
+.overview__swatch--hatch {
+  background-image: repeating-linear-gradient(45deg, rgba(22, 22, 20, 0.16) 0 1.5px, transparent 1.5px 4.2px) !important;
+}
+.overview__swatch--after { margin: 0 6px 0 7px; }
+.overview__ramp { display: inline-flex; gap: 1px; margin: 0 7px; vertical-align: -1px; }
+.overview__ramp i { display: block; width: 16px; height: 10px; }
+
+.overview__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+}
+/* Stack once the map would be narrower than about 1.5x the details column. */
+@container (max-width: 720px) {
+  .overview__cols { grid-template-columns: minmax(0, 1fr); }
+  .overview__select { margin-left: 0; }
+}
+.treemap { width: 100%; min-width: 0; }
+.treemap__tile { cursor: pointer; outline: none; }
+.overview__note { margin: 10px 0 0; max-width: 92ch; }
+
+.overview__details { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 12.5px; }
+.overview__name { font-size: 15px; font-weight: 600; margin-top: -6px; }
+.overview__path { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--muted); margin-top: -8px; }
+.overview__facts { margin: 0; }
+.overview__facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.overview__facts dt { color: var(--muted); }
+.overview__facts dd { margin: 0; text-align: right; }
+.overview__block .hint { margin: 4px 0 0; }
+.overview__caption { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
+.overview__comp { display: flex; gap: 2px; height: 10px; }
+.overview__comp span { display: block; height: 100%; }
+.overview__comp-in { background: var(--ink-2); }
+.overview__comp-out {
+  background: #f6f5f1 repeating-linear-gradient(45deg, rgba(22, 22, 20, 0.16) 0 1.5px, transparent 1.5px 4.2px);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.overview__shifts { display: grid; gap: 4px; }
+.overview__shift {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.overview__shift-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.overview__shift-bar { position: relative; height: 8px; background: var(--hair); }
+.overview__shift-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--border-strong);
+}
+.overview__shift-bar i { position: absolute; top: 0; bottom: 0; }
+.overview__shift-val { text-align: right; }
+
 /* ProjectionScatter's pan surface: an open hand that closes while dragging. */
 .plot-pan {
   cursor: grab;

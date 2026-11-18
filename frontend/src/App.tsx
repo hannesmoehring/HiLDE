@@ -18,8 +18,10 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
+import { OverviewPanel } from "./components/OverviewPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { useCounterfactual, type CounterfactualController } from "./counterfactual";
+import { useScrollToStackEnd } from "./hooks/useScrollToStackEnd";
 import { movementPropsFor, useMovement } from "./movement";
 import { getNodeAtPath } from "./treeNav";
 import type {
@@ -719,6 +721,8 @@ function Navigation(props: {
     layer: number;
     rowId: number;
   } | null>(null);
+  // A jump from the overview can land far below it; bring the opened panel up.
+  const stack = useScrollToStackEnd<HTMLDivElement>();
   const pathKey = treePath.join(",");
   useEffect(() => {
     setOutlierPick(null);
@@ -874,7 +878,17 @@ function Navigation(props: {
     explorationPath !== null && explorationPath.length > 0;
 
   return (
-    <>
+    <div ref={stack.ref}>
+      <OverviewPanel
+        root={root}
+        treePath={treePath}
+        nLayers={nLayers}
+        normalized={analysis.meta.config.normalize !== false}
+        onNavigate={(path) => {
+          navigate(path);
+          stack.scroll();
+        }}
+      />
       {layerViews}
       {waiting && (
         <div className="empty">
@@ -895,6 +909,6 @@ function Navigation(props: {
           charNonFeatureOnly={charNonFeatureOnly}
         />
       )}
-    </>
+    </div>
   );
 }
