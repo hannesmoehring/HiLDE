@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { TreemapOverview } from "../charts/TreemapOverview";
 import { buildOverview, flatten, pathKeys, pathLabelOf, type OverviewTile } from "../overview";
 import { CONSTANT_FILL, KIND_FILL, NO_VALUE_FILL, RAMP, metricsFor, scaleFor, type MetricScale } from "../overviewMetrics";
+import { maxClusterDepth, targetOf } from "../overviewTarget";
 import type { TreeNode } from "../types";
 import { OverviewDetails } from "./OverviewDetails";
 
@@ -46,6 +47,8 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
   const scale = useMemo(() => scaleFor(metric, tree), [metric, tree]);
   const onPath = pathKeys(root, treePath);
+  // The stack cuts the tree off: say so wherever the map promises a target.
+  const cut = maxClusterDepth(tiles) > depth;
   const hasCharacteristics = tiles.some((t) => (t.node?.rel_characteristics.length ?? 0) > 0);
 
   const current = tiles.find((t) => t.key === (onPath[onPath.length - 1] ?? tree.key)) ?? tree;
@@ -118,14 +121,15 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             </label>
           </div>
 
-          <Legend metricLabel={metric.label} format={metric.format} scale={scale} categorical={!metric.value} />
+          <Legend metricLabel={metric.label} holeNote={metric.holeNote} format={metric.format} scale={scale} categorical={!metric.value} />
 
           <div className="overview__cols">
             <TreemapOverview
               root={tree}
               fill={scale.fill}
               pathKeys={onPath}
-              onActivate={(t) => onNavigate(t.path)}
+              targetOf={(t) => targetOf(t, depth)}
+              onActivate={(t) => onNavigate(targetOf(t, depth).path)}
               onInspect={setInspected}
             />
             <OverviewDetails
@@ -142,6 +146,8 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             0.3 SD it says “close to parent”. Hatched tiles are the points HDBSCAN left unassigned when it
             split that node, so every node’s area equals its size. Click a tile (or Enter on it) to open it
             below; an unassigned tile opens the layer that shows those points as noise.
+            {cut &&
+              ` The layer stack is limited to ${depth} layer${depth === 1 ? "" : "s"}, so a deeper tile opens its deepest ancestor the stack shows, and an unassigned tile at that depth or below opens its parent in the exploration panel without marking the noise.`}
           </p>
         </div>
       )}
@@ -151,11 +157,12 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
 
 function Legend(props: {
   metricLabel: string;
+  holeNote?: string;
   format: (v: number) => string;
   scale: MetricScale;
   categorical: boolean;
 }) {
-  const { metricLabel, format, scale, categorical } = props;
+  const { metricLabel, holeNote, format, scale, categorical } = props;
   const { domain } = scale;
   const hatch = <span className="overview__swatch overview__swatch--hatch" style={{ background: KIND_FILL.unassigned }} />;
   if (categorical)
@@ -167,7 +174,7 @@ function Legend(props: {
       </div>
     );
   // Only claim the hatched tiles sit on the ramp where they actually have a value.
-  const hatchNote = {
+  const hatchNote = scale.unassigned !== "absent" && holeNote ? holeNote : {
     all: "hatched = unassigned, same scale",
     some: "hatched = unassigned, same scale where its mean is known",
     none: "hatched = unassigned, no value under this metric",

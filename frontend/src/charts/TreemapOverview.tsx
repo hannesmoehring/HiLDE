@@ -9,12 +9,15 @@ import * as d3 from "d3";
 import { useResize } from "../hooks/useResize";
 import { fmtCount, fmtPct, kindLabel, shiftName, type OverviewTile } from "../overview";
 import { textOn } from "../overviewMetrics";
+import type { TileTarget } from "../overviewTarget";
 import { theme } from "./theme";
 
 export interface TreemapOverviewProps {
   root: OverviewTile;
   fill: (t: OverviewTile) => string;
   pathKeys: string[]; // nodes on the current treePath, root excluded
+  // What activating a tile opens; the panel owns the layer-stack depth.
+  targetOf: (t: OverviewTile) => TileTarget;
   onActivate: (t: OverviewTile) => void;
   onInspect: (t: OverviewTile | null) => void; // hover or keyboard focus
 }
@@ -28,6 +31,11 @@ const fits = (s: string, w: number) => s.length * CHAR_W + 8 <= w;
 type Cell = d3.HierarchyRectangularNode<OverviewTile>;
 
 const isFrame = (t: OverviewTile) => t.children.length > 0;
+
+// Below this in either direction a tile has no area to see, click or hover, so
+// it is not drawn and not a keyboard stop; its nearest drawn ancestor stands in.
+const MIN_EXTENT = 1;
+const drawable = (c: Cell) => c.x1 - c.x0 >= MIN_EXTENT && c.y1 - c.y0 >= MIN_EXTENT;
 
 function heightFor(width: number): number {
   return Math.round(Math.max(280, Math.min(460, width * 0.48)));
@@ -61,19 +69,16 @@ function headerText(c: Cell): string {
   return "";
 }
 
-function ariaLabel(t: OverviewTile): string {
+function ariaLabel(t: OverviewTile, target: TileTarget, hidden: number): string {
   const share = t.owner ? `, ${fmtPct(t.size / t.owner.n_points)} of its parent` : "";
   const name = shiftName(t);
-  const target =
-    t.kind === "unassigned"
-      ? "opens the layer that shows these points as noise"
-      : "opens it in the layers below";
+  const small = hidden ? `, ${hidden} tile${hidden === 1 ? "" : "s"} inside too small to show` : "";
   return `${t.pathLabel}, ${kindLabel(t.kind)}, ${fmtCount(t.size)} points${share}${
     name && t.kind !== "unassigned" ? `, ${name}` : ""
-  }. Activate: ${target}.`;
+  }${small}. Activate: ${target.what}.`;
 }
 
-export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }: TreemapOverviewProps) {
+export function TreemapOverview({ root, fill, pathKeys, targetOf, onActivate, onInspect }: TreemapOverviewProps) {
   const { ref, size } = useResize<HTMLDivElement>();
   const width = size.width;
   const height = heightFor(width);
@@ -106,15 +111,37 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
     return layout(h).descendants();
   }, [root, width, height]);
 
-  // Pre-order, so the arrow keys walk a parent before its children.
+  // Pre-order, so the arrow keys walk a parent before its children. A tile too
+  // small to draw is skipped along with its subtree: its children are no bigger.
   const order = useMemo(() => {
     const out: Cell[] = [];
-    cells[0]?.eachBefore((c) => out.push(c));
+    const walk = (c: Cell) => {
+      if (!drawable(c)) return;
+      out.push(c);
+      c.children?.forEach(walk);
+    };
+    if (cells[0]) walk(cells[0]);
     return out;
   }, [cells]);
-  const byKey = useMemo(() => new Map(cells.map((c) => [c.data.key, c])), [cells]);
+  // Every laid-out cell, so a path outline can still find a collapsed node.
+  const allByKey = useMemo(() => new Map(cells.map((c) => [c.data.key, c])), [cells]);
+  const byKey = useMemo(() => new Map(order.map((c) => [c.data.key, c])), [order]);
+  // Descendants not drawn, per drawn frame: told in its accessible name.
+  const hiddenIn = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of order)
+      if (c.children) m.set(c.data.key, c.descendants().filter((d) => !byKey.has(d.data.key)).length);
+    return m;
+  }, [order, byKey]);
 
-  const selectedKey = pathKeys[pathKeys.length - 1] ?? root.key;
+  // The selected node may be too small to draw; its nearest drawn ancestor then
+  // carries the current marker and the tab stop.
+  const drawnAncestor = (key: string): string => {
+    let c = allByKey.get(key);
+    while (c && !byKey.has(c.data.key)) c = c.parent ?? undefined;
+    return c?.data.key ?? root.key;
+  };
+  const selectedKey = drawnAncestor(pathKeys[pathKeys.length - 1] ?? root.key);
   // One tab stop for the whole map (roving tabindex): a deep tree has hundreds of
   // tiles, and tabbing through all of them to reach the layers would be a trap.
   const tabKey = focusKey && byKey.has(focusKey) ? focusKey : byKey.has(selectedKey) ? selectedKey : root.key;
@@ -175,7 +202,7 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
             </pattern>
           </defs>
 
-          {cells.map((c) => {
+          {order.map((c) => {
             const t = c.data;
             const w = Math.max(0, c.x1 - c.x0);
             const h = Math.max(0, c.y1 - c.y0);
@@ -194,7 +221,7 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
                 className="treemap__tile"
                 role="button"
                 tabIndex={t.key === tabKey ? 0 : -1}
-                aria-label={ariaLabel(t)}
+                aria-label={ariaLabel(t, targetOf(t), hiddenIn.get(t.key) ?? 0)}
                 aria-current={t.key === selectedKey && t.kind !== "unassigned" ? "true" : undefined}
                 onClick={() => onActivate(t)}
                 onKeyDown={(e) => onKey(e, c)}
@@ -245,9 +272,9 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
           {/* Where the layer stack is: ancestors thin, the selected node heavy.
               White under the ink, like Ring, so it holds on the dark ramp steps. */}
           <g pointerEvents="none">
-            {pathKeys.map((k) => {
+            {[...new Set(pathKeys.map(drawnAncestor))].map((k) => {
               const c = byKey.get(k);
-              if (!c) return null;
+              if (!c || k === root.key) return null;
               const sel = k === selectedKey;
               const box = {
                 x: c.x0,

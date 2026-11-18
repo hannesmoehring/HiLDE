@@ -19,6 +19,8 @@ export interface OverviewMetric {
   value: ((t: OverviewTile) => number | null) | null; // null = categorical (node type)
   format: (v: number) => string;
   fixed?: [number, number];
+  // Legend text for the hatched tiles when the metric defines them its own way.
+  holeNote?: string;
 }
 
 // Sequential single-hue ramp for every magnitude. A slate indigo, because each
@@ -71,9 +73,13 @@ export function metricsFor(root: OverviewTile): OverviewMetric[] {
       key: "unassigned",
       group: "Structure",
       label: "Unassigned share when split",
-      value: unassignedShare,
+      // A frame is almost all children, so its own fill shows only in a thin
+      // band. The hatched tile IS the unassigned part, so it carries its
+      // parent's share too, which is also how the root's share reaches the map.
+      value: (t) => (t.kind === "unassigned" && t.owner ? t.size / t.owner.n_points : unassignedShare(t)),
       format: fmtPct,
       fixed: [0, 1],
+      holeNote: "hatched = unassigned, coloured by its parent’s share",
     },
   ];
   if (hasScores)
