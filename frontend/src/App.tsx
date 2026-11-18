@@ -24,6 +24,8 @@ import { useCounterfactual, type CounterfactualController } from "./counterfactu
 import { useScrollToStackEnd } from "./hooks/useScrollToStackEnd";
 import { movementPropsFor, useMovement } from "./movement";
 import { getNodeAtPath } from "./treeNav";
+import { TourOverlay } from "./tour/TourOverlay";
+import { useTour } from "./tour/useTour";
 import type {
   AnalysisConfig,
   AnalysisResponse,
@@ -34,6 +36,9 @@ import type {
   ImageSpec,
   ModeInfo,
 } from "./types";
+
+// Hierarchical depth of the tour's demo run.
+const DEMO_LAYERS = 2;
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -222,8 +227,10 @@ export default function App() {
     );
   }
 
-  async function build() {
-    if (!datasetKey || featureCols.length === 0) return;
+  // The tour's demo passes its own knobs and columns: the state setters it calls
+  // first have not landed by the time it builds.
+  async function build(cfg: AnalysisConfig = config, cols: string[] = featureCols) {
+    if (!datasetKey || cols.length === 0) return;
     setLoading(true);
     setError(null);
     setAnalysis(null);
@@ -231,7 +238,7 @@ export default function App() {
     try {
       // On a counterfactual session the rail rebuilds the counterfactual data:
       // the edits are the data now, the rail only changes how it is analysed.
-      const res = await runAnalysis(cf.activeDatasetKey, featureCols, config, useCache);
+      const res = await runAnalysis(cf.activeDatasetKey, cols, cfg, useCache);
       setAnalysis(res);
     } catch (e) {
       setError(String(e));
@@ -246,6 +253,71 @@ export default function App() {
   // 150-row dataset are a 500, not an empty result. Never hand them a mismatched pair.
   const shownAnalysis =
     analysis && analysis.meta.dataset === cf.activeDatasetKey ? analysis : null;
+
+  // ── Guided tour ───────────────────────────────────────────────────────────
+  // The tour runs on one demo: Wine quality, default features, two layers. Loading
+  // it is a request that settles over several renders (dataset switch, its
+  // columns, a counterfactual reset), so it is a pending flag the effect below
+  // walks forward, one precondition at a time.
+  const demoKey =
+    datasets.find((d) => d.key.startsWith("Wine quality"))?.key ?? datasets[0]?.key ?? "";
+  const [demoPending, setDemoPending] = useState(false);
+
+  function startDemo() {
+    setConfigOpen(true);
+    setCharNonFeatureOnly(false);
+    if (!demoKey) return;
+    const builtLayers = Number(shownAnalysis?.meta.config.hierarchical_layers ?? 0);
+    if (shownAnalysis && datasetKey === demoKey && cf.stack.length === 0 && builtLayers >= DEMO_LAYERS) {
+      // Already on a demo-shaped run: show it at two layers, rebuild nothing.
+      patchConfig({ hierarchical_layers: DEMO_LAYERS });
+      navigate([]);
+      return;
+    }
+    if (
+      cf.stack.length > 0 &&
+      !window.confirm(
+        "The tour loads a fresh Wine quality run. That ends your counterfactual session and drops its applied edits. Continue?",
+      )
+    )
+      return;
+    if (cf.stack.length > 0) cf.reset();
+    setDemoPending(true);
+  }
+
+  useEffect(() => {
+    if (!demoPending || cf.stack.length > 0 || cfBusy || loading) return;
+    if (datasetKey !== demoKey) {
+      setDatasetKey(demoKey);
+      return;
+    }
+    if (columns?.key !== demoKey) return;
+    if (cacheOnly) {
+      // Nothing can be built here: pick a stored two-layer run if there is one.
+      if (cachedRuns === null) return;
+      const run = runsHere.find((r) => Number(r.config.hierarchical_layers) === DEMO_LAYERS);
+      if (run) setRunPick(run);
+      setDemoPending(false);
+      return;
+    }
+    setDemoPending(false);
+    const cfg = { ...config, hierarchical_layers: DEMO_LAYERS };
+    setConfig(cfg);
+    setFeatureCols(columns.default_feature_cols);
+    void build(cfg, columns.default_feature_cols);
+    // `build` and `config` are read at the moment the preconditions are met.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoPending, cf.stack.length, cfBusy, loading, datasetKey, demoKey, columns, cacheOnly, cachedRuns, runsHere]);
+
+  const tour = useTour(
+    {
+      startDemo,
+      navigate: (path) => navigate(path),
+      setNonFeatureOnly: setCharNonFeatureOnly,
+      tree: () => shownAnalysis?.tree ?? null,
+    },
+    mode !== null && !mode.maintenance,
+  );
 
   const runMeta = [
     datasetKey || "no dataset",
@@ -295,6 +367,14 @@ export default function App() {
         >
           ▶ Intro video
         </a>
+        <button
+          className="topbar__tour"
+          data-tour="tour-button"
+          onClick={tour.start}
+          title="Replay the guided tour of the interface"
+        >
+          ? Tour
+        </button>
         <span className="topbar__meta">{runMeta}</span>
       </header>
 
@@ -309,7 +389,7 @@ export default function App() {
               </div>
 
               <div className="cfg">
-                <section className="cfg__block">
+                <section className="cfg__block" data-tour="dataset">
                   <h3>Dataset</h3>
                   <label className="field">
                     <span>
@@ -382,7 +462,7 @@ export default function App() {
                 )}
 
                 {columns && (
-                  <section className="cfg__block">
+                  <section className="cfg__block" data-tour="features">
                     <div className="cfg__head">
                       <h3>Feature columns</h3>
                       <span className="cfg__count">
@@ -425,6 +505,7 @@ export default function App() {
                     <label
                       className="field--check"
                       style={{ marginTop: "0.6rem", marginBottom: 0 }}
+                      data-tour="nonfeature"
                     >
                       <input
                         type="checkbox"
@@ -448,7 +529,7 @@ export default function App() {
                 </fieldset>
               </div>
 
-              <div className="cfg__build">
+              <div className="cfg__build" data-tour="build">
                 {/* `cfBusy` gates this the way it gates the dataset selector and
                     Undo/Reset. Build is the one control that can move App state
                     from under an apply that is already out: it nulls `analysis`,
@@ -457,7 +538,7 @@ export default function App() {
                     cannot see either — Build changes no base, generation or head. */}
                 <button
                   className="primary"
-                  onClick={build}
+                  onClick={() => build()}
                   disabled={loading || featureCols.length === 0 || cfBusy || cacheOnly}
                   title={
                     cacheOnly
@@ -638,6 +719,7 @@ export default function App() {
           )}
         </main>
       </div>
+      {tour.active && <TourOverlay tour={tour} />}
     </div>
   );
 }
@@ -751,7 +833,7 @@ function Navigation(props: {
     const movingHere =
       movement.state.phase !== "idle" && movement.state.nodeId === node.id;
     layerViews.push(
-      <section className="panel layer" key={`layer-${L}`}>
+      <section className="panel layer" key={`layer-${L}`} data-tour={`layer-${L}`}>
         <div className="panel__head">
           <span className="kicker">Layer {L}</span>
           <span className="panel__title">
@@ -775,7 +857,7 @@ function Navigation(props: {
             />
             {/* The projection above is what this acts on, so the action sits under it
                 rather than in the side column, which is about the selected child. */}
-            <div className="layer__explore">
+            <div className="layer__explore" data-tour={`explore-layer-${L}`}>
               <p className="hint">
                 {exploringHere
                   ? "Exploring every point in this layer — its clusters are not split up."
@@ -797,7 +879,7 @@ function Navigation(props: {
               </button>
             </div>
           </div>
-          <div className="layer__side">
+          <div className="layer__side" data-tour={`layer-${L}-side`}>
             {child ? (
               <LayerSide
                 parent={node}
