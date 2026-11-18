@@ -52,6 +52,14 @@ export function useMapFocus(tree: OverviewTile, currentKey: string): MapFocus {
     setSelectedRaw(currentKey === tree.key ? null : currentKey);
   }, [currentKey, index, tree.key]);
 
+  // The landing an explore predicts is good for the render its navigate causes
+  // (App sets the path synchronously, batched with `explored`), not beyond: if
+  // that render did not land there, a later navigation from elsewhere to the
+  // same key must still pin and widen. Runs after the effect above, every render.
+  useEffect(() => {
+    ownLanding.current = null;
+  });
+
   function zoomTo(t: OverviewTile) {
     if (!isFrame(t)) return;
     setFocusRaw(t.key);

@@ -11,6 +11,7 @@ import { maxClusterDepth, targetOf } from "../overviewTarget";
 import type { TreeNode } from "../types";
 import { ExploreAction } from "./ExploreAction";
 import { MapCrumbs } from "./MapCrumbs";
+import { MapStatus } from "./MapStatus";
 import { OverviewDetails } from "./OverviewDetails";
 
 interface Props {
@@ -61,7 +62,10 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
   const hovered = inspected && tiles.includes(inspected) ? inspected : null;
   const shown = hovered ?? map.selected ?? map.focus;
   const source = hovered ? "hover" : map.selected ? "selected" : "focus";
-  const shownTarget = targetOf(shown, depth);
+  // The button acts on what is pinned, never on a passing hover or focus preview:
+  // pressing it blurs the map, which drops that preview before the click lands.
+  const exploreTile = map.selected ?? map.focus;
+  const exploreTarget = targetOf(exploreTile, depth);
 
   // Exactly what activating a tile did before the map could zoom.
   function explore(t: OverviewTile) {
@@ -143,6 +147,7 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
           <div className="overview__cols">
             <div className="overview__map">
               <MapCrumbs chain={map.chain} onZoom={map.zoomTo} />
+              <MapStatus focus={map.focus} selected={map.selected} />
               <TreemapOverview
                 tree={tree}
                 focus={map.focus}
@@ -165,10 +170,10 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
               isCurrent={shown.key === currentKey}
               action={
                 <ExploreAction
-                  tile={shown}
-                  target={shownTarget}
-                  isOpen={shownTarget.path.join(",") === treePath.join(",")}
-                  onExplore={() => explore(shown)}
+                  tile={exploreTile}
+                  target={exploreTarget}
+                  isOpen={exploreTarget.path.join(",") === treePath.join(",")}
+                  onExplore={() => explore(exploreTile)}
                 />
               }
               hasCharacteristics={hasCharacteristics}
@@ -179,10 +184,12 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
             Each tile’s second line names the feature whose mean moves most relative to its parent; under
             0.3 SD it says “close to parent”. Hatched tiles are the points HDBSCAN left unassigned when it
             split that node, so every node’s area equals its size. Clicking only moves the map: each click
-            zooms one level into the frame under the pointer (Enter zooms into the focused tile), clicking a
-            leaf or unassigned tile pins it beside the map, and the top band, Escape or the Map crumbs zoom
-            back out. To open a tile in the layers below, use Explore, double-click it, or press E on it; an
-            unassigned tile opens the layer that shows those points as noise.
+            zooms one level into the frame under the pointer, and clicking a leaf or unassigned tile pins it
+            beside the map. On the keyboard, Enter or Space zooms into a frame or selects a leaf. The top band,
+            Escape, Backspace or the Map crumbs zoom back out. To open a tile in the layers below, use Explore
+            (it opens the pinned tile, else the frame the map is zoomed into), double-click a leaf or
+            unassigned tile, or press E on any tile; an unassigned tile opens the layer that shows those
+            points as noise.
             {cut &&
               ` The layer stack is limited to ${depth} layer${depth === 1 ? "" : "s"}: the map still zooms all the way down, but exploring a deeper tile opens its deepest ancestor the stack shows, and an unassigned tile at that depth or below opens its parent in the exploration panel without marking the noise.`}
           </p>

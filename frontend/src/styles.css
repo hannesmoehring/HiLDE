@@ -1022,6 +1022,11 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .treemap { width: 100%; min-width: 0; user-select: none; -webkit-user-select: none; }
 .treemap__tile { cursor: pointer; outline: none; }
 .treemap__caption { margin: 4px 0 0; font-size: 11.5px; color: var(--faint); min-height: 1.45em; }
+/* Read out, not shown: the map's live region. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
 .overview__explore { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .overview__explore button { white-space: normal; text-align: left; padding: 5px 14px; }
 .overview__explore .hint { margin: 0; font-size: 12px; }

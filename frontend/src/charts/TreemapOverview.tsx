@@ -2,19 +2,19 @@
 // subtree (the whole tree by default) at full depth, and zooms: a click digs one
 // level into the frame under the cursor, the focused frame's own header band (or
 // Escape / Backspace) climbs back out. Zooming only moves the map; opening a tile
-// in the layer stack is a separate act ("explore": double-click, E, or the
-// details column's button). It outlines where the stack currently is and the
+// in the layer stack is a separate act ("explore": E, the details column's button,
+// or a double-click on a leaf / unassigned tile, which never zooms on the way). It outlines where the stack currently is and the
 // tile pinned in the details column.
 //
 // Props are declared here rather than in charts/props.ts: that file is the
 // contract for the six charts ported from Streamlit, and this one is new.
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { OverviewTile } from "../overview";
 import { isFrame } from "../overviewFocus";
 import type { TileTarget } from "../overviewTarget";
 import { theme } from "./theme";
 import { useResize } from "../hooks/useResize";
-import { ariaLabel, drawable, heightFor, layoutOf, type Cell } from "./treemapLayout";
+import { HEADER, ariaLabel, drawable, heightFor, layoutOf, type Cell } from "./treemapLayout";
 import { Outline, TreemapTileShape } from "./TreemapTileShape";
 import { useTileTween } from "./useTileTween";
 import { TreemapCaption } from "./TreemapCaption";
@@ -34,6 +34,18 @@ export interface TreemapOverviewProps {
   onInspect: (t: OverviewTile | null) => void; // hover or keyboard focus
 }
 
+const FIRST = "\u0000first";
+
+// The ring follows :focus-visible where the browser knows it; else, whether a
+// pointer press caused the focus.
+function focusVisible(el: Element, pointerDown: boolean): boolean {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return !pointerDown;
+  }
+}
+
 export function TreemapOverview(props: TreemapOverviewProps) {
   const { tree, focus, fill, pathKeys, selectedKey, targetOf, onZoom, onZoomOut, onSelect, onExplore, onInspect } = props;
   const { ref, size } = useResize<HTMLDivElement>();
@@ -46,12 +58,17 @@ export function TreemapOverview(props: TreemapOverviewProps) {
   // focuses the tile under the pointer, which may not be the one it acted on.
   const [ringVisible, setRingVisible] = useState(false);
   const pointerDown = useRef(false);
+  // The pointer is over the focused frame's header band, not its gutters.
+  const [overBand, setOverBand] = useState(false);
   const tileRefs = useRef(new Map<string, SVGGElement>());
-  // Where keyboard focus goes once a zoom has re-laid the map out.
+  // Where keyboard focus goes once a zoom has re-laid the map out: a tile key,
+  // or FIRST for the new focus's first tile inside (so Enter, Enter digs on).
   const restore = useRef<string | null>(null);
-  // The tile the first click of a double-click acted on: the second one lands
-  // on whatever the zoom moved under the pointer.
+  // The leaf / unassigned tile the last click selected, and the same tile again
+  // when the second click of a pair landed on it: only then is a double-click
+  // "explore". A pair whose first click zoomed is two zooms, never an explore.
   const lastClick = useRef<OverviewTile | null>(null);
+  const dblTarget = useRef<OverviewTile | null>(null);
   const canZoomOut = focus.key !== tree.key;
 
   const cells = useMemo(() => layoutOf(focus, width, height), [focus, width, height]);
@@ -89,7 +106,7 @@ export function TreemapOverview(props: TreemapOverviewProps) {
     if (stale(hoverKey) || stale(focusKey))
       onInspect(hoverKey && !stale(hoverKey) ? (byKey.get(hoverKey)?.data ?? null) : null);
     // Then hand keyboard focus on; its onFocus previews the tile it lands on.
-    const k = restore.current;
+    const k = restore.current === FIRST ? order[1]?.data.key ?? order[0]?.data.key : restore.current;
     restore.current = null;
     if (k && byKey.has(k)) tileRefs.current.get(k)?.focus();
     // Only a new layout can strand a key; hover and focus changes are handled where they happen.
@@ -119,6 +136,15 @@ export function TreemapOverview(props: TreemapOverviewProps) {
     return s;
   };
 
+  // Clicks on the focused frame count only in its header band: its gutters and
+  // padding sit between tiles, and a near miss must not zoom the map out.
+  const inBand = (e: MouseEvent) => {
+    const svg = (e.currentTarget as SVGElement).ownerSVGElement;
+    const top = svg?.getBoundingClientRect().top ?? 0;
+    const y0 = cells[0]?.y0 ?? 0;
+    return e.clientY - top < y0 + HEADER;
+  };
+
   // Enter on a tile, or a click on the tile a click resolves to.
   function act(c: Cell) {
     if (c === cells[0]) {
@@ -141,8 +167,11 @@ export function TreemapOverview(props: TreemapOverviewProps) {
       onZoomOut();
     };
     const enter = () => {
-      if (c === cells[0]) restore.current = focus.key;
-      else if (isFrame(c.data)) restore.current = c.data.key;
+      if (c === cells[0]) {
+        zoomOut(); // a no-op on the whole-tree map, but still the map's key
+        return;
+      }
+      if (isFrame(c.data)) restore.current = FIRST;
       act(c);
     };
     const moves: Record<string, () => void | false> = {
@@ -160,7 +189,12 @@ export function TreemapOverview(props: TreemapOverviewProps) {
       E: () => onExplore(c.data),
     };
     const move = moves[e.key];
-    if (move && !e.altKey && !e.ctrlKey && !e.metaKey && move() !== false) e.preventDefault();
+    if (move && !e.altKey && !e.ctrlKey && !e.metaKey && move() !== false) {
+      e.preventDefault();
+      // Handled here: Escape must not also reach window listeners (it would
+      // cancel a running movement preview in movement.ts).
+      e.stopPropagation();
+    }
   }
 
   const inspect = (key: string | null) => {
@@ -169,7 +203,8 @@ export function TreemapOverview(props: TreemapOverviewProps) {
 
   const hover = hoverKey ? byKey.get(hoverKey) : undefined;
   // The hover ring marks what a click acts on, not the (deeper) tile described.
-  const hoverStep = hover ? stepOf(hover) : undefined;
+  // Over the focused frame itself only the header band does anything.
+  const hoverStep = !hover ? undefined : hover === cells[0] ? (overBand && canZoomOut ? hover : undefined) : stepOf(hover);
   const keyFocus = focusKey && ringVisible ? byKey.get(focusKey) : undefined;
   const labels = !tween.moving;
   const box = tween.boxOf;
@@ -182,7 +217,7 @@ export function TreemapOverview(props: TreemapOverviewProps) {
             width={width}
             height={height}
             role="group"
-            aria-label={`Treemap of ${focus.pathLabel}${canZoomOut ? ", zoomed in" : ", the whole hierarchy"}. Arrow keys move between tiles; Enter zooms into a frame or selects a tile; E explores the tile in the layers below; Escape zooms out.`}
+            aria-label={`Treemap of ${focus.pathLabel}${canZoomOut ? ", zoomed in" : ", the whole hierarchy"}. Arrow keys move between tiles; Enter or Space zooms into a frame or selects a leaf, and on the focused frame zooms out; E explores the tile in the layers below; Escape or Backspace zooms out.`}
             onMouseLeave={() => {
               setHoverKey(null);
               // A tile focused by a click is not being looked at once the pointer leaves.
@@ -191,8 +226,13 @@ export function TreemapOverview(props: TreemapOverviewProps) {
             onPointerDown={() => {
               pointerDown.current = true;
             }}
+            onPointerUp={() => {
+              pointerDown.current = false;
+            }}
             onDoubleClick={() => {
-              if (lastClick.current) onExplore(lastClick.current);
+              const t = dblTarget.current;
+              dblTarget.current = null;
+              if (t) onExplore(t);
             }}
           >
             {/* The hatch follows the label ink: ink lines vanish on the dark ramp
@@ -235,18 +275,31 @@ export function TreemapOverview(props: TreemapOverviewProps) {
                   })}
                   aria-current={t.key === currentKey && t.kind !== "unassigned" ? "true" : undefined}
                   onClick={(e) => {
-                    if (e.detail > 1) return; // the second half of a double-click
                     const s = stepOf(c);
-                    lastClick.current = s.data;
+                    if (s === cells[0]) {
+                      lastClick.current = dblTarget.current = null;
+                      if (inBand(e)) act(s);
+                      return;
+                    }
+                    // The second click on the tile the first one selected: the
+                    // double-click that follows explores it.
+                    if (e.detail > 1 && lastClick.current === s.data) {
+                      dblTarget.current = s.data;
+                      return;
+                    }
+                    dblTarget.current = null;
+                    lastClick.current = isFrame(s.data) ? null : s.data;
                     act(s);
                   }}
                   onKeyDown={(e) => onKey(e, c)}
-                  onMouseEnter={() => {
+                  onMouseEnter={(e) => {
+                    if (c === cells[0]) setOverBand(inBand(e));
                     setHoverKey(t.key);
                     inspect(t.key);
                   }}
-                  onFocus={() => {
-                    setRingVisible(!pointerDown.current);
+                  onMouseMove={c === cells[0] ? (e) => setOverBand(inBand(e)) : undefined}
+                  onFocus={(e) => {
+                    setRingVisible(focusVisible(e.currentTarget, pointerDown.current));
                     pointerDown.current = false;
                     setFocusKey(t.key);
                     inspect(t.key);

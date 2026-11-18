@@ -13,15 +13,12 @@ interface Props {
 export function TreemapCaption({ step, isFocus, canZoomOut }: Props) {
   let text: string;
   if (!step)
-    text = `Click a tile to zoom in one level · double-click or E to explore it in the layers${
+    text = `Click a tile to zoom in one level · double-click a leaf, press E or use Explore to open a tile in the layers${
       canZoomOut ? " · Esc or the top band zooms out" : ""
     }`;
-  else if (isFocus)
-    text = canZoomOut
-      ? `Click: zoom out one level · double-click: explore ${step.pathLabel}`
-      : "The whole hierarchy · click a tile inside to zoom in";
-  else
-    text = `Click: ${isFrame(step) ? "zoom into" : "select"} ${step.pathLabel} · double-click: explore it`;
+  else if (isFocus) text = "Click: zoom out one level";
+  else if (isFrame(step)) text = `Click: zoom into ${step.pathLabel}`;
+  else text = `Click: select ${step.pathLabel} · double-click: explore it`;
   return (
     <p className="treemap__caption" aria-hidden="true">
       {text}
