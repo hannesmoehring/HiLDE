@@ -1,6 +1,7 @@
 // The column beside the treemap: one tile in words and numbers, so the map
-// itself can stay sparse. Shows the hovered / focused tile, else the node the
-// layer stack is on.
+// itself can stay sparse. Shows the hovered / keyboard-focused tile, else the
+// pinned (selected) one, else the frame the map is zoomed into.
+import type { ReactNode } from "react";
 import { theme } from "../charts/theme";
 import {
   fmtCount,
@@ -15,7 +16,9 @@ interface Props {
   tile: OverviewTile;
   total: number;
   metric: OverviewMetric;
-  source: "hover" | "path";
+  source: "hover" | "selected" | "focus";
+  isCurrent: boolean; // the layer stack is on this node
+  action?: ReactNode; // the explore button, under the name
   hasCharacteristics: boolean;
   normalized: boolean;
 }
@@ -24,7 +27,10 @@ interface Props {
 // says how far they go.
 const SD_MAX = 3;
 
-export function OverviewDetails({ tile, total, metric, source, hasCharacteristics, normalized }: Props) {
+const KICKER = { hover: "Highlighted tile", selected: "Selected tile", focus: "Map focus" } as const;
+
+export function OverviewDetails(props: Props) {
+  const { tile, total, metric, source, isCurrent, action, hasCharacteristics, normalized } = props;
   const parent = tile.owner;
   const split = unassignedShare(tile);
   const value = metric.value?.(tile);
@@ -43,9 +49,13 @@ export function OverviewDetails({ tile, total, metric, source, hasCharacteristic
 
   return (
     <div className="overview__details">
-      <div className="kicker">{source === "hover" ? "Highlighted tile" : "Current node"}</div>
+      <div className="kicker">
+        {KICKER[source]}
+        {isCurrent ? " · open below" : ""}
+      </div>
       <div className="overview__name">{tile.label}</div>
       <div className="overview__path">{tile.pathLabel}</div>
+      {action}
 
       <dl className="overview__facts">
         {rows.map(([k, v]) => (

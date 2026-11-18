@@ -1,12 +1,16 @@
 // "Overview": the whole cluster hierarchy as one treemap at the top of the
-// canvas, with a colour switch, its legend and a details column. It only reads
-// the tree and the path, and only ever changes the path through `onNavigate`.
+// canvas, with a colour switch, its legend and a details column. The map zooms
+// on its own (useMapFocus) without touching the layer stack; it only ever changes
+// the path through `onNavigate`, when a tile is explored or a path crumb clicked.
 import { useMemo, useState } from "react";
 import { TreemapOverview } from "../charts/TreemapOverview";
+import { useMapFocus } from "../hooks/useMapFocus";
 import { buildOverview, flatten, pathKeys, pathLabelOf, type OverviewTile } from "../overview";
 import { CONSTANT_FILL, KIND_FILL, NO_VALUE_FILL, RAMP, metricsFor, scaleFor, type MetricScale } from "../overviewMetrics";
 import { maxClusterDepth, targetOf } from "../overviewTarget";
 import type { TreeNode } from "../types";
+import { ExploreAction } from "./ExploreAction";
+import { MapCrumbs } from "./MapCrumbs";
 import { OverviewDetails } from "./OverviewDetails";
 
 interface Props {
@@ -51,9 +55,21 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
   const cut = maxClusterDepth(tiles) > depth;
   const hasCharacteristics = tiles.some((t) => (t.node?.rel_characteristics.length ?? 0) > 0);
 
-  const current = tiles.find((t) => t.key === (onPath[onPath.length - 1] ?? tree.key)) ?? tree;
+  const currentKey = onPath[onPath.length - 1] ?? tree.key;
+  const map = useMapFocus(tree, currentKey);
   // A rebuild swaps the tree under a remembered tile; never describe a stale one.
-  const shown = inspected && tiles.includes(inspected) ? inspected : current;
+  const hovered = inspected && tiles.includes(inspected) ? inspected : null;
+  const shown = hovered ?? map.selected ?? map.focus;
+  const source = hovered ? "hover" : map.selected ? "selected" : "focus";
+  const shownTarget = targetOf(shown, depth);
+
+  // Exactly what activating a tile did before the map could zoom.
+  function explore(t: OverviewTile) {
+    const path = targetOf(t, depth).path;
+    const landing = pathKeys(root, path);
+    map.explored(t, landing[landing.length - 1] ?? tree.key);
+    onNavigate(path);
+  }
   const groups = [...new Set(metrics.map((m) => m.group))];
 
   function toggle() {
@@ -90,6 +106,7 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
         <div id="overview-body" className="overview__body">
           <div className="overview__controls">
             <nav className="overview__crumbs" aria-label="Current path">
+              <span className="overview__crumbs-label">Layers</span>
               {crumbs.map((p, i) => (
                 <span key={i}>
                   {i > 0 && <span aria-hidden="true"> → </span>}
@@ -124,19 +141,36 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
           <Legend metricLabel={metric.label} holeNote={metric.holeNote} format={metric.format} scale={scale} categorical={!metric.value} />
 
           <div className="overview__cols">
-            <TreemapOverview
-              root={tree}
-              fill={scale.fill}
-              pathKeys={onPath}
-              targetOf={(t) => targetOf(t, depth)}
-              onActivate={(t) => onNavigate(targetOf(t, depth).path)}
-              onInspect={setInspected}
-            />
+            <div className="overview__map">
+              <MapCrumbs chain={map.chain} onZoom={map.zoomTo} />
+              <TreemapOverview
+                tree={tree}
+                focus={map.focus}
+                fill={scale.fill}
+                pathKeys={onPath}
+                selectedKey={map.selected?.key ?? null}
+                targetOf={(t) => targetOf(t, depth)}
+                onZoom={map.zoomTo}
+                onZoomOut={map.zoomOut}
+                onSelect={map.select}
+                onExplore={explore}
+                onInspect={setInspected}
+              />
+            </div>
             <OverviewDetails
               tile={shown}
               total={root.n_points}
               metric={metric}
-              source={shown === inspected ? "hover" : "path"}
+              source={source}
+              isCurrent={shown.key === currentKey}
+              action={
+                <ExploreAction
+                  tile={shown}
+                  target={shownTarget}
+                  isOpen={shownTarget.path.join(",") === treePath.join(",")}
+                  onExplore={() => explore(shown)}
+                />
+              }
               hasCharacteristics={hasCharacteristics}
               normalized={normalized}
             />
@@ -144,10 +178,13 @@ export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, on
           <p className="hint overview__note">
             Each tile’s second line names the feature whose mean moves most relative to its parent; under
             0.3 SD it says “close to parent”. Hatched tiles are the points HDBSCAN left unassigned when it
-            split that node, so every node’s area equals its size. Click a tile (or Enter on it) to open it
-            below; an unassigned tile opens the layer that shows those points as noise.
+            split that node, so every node’s area equals its size. Clicking only moves the map: each click
+            zooms one level into the frame under the pointer (Enter zooms into the focused tile), clicking a
+            leaf or unassigned tile pins it beside the map, and the top band, Escape or the Map crumbs zoom
+            back out. To open a tile in the layers below, use Explore, double-click it, or press E on it; an
+            unassigned tile opens the layer that shows those points as noise.
             {cut &&
-              ` The layer stack is limited to ${depth} layer${depth === 1 ? "" : "s"}, so a deeper tile opens its deepest ancestor the stack shows, and an unassigned tile at that depth or below opens its parent in the exploration panel without marking the noise.`}
+              ` The layer stack is limited to ${depth} layer${depth === 1 ? "" : "s"}: the map still zooms all the way down, but exploring a deeper tile opens its deepest ancestor the stack shows, and an unassigned tile at that depth or below opens its parent in the exploration panel without marking the noise.`}
           </p>
         </div>
       )}
