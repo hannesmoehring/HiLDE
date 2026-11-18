@@ -965,6 +965,21 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .overview__crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; font-size: 12.5px; color: var(--muted); }
 .overview__crumbs button { padding: 1px 7px; font-size: 12px; }
 .overview__crumbs button[aria-current] { border-color: var(--ink); font-weight: 600; }
+/* Says which crumbs move what: "Layers" moves the stack, "Map" only the map. */
+.overview__crumbs-label {
+  margin-right: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--faint);
+}
+/* Map crumbs read as a lighter control than the stack's: no box until hovered,
+   the current level underlined rather than framed. */
+.overview__crumbs--map { margin-bottom: 6px; }
+.overview__crumbs--map button { border-color: transparent; background: none; padding: 1px 5px; }
+.overview__crumbs--map button:hover { border-color: var(--border-strong); }
+.overview__crumbs--map button[aria-current] { border-color: transparent; border-bottom-color: var(--ink); }
 .overview__select { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .overview__select select { max-width: 260px; }
 
@@ -1003,8 +1018,18 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
   .overview__cols { grid-template-columns: minmax(0, 1fr); }
   .overview__select { margin-left: 0; }
 }
-.treemap { width: 100%; min-width: 0; }
+.overview__map { min-width: 0; }
+.treemap { width: 100%; min-width: 0; user-select: none; -webkit-user-select: none; }
 .treemap__tile { cursor: pointer; outline: none; }
+.treemap__caption { margin: 4px 0 0; font-size: 11.5px; color: var(--faint); min-height: 1.45em; }
+/* Read out, not shown: the map's live region. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.overview__explore { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.overview__explore button { white-space: normal; text-align: left; padding: 5px 14px; }
+.overview__explore .hint { margin: 0; font-size: 12px; }
 .overview__note { margin: 10px 0 0; max-width: 92ch; }
 
 .overview__details { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 12.5px; }
