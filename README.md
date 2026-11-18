@@ -278,6 +278,16 @@ background job that the client polls. The rail collapses to a narrow strip so th
 can widen. Selecting a new dataset resets the feature selection to that dataset's default
 (everything except `row_id` and `target_*`).
 
+**Overview.** A collapsible treemap of the whole cluster hierarchy, every depth at once,
+above the layers. Area is the number of points; the points HDBSCAN left unassigned when
+splitting a node are a hatched tile of their own, so every node's area equals its size.
+Tiles are named like the exploration panel (`C1`), with the feature whose mean moves most
+against the parent and the point count. Clicking a tile opens it in the layers below (an
+unassigned tile opens the layer that shows those points as noise); the map itself never
+zooms and outlines the current path instead. Tiles can be coloured by structure, DR
+quality or any column mean, and a details column beside the map reads out the hovered or
+current node.
+
 **Layer views.** One panel per hierarchical layer. Each shows the layer's cluster
 projection as a scatter, coloured by HDBSCAN cluster; clicking a cluster drills into it
 and opens the next layer below. The side column of a layer reports the selected cluster's
