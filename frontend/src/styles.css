@@ -949,3 +949,11 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .mv-about dl > div { display: contents; }
 .mv-about dt { font-weight: 600; color: var(--ink); }
 .mv-about dd { margin: 0; }
+
+/* ProjectionScatter's pan surface: an open hand that closes while dragging. */
+.plot-pan {
+  cursor: grab;
+}
+.plot-pan:active {
+  cursor: grabbing;
+}

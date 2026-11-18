@@ -52,7 +52,7 @@ export interface CharacteristicsBarProps {
 }
 
 // C — Projection scatter. Replaces make_scatter_fig.
-// 2D scatter of a node's embedding with lasso + box selection. Optional coloring
+// 2D scatter of a node's embedding with lasso + box selection and zoom/pan. Optional coloring
 // by cluster label or by interactive-filter membership.
 export interface ProjectionScatterProps {
   points: [number | null, number | null][]; // embedding_original of the node
@@ -62,7 +62,7 @@ export interface ProjectionScatterProps {
   interactiveGroup?: string[] | null; // color-by-filter mode ("Matches filters"/"Other")
   onSelect: (localIndices: number[]) => void; // indices into points[]
   selected?: number[]; // controlled highlight
-  toolbarExtra?: ReactNode; // right-bound slot in the Lasso/Box row
+  toolbarExtra?: ReactNode; // right-bound slot in the tool row
 }
 
 // D — PCA explained-variance bar. Replaces make_pca_variance_fig.
