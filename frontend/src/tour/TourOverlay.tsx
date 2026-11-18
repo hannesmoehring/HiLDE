@@ -60,6 +60,13 @@ export function TourOverlay({ tour }: { tour: TourController }) {
     setCardPos(placeCard(box, { width: c.offsetWidth, height: c.offsetHeight }));
   }, [box, step, found]);
 
+  // A step whose target is not on screen yet — the overview while the run is still
+  // building — holds the tour there: stepping on would only land on more steps
+  // about a run that does not exist. Exit and Back stay available.
+  const waiting = step.target !== undefined && !box;
+  const waitingRef = useRef(waiting);
+  waitingRef.current = waiting;
+
   // Keyboard: Esc exits from anywhere but a field; arrows step only from inside the
   // card, since the treemap and the plots use them for their own navigation.
   useEffect(() => {
@@ -71,7 +78,7 @@ export function TourOverlay({ tour }: { tour: TourController }) {
         return;
       }
       if (!t || !cardRef.current?.contains(t)) return;
-      if (e.key === "ArrowRight") tour.next();
+      if (e.key === "ArrowRight" && !waitingRef.current) tour.next();
       else if (e.key === "ArrowLeft" && tour.index > 0) tour.back();
     };
     window.addEventListener("keydown", onKey);
@@ -83,7 +90,6 @@ export function TourOverlay({ tour }: { tour: TourController }) {
     cardRef.current?.focus({ preventScroll: true });
   }, [tour.index]);
 
-  const waiting = step.target !== undefined && !box;
   const first = tour.index === 0;
   const last = tour.index === TOUR_STEPS.length - 1;
 
@@ -119,7 +125,12 @@ export function TourOverlay({ tour }: { tour: TourController }) {
           <button onClick={tour.exit}>{first ? "Not now" : "Exit"}</button>
           <span className="tour__spacer" />
           {!first && <button onClick={tour.back}>Back</button>}
-          <button className="primary" onClick={tour.next}>
+          <button
+            className="primary"
+            onClick={tour.next}
+            disabled={waiting}
+            title={waiting ? "Available once this part of the page has loaded" : undefined}
+          >
             {first ? "Start tour" : last ? "Finish" : "Next"}
           </button>
         </div>
