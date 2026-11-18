@@ -62,7 +62,9 @@ export function ProjectionScatter({
   const gRef = useRef<SVGGElement>(null);
   const brushRef = useRef<SVGGElement>(null);
   const brushApiRef = useRef<d3.BrushBehavior<unknown> | null>(null);
-  const clipId = useId();
+  const clipId = `plot-clip-${useId().replace(/:/g, "")}`;
+  // True between a brush gesture's start and end (see the clear-on-zoom effect).
+  const brushingRef = useRef(false);
   const lassoRectRef = useRef<SVGRectElement>(null);
   const lassoPathRef = useRef<SVGPathElement>(null);
 
@@ -116,11 +118,18 @@ export function ProjectionScatter({
       return { li, px: xScale(x), py: yScale(y), color: color(li) };
     });
 
-    return { xScale, yScale, plotted };
+    return { xScale, yScale, plotted, scale };
   }, [points, clusterLabels, interactiveGroup, W, H]);
 
   // A new node (a new `points` array) starts from the fitted view again.
-  const { transform, zoomed, zoomIn, zoomOut, reset } = usePlotZoom(gRef, W, H, mode === "pan", points);
+  const { transform, zoomed, zoomIn, zoomOut, reset } = usePlotZoom(
+    gRef,
+    W,
+    H,
+    mode === "pan",
+    points,
+    geom?.scale,
+  );
   // The selection tools hit-test where the points are drawn *now*; a ref keeps
   // their listeners from being rebound on every zoom tick.
   const transformRef = useRef(transform);
@@ -136,7 +145,11 @@ export function ProjectionScatter({
         [0, 0],
         [W, H],
       ])
+      .on("start", (event: d3.D3BrushEvent<unknown>) => {
+        if (event.sourceEvent) brushingRef.current = true;
+      })
       .on("end", (event: d3.D3BrushEvent<unknown>) => {
+        if (event.sourceEvent) brushingRef.current = false;
         // Programmatic clear (the view moved under the box) — keep the selection.
         if (!event.sourceEvent) return;
         const sel = event.selection as [[number, number], [number, number]] | null;
@@ -158,6 +171,7 @@ export function ProjectionScatter({
     g.call(brush);
     brushApiRef.current = brush;
     return () => {
+      brushingRef.current = false;
       brushApiRef.current = null;
       g.on(".brush", null);
       g.selectAll("*").remove();
@@ -165,9 +179,11 @@ export function ProjectionScatter({
   }, [mode, geom, W, H]);
 
   // The drawn box is in screen space; once the view moves it no longer frames the
-  // points it selected, so drop the rectangle (the selection itself stays).
+  // points it selected, so drop the rectangle (the selection itself stays). Not
+  // mid-gesture: nulling the brush under a held button would turn a release
+  // without movement into "clear the selection".
   useEffect(() => {
-    if (brushRef.current && brushApiRef.current) {
+    if (brushRef.current && brushApiRef.current && !brushingRef.current) {
       d3.select(brushRef.current).call(brushApiRef.current.move, null);
     }
   }, [transform]);
@@ -201,9 +217,15 @@ export function ProjectionScatter({
           poly = [];
           return;
         }
+        // d3-drag follows the pointer past the plot edge, where zoomed-out-of-view
+        // points sit clipped; only what is on screen can be lassoed.
         const t = transformRef.current;
         const idx = geom.plotted
-          .filter((p) => d3.polygonContains(poly, [t.applyX(p.px), t.applyY(p.py)]))
+          .filter((p) => {
+            const sx = t.applyX(p.px);
+            const sy = t.applyY(p.py);
+            return sx >= 0 && sx <= W && sy >= 0 && sy <= H && d3.polygonContains(poly, [sx, sy]);
+          })
           .map((p) => p.li);
         onSelectRef.current(idx);
         poly = [];
@@ -214,7 +236,7 @@ export function ProjectionScatter({
     return () => {
       rect.on(".drag", null);
     };
-  }, [mode, geom]);
+  }, [mode, geom, W, H]);
 
   const selectedSet = useMemo(() => new Set(selected ?? []), [selected]);
 

@@ -24,6 +24,9 @@ export interface PlotZoom {
  * @param panning  whether a drag pans. The wheel always zooms; drags are only claimed
  *                 while this is true, so a selection tool can own them otherwise.
  * @param resetKey the view snaps back to identity whenever this changes identity
+ * @param fitScale px per data unit of the caller's fitted (unzoomed) layout, which
+ *                 maps data to pixels about the plot centre. Lets a resize keep the
+ *                 same data under the view centre instead of jumping.
  */
 export function usePlotZoom(
   gRef: RefObject<SVGGElement>,
@@ -31,6 +34,7 @@ export function usePlotZoom(
   height: number,
   panning: boolean,
   resetKey: unknown,
+  fitScale = 1,
 ): PlotZoom {
   const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const zoomRef = useRef<d3.ZoomBehavior<SVGGElement, unknown> | null>(null);
@@ -38,6 +42,8 @@ export function usePlotZoom(
   // Read inside the d3 filter, so toggling pan mode never rebinds the behaviour.
   const panningRef = useRef(panning);
   panningRef.current = panning;
+  // The layout the node's stored transform was expressed in.
+  const layoutRef = useRef<{ width: number; height: number; fitScale: number } | null>(null);
 
   useEffect(() => {
     const g = gRef.current;
@@ -55,20 +61,31 @@ export function usePlotZoom(
       .translateExtent(bounds)
       .filter((event: Event) => {
         if (event.type === "wheel") return true;
-        return panningRef.current && !(event as MouseEvent).button;
+        const e = event as MouseEvent;
+        return panningRef.current && !e.ctrlKey && !e.button;
       })
       .on("zoom", (event: d3.D3ZoomEvent<SVGGElement, unknown>) => setTransform(event.transform));
     zoomRef.current = zoom;
     const sel = d3.select(g);
     sel.call(zoom);
-    // The node keeps its transform across a rebind (resize); re-constrain it to
-    // the new bounds.
+    // The node keeps its transform across a rebind (resize), but the fitted
+    // layout under it has moved: re-express the transform so the data point at
+    // the old view centre sits at the new one, then constrain to the new bounds.
+    const prev = layoutRef.current;
+    const t = d3.zoomTransform(g);
+    if (prev && t.k !== 1 && fitScale > 0 && prev.fitScale > 0) {
+      const ratio = fitScale / prev.fitScale;
+      const cx = ((prev.width / 2 - t.x) / t.k - prev.width / 2) * ratio + width / 2;
+      const cy = ((prev.height / 2 - t.y) / t.k - prev.height / 2) * ratio + height / 2;
+      sel.call(zoom.transform, d3.zoomIdentity.translate(width / 2 - t.k * cx, height / 2 - t.k * cy).scale(t.k));
+    }
+    layoutRef.current = { width, height, fitScale };
     sel.call(zoom.translateBy, 0, 0);
     return () => {
       sel.on(".zoom", null);
       zoomRef.current = null;
     };
-  }, [gRef, width, height]);
+  }, [gRef, width, height, fitScale]);
 
   const apply = useCallback(
     (fn: (sel: d3.Selection<SVGGElement, unknown, null, undefined>, zoom: d3.ZoomBehavior<SVGGElement, unknown>) => void) => {
