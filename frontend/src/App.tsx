@@ -882,6 +882,8 @@ function Navigation(props: {
       <OverviewPanel
         root={root}
         treePath={treePath}
+        nLayers={nLayers}
+        normalized={analysis.meta.config.normalize !== false}
         onNavigate={(path) => {
           navigate(path);
           stack.scroll();

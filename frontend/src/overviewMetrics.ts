@@ -106,30 +106,51 @@ export function metricsFor(root: OverviewTile): OverviewMetric[] {
 
 export interface MetricScale {
   domain: [number, number] | null; // null = no tile has a value
+  // One value on every valued tile: the legend shows a single swatch, not a range.
+  constant: boolean;
+  // How many unassigned tiles carry a value: they have no node of their own, so
+  // node-level metrics (scores, unassigned share) never reach them.
+  unassigned: "all" | "some" | "none" | "absent";
   fill: (t: OverviewTile) => string;
 }
 
+export const CONSTANT_FILL = RAMP[Math.floor(RAMP.length / 2)];
+
 export function scaleFor(metric: OverviewMetric, root: OverviewTile): MetricScale {
   const value = metric.value;
-  if (!value) return { domain: null, fill: (t) => KIND_FILL[t.kind] };
+  const all = flatten(root);
+  const holes = all.filter((t) => t.kind === "unassigned");
+  if (!value)
+    return { domain: null, constant: false, unassigned: holes.length ? "all" : "absent", fill: (t) => KIND_FILL[t.kind] };
+  const valued = (t: OverviewTile) => {
+    const v = value(t);
+    return v != null && Number.isFinite(v) ? v : null;
+  };
+  const nHoles = holes.filter((t) => valued(t) != null).length;
+  const unassigned = !holes.length ? "absent" : nHoles === holes.length ? "all" : nHoles ? "some" : "none";
   // The root is the frame around everything; letting it into the extent would
   // only compress the scale for the tiles that are actually compared.
-  const vals = flatten(root)
+  const vals = all
     .filter((t) => t.kind !== "root")
-    .map(value)
-    .filter((v): v is number => v != null && Number.isFinite(v));
+    .map(valued)
+    .filter((v): v is number => v != null);
   // A fixed scale is still "no value" when nothing has one (a leaf root).
   const extent = vals.length ? (metric.fixed ?? (d3.extent(vals) as [number, number])) : null;
-  if (!extent) return { domain: null, fill: () => NO_VALUE_FILL };
+  if (!extent) return { domain: null, constant: false, unassigned, fill: () => NO_VALUE_FILL };
   const [lo, hi] = extent;
-  const q = d3.scaleQuantize<string>().domain([lo, hi > lo ? hi : lo + 1]).range([...RAMP]);
-  const mid = RAMP[Math.floor(RAMP.length / 2)];
+  const constant = !(hi > lo);
+  const q = d3.scaleQuantize<string>().domain([lo, constant ? lo + 1 : hi]).range([...RAMP]);
   return {
     domain: [lo, hi],
+    constant,
+    unassigned,
     fill: (t) => {
-      const v = value(t);
-      if (v == null || !Number.isFinite(v)) return NO_VALUE_FILL;
-      return hi > lo ? q(Math.max(lo, Math.min(hi, v))) : mid;
+      // Left out of the extent, so painting it would clamp its value to an end
+      // of a legend that does not contain it.
+      if (t.kind === "root") return KIND_FILL.root;
+      const v = valued(t);
+      if (v == null) return NO_VALUE_FILL;
+      return constant ? CONSTANT_FILL : q(Math.max(lo, Math.min(hi, v)));
     },
   };
 }

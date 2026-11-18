@@ -952,7 +952,9 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 
 /* ── Overview (treemap of the whole hierarchy) ────────────────────────────── */
 .overview__toggle { margin-left: 12px; padding: 1px 8px; font-size: 11.5px; }
-.overview__body { padding: 10px 16px 12px; }
+/* Sized as a container: the rail beside the canvas opens and closes, so the
+   viewport width says nothing about how much room the map has. */
+.overview__body { padding: 10px 16px 12px; container-type: inline-size; }
 .overview__controls {
   display: flex;
   flex-wrap: wrap;
@@ -987,6 +989,7 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .overview__swatch--hatch {
   background-image: repeating-linear-gradient(45deg, rgba(22, 22, 20, 0.16) 0 1.5px, transparent 1.5px 4.2px) !important;
 }
+.overview__swatch--after { margin: 0 6px 0 7px; }
 .overview__ramp { display: inline-flex; gap: 1px; margin: 0 7px; vertical-align: -1px; }
 .overview__ramp i { display: block; width: 16px; height: 10px; }
 
@@ -995,7 +998,8 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 16px;
 }
-@media (max-width: 900px) {
+/* Stack once the map would be narrower than about 1.5x the details column. */
+@container (max-width: 720px) {
   .overview__cols { grid-template-columns: minmax(0, 1fr); }
   .overview__select { margin-left: 0; }
 }

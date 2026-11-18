@@ -163,9 +163,15 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
             inspect(focusKey);
           }}
         >
+          {/* The hatch follows the label ink: ink lines vanish on the dark ramp
+              steps, and the hatch is all that tells a label-less unassigned tile
+              from a leaf. */}
           <defs>
             <pattern id={hatchId} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
               <line x1={0} y1={0} x2={0} y2={6} stroke={theme.textPrimary} strokeOpacity={0.16} strokeWidth={1.5} />
+            </pattern>
+            <pattern id={`${hatchId}-light`} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1={0} y1={0} x2={0} y2={6} stroke="#ffffff" strokeOpacity={0.4} strokeWidth={1.5} />
             </pattern>
           </defs>
 
@@ -207,7 +213,7 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
               >
                 <rect x={c.x0} y={c.y0} width={w} height={h} fill={bg} stroke={theme.borderStrong} strokeWidth={0.75} />
                 {t.kind === "unassigned" && (
-                  <rect x={c.x0} y={c.y0} width={w} height={h} fill={`url(#${hatchId})`} pointerEvents="none" />
+                  <rect x={c.x0} y={c.y0} width={w} height={h} fill={`url(#${ink === theme.textPrimary ? hatchId : `${hatchId}-light`})`} pointerEvents="none" />
                 )}
                 {header && (
                   <text x={c.x0 + 5} y={c.y0 + 12} fontSize={11} fill={ink} pointerEvents="none">
@@ -236,23 +242,25 @@ export function TreemapOverview({ root, fill, pathKeys, onActivate, onInspect }:
             );
           })}
 
-          {/* Where the layer stack is: ancestors thin, the selected node heavy. */}
+          {/* Where the layer stack is: ancestors thin, the selected node heavy.
+              White under the ink, like Ring, so it holds on the dark ramp steps. */}
           <g pointerEvents="none">
             {pathKeys.map((k) => {
               const c = byKey.get(k);
               if (!c) return null;
               const sel = k === selectedKey;
+              const box = {
+                x: c.x0,
+                y: c.y0,
+                width: Math.max(0, c.x1 - c.x0),
+                height: Math.max(0, c.y1 - c.y0),
+                fill: "none",
+              };
               return (
-                <rect
-                  key={k}
-                  x={c.x0}
-                  y={c.y0}
-                  width={Math.max(0, c.x1 - c.x0)}
-                  height={Math.max(0, c.y1 - c.y0)}
-                  fill="none"
-                  stroke={theme.textPrimary}
-                  strokeWidth={sel ? 2.5 : 1.25}
-                />
+                <g key={k}>
+                  <rect {...box} stroke="#ffffff" strokeWidth={sel ? 5 : 3} />
+                  <rect {...box} stroke={theme.textPrimary} strokeWidth={sel ? 2.5 : 1.25} />
+                </g>
               );
             })}
             {/* Hover ring dashed, keyboard focus solid; both inset so they never

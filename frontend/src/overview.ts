@@ -43,10 +43,13 @@ function featureRows(chars: Characteristic[]): Map<string, Characteristic> {
   return out;
 }
 
-// Feature z_means are whole-dataset relative at every depth (one scaler fit at
-// the root), so the root's own mean is 0 and its SD 1 by construction even though
-// it carries no rel_characteristics. A move relative to the parent is then the
-// difference of z_means, rescaled by the parent's own spread.
+// With `normalize` on, feature z_means are whole-dataset relative at every depth
+// (one scaler fit at the root), so the root's own mean is 0 and its SD 1 by
+// construction even though it carries no rel_characteristics. A move relative to
+// the parent is then the difference of z_means, rescaled by the parent's own
+// spread. With it off no scaler is fit and z_mean / z_std are raw means and SDs:
+// moves between two clusters still difference correctly, but the root's own
+// baseline is unknown, so nothing can be compared against the root.
 interface FeatureStats {
   z: Map<string, number>;
   sd: Map<string, number>;
@@ -137,7 +140,8 @@ function residualZ(
   return out;
 }
 
-export function buildOverview(root: TreeNode): OverviewTile {
+// `normalized` is the BUILT run's config.normalize, not the rail's draft.
+export function buildOverview(root: TreeNode, normalized: boolean): OverviewTile {
   function visit(
     node: TreeNode,
     path: number[],
@@ -157,7 +161,7 @@ export function buildOverview(root: TreeNode): OverviewTile {
       label: isRoot ? "root" : `C${path[path.length - 1]}`,
       pathLabel: pathLabelOf(path),
       shifts:
-        isRoot || !own
+        isRoot || !own || (parent === root && !normalized)
           ? []
           : shiftsFrom(own.z, statsOf(parent!, parent === root), parent === root),
       means: rawMeans(node),
@@ -180,7 +184,7 @@ export function buildOverview(root: TreeNode): OverviewTile {
           size: n,
           label: "unassigned",
           pathLabel: `${pathLabelOf(path)} → unassigned`,
-          shifts: shiftsFrom(z, own, isRoot),
+          shifts: isRoot && !normalized ? [] : shiftsFrom(z, own, isRoot),
           means: residualMeans(
             node.n_points,
             tile.means,
@@ -243,8 +247,13 @@ export function unassignedShare(tile: OverviewTile): number | null {
 
 export const fmtCount = (n: number): string => n.toLocaleString("en-US");
 
-export const fmtPct = (v: number): string =>
-  `${(100 * v).toFixed(v > 0 && v < 0.1 ? 1 : 0)}%`;
+// Never rounds a non-empty share to 0% or a partial one to 100%: on a large
+// dataset a minimum-size cluster is well under 0.05%.
+export function fmtPct(v: number): string {
+  if (v > 0 && v < 0.001) return "<0.1%";
+  if (v < 1 && v > 0.995) return ">99%";
+  return `${(100 * v).toFixed(v > 0 && v < 0.1 ? 1 : 0)}%`;
+}
 
 export function fmtValue(v: number): string {
   const a = Math.abs(v);

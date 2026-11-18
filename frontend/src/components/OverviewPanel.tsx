@@ -4,13 +4,18 @@
 import { useMemo, useState } from "react";
 import { TreemapOverview } from "../charts/TreemapOverview";
 import { buildOverview, flatten, pathKeys, pathLabelOf, type OverviewTile } from "../overview";
-import { KIND_FILL, NO_VALUE_FILL, RAMP, metricsFor, scaleFor } from "../overviewMetrics";
+import { CONSTANT_FILL, KIND_FILL, NO_VALUE_FILL, RAMP, metricsFor, scaleFor, type MetricScale } from "../overviewMetrics";
 import type { TreeNode } from "../types";
 import { OverviewDetails } from "./OverviewDetails";
 
 interface Props {
   root: TreeNode;
   treePath: number[];
+  // How deep the layer stack below renders. The rail can lower it without a
+  // rebuild, so the tree may hold nodes the stack cannot open; the overview must
+  // never point at a node the stack is not showing.
+  nLayers: number;
+  normalized: boolean; // the built run's config.normalize
   onNavigate: (path: number[]) => void;
 }
 
@@ -25,12 +30,17 @@ function readOpen(): boolean {
   }
 }
 
-export function OverviewPanel({ root, treePath, onNavigate }: Props) {
+export function OverviewPanel({ root, treePath: rawPath, nLayers, normalized, onNavigate: navigateRaw }: Props) {
   const [open, setOpen] = useState(readOpen);
   const [metricKey, setMetricKey] = useState("kind");
   const [inspected, setInspected] = useState<OverviewTile | null>(null);
 
-  const tree = useMemo(() => buildOverview(root), [root]);
+  const depth = Math.max(0, nLayers);
+  // A deeper tile opens its deepest ancestor the stack can show.
+  const treePath = rawPath.slice(0, depth);
+  const onNavigate = (path: number[]) => navigateRaw(path.slice(0, depth));
+
+  const tree = useMemo(() => buildOverview(root, normalized), [root, normalized]);
   const tiles = useMemo(() => flatten(tree), [tree]);
   const metrics = useMemo(() => metricsFor(tree), [tree]);
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
@@ -108,7 +118,7 @@ export function OverviewPanel({ root, treePath, onNavigate }: Props) {
             </label>
           </div>
 
-          <Legend metricLabel={metric.label} format={metric.format} domain={metric.value ? scale.domain : null} categorical={!metric.value} />
+          <Legend metricLabel={metric.label} format={metric.format} scale={scale} categorical={!metric.value} />
 
           <div className="overview__cols">
             <TreemapOverview
@@ -124,6 +134,7 @@ export function OverviewPanel({ root, treePath, onNavigate }: Props) {
               metric={metric}
               source={shown === inspected ? "hover" : "path"}
               hasCharacteristics={hasCharacteristics}
+              normalized={normalized}
             />
           </div>
           <p className="hint overview__note">
@@ -141,10 +152,11 @@ export function OverviewPanel({ root, treePath, onNavigate }: Props) {
 function Legend(props: {
   metricLabel: string;
   format: (v: number) => string;
-  domain: [number, number] | null;
+  scale: MetricScale;
   categorical: boolean;
 }) {
-  const { metricLabel, format, domain, categorical } = props;
+  const { metricLabel, format, scale, categorical } = props;
+  const { domain } = scale;
   const hatch = <span className="overview__swatch overview__swatch--hatch" style={{ background: KIND_FILL.unassigned }} />;
   if (categorical)
     return (
@@ -154,9 +166,24 @@ function Legend(props: {
         <span>{hatch}unassigned (HDBSCAN noise)</span>
       </div>
     );
+  // Only claim the hatched tiles sit on the ramp where they actually have a value.
+  const hatchNote = {
+    all: "hatched = unassigned, same scale",
+    some: "hatched = unassigned, same scale where its mean is known",
+    none: "hatched = unassigned, no value under this metric",
+    absent: null,
+  }[scale.unassigned];
   return (
     <div className="overview__legend">
-      {domain ? (
+      {!domain ? (
+        <span>{metricLabel}: no tile has a value</span>
+      ) : scale.constant ? (
+        <span>
+          {metricLabel}:
+          <span className="overview__swatch overview__swatch--after" style={{ background: CONSTANT_FILL }} />
+          every tile = {format(domain[0])}
+        </span>
+      ) : (
         <span>
           {metricLabel}: {format(domain[0])}
           <span className="overview__ramp" aria-hidden="true">
@@ -166,11 +193,9 @@ function Legend(props: {
           </span>
           {format(domain[1])}
         </span>
-      ) : (
-        <span>{metricLabel}: no tile has a value</span>
       )}
       <span><span className="overview__swatch" style={{ background: NO_VALUE_FILL }} />no value</span>
-      <span>{hatch}hatched = unassigned, same scale</span>
+      {hatchNote && <span>{hatch}{hatchNote}</span>}
     </div>
   );
 }

@@ -17,13 +17,14 @@ interface Props {
   metric: OverviewMetric;
   source: "hover" | "path";
   hasCharacteristics: boolean;
+  normalized: boolean;
 }
 
 // Shifts past this are drawn at full length; the number beside the bar still
 // says how far they go.
 const SD_MAX = 3;
 
-export function OverviewDetails({ tile, total, metric, source, hasCharacteristics }: Props) {
+export function OverviewDetails({ tile, total, metric, source, hasCharacteristics, normalized }: Props) {
   const parent = tile.owner;
   const split = unassignedShare(tile);
   const value = metric.value?.(tile);
@@ -80,6 +81,11 @@ export function OverviewDetails({ tile, total, metric, source, hasCharacteristic
         <div className="overview__caption">Largest mean shifts vs. parent (SDs of the parent)</div>
         {!parent ? (
           <p className="hint">The root has no parent to compare with.</p>
+        ) : !shifts.length && !normalized && tile.depth === 1 ? (
+          <p className="hint">
+            Built without normalisation, so the root’s own means are not on a common scale and nothing
+            can be compared against it. Shifts appear from the second level down.
+          </p>
         ) : !shifts.length ? (
           <p className="hint">
             {hasCharacteristics ? "Not available for this tile." : "This run carries no characteristics."}
