@@ -980,7 +980,7 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .overview__crumbs--map button { border-color: transparent; background: none; padding: 1px 5px; }
 .overview__crumbs--map button:hover { border-color: var(--border-strong); }
 .overview__crumbs--map button[aria-current] { border-color: transparent; border-bottom-color: var(--ink); }
-.overview__select { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.overview__select { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .overview__select select { max-width: 260px; }
 
 .overview__legend {
@@ -1016,7 +1016,6 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 /* Stack once the map would be narrower than about 1.5x the details column. */
 @container (max-width: 720px) {
   .overview__cols { grid-template-columns: minmax(0, 1fr); }
-  .overview__select { margin-left: 0; }
 }
 .overview__map { min-width: 0; }
 .treemap { width: 100%; min-width: 0; user-select: none; -webkit-user-select: none; }
@@ -1082,4 +1081,46 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 }
 .plot-pan:active {
   cursor: grabbing;
+}
+
+/* ── Guided tour ──────────────────────────────────────────────────────────── */
+.topbar__tour {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 3px 10px;
+}
+/* Neither layer takes clicks: the user can try the spotlighted control while the
+   card is up. The spotlight dims the page with its own outer shadow. */
+.tour { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+.tour__dim { position: fixed; inset: 0; background: rgba(22, 22, 20, 0.42); }
+.tour__spot {
+  position: fixed;
+  border: 2px solid var(--pos);
+  box-shadow: 0 0 0 100vmax rgba(22, 22, 20, 0.42);
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+.tour__card {
+  position: fixed;
+  width: min(360px, calc(100vw - 24px));
+  padding: 14px 16px 12px;
+  background: var(--panel);
+  border: 1px solid var(--ink);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  outline: none;
+}
+.tour__count {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--faint);
+}
+.tour__title { margin: 4px 0 6px; font-size: 15px; font-weight: 600; }
+.tour__body { margin: 0 0 12px; font-size: 13px; color: var(--ink-2); }
+.tour__actions { display: flex; align-items: center; gap: 8px; }
+.tour__actions button.primary { padding: 4px 16px; }
+.tour__spacer { flex: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .tour__spot { transition: none; }
 }

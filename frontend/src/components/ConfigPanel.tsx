@@ -13,10 +13,11 @@ function NumberField(props: {
   min?: number;
   max?: number;
   step?: number;
+  tour?: string; // `data-tour` hook for the guided tour
   onChange: (v: number) => void;
 }) {
   return (
-    <label className="field">
+    <label className="field" data-tour={props.tour}>
       <span>{props.label}</span>
       <input
         type="number"
@@ -51,6 +52,7 @@ export function ConfigPanel({ config, maxDims, onChange }: Props) {
         />
         <NumberField
           label="Hierarchical layers"
+          tour="layers"
           value={config.hierarchical_layers}
           min={0}
           max={5}

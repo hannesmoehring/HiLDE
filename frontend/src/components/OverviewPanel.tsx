@@ -120,7 +120,7 @@ export function OverviewPanel({
   ].slice(0, onPath.length + 1);
 
   return (
-    <section className="panel overview">
+    <section className="panel overview" data-tour="overview">
       <div className="panel__head">
         <span className="kicker">Overview</span>
         <span className="panel__title">Cluster hierarchy</span>
@@ -139,6 +139,26 @@ export function OverviewPanel({
       {open && (
         <div id="overview-body" className="overview__body">
           <div className="overview__controls">
+            {/* First in the row: it decides what every tile's colour means. */}
+            <label className="overview__select" data-tour="colour">
+              <span>Colour tiles by</span>
+              <select
+                value={metric.key}
+                onChange={(e) => setMetricKey(e.target.value)}
+              >
+                {groups.map((g) => (
+                  <optgroup key={g} label={g}>
+                    {metrics
+                      .filter((m) => m.group === g)
+                      .map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
             <nav className="overview__crumbs" aria-label="Current path">
               <span className="overview__crumbs-label">Layers</span>
               {crumbs.map((p, i) => (
@@ -158,25 +178,6 @@ export function OverviewPanel({
                 </span>
               ))}
             </nav>
-            <label className="overview__select">
-              <span>Colour tiles by</span>
-              <select
-                value={metric.key}
-                onChange={(e) => setMetricKey(e.target.value)}
-              >
-                {groups.map((g) => (
-                  <optgroup key={g} label={g}>
-                    {metrics
-                      .filter((m) => m.group === g)
-                      .map((m) => (
-                        <option key={m.key} value={m.key}>
-                          {m.label}
-                        </option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
           </div>
 
           <Legend
