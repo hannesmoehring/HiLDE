@@ -1,4 +1,4 @@
-"""Hosting-mode launcher — `uv run host.py`.
+"""Hosting-mode launcher — `pixi run hilde`.
 
 Builds the frontend if `frontend/dist` is missing or older than `frontend/src`,
 then serves the API and the built UI from a single uvicorn process with the
@@ -6,6 +6,12 @@ persistent run cache enabled (see `backend/run_cache.py`).
 
 For development use the two-terminal setup in README.md instead; that leaves the
 run cache off so every build recomputes.
+
+Two opt-in modes, both off by default:
+
+- `HILDE_CACHE_ONLY=1` serves the runs already in the run cache and refuses to
+  build new ones, for a server that cannot afford a build.
+- `HILDE_MAINTENANCE=1` makes the UI show a notice instead of the app.
 """
 
 from __future__ import annotations
@@ -81,6 +87,10 @@ def main() -> None:
     from backend import run_cache
 
     _say(f"run cache: {run_cache.cache_dir()}")
+    if run_cache.is_cache_only():
+        _say("cache-only: serving stored runs, builds are disabled")
+    if run_cache.is_maintenance():
+        _say("maintenance: the UI shows a notice instead of the app")
     _say(f"serving on http://{args.host}:{args.port}")
 
     import uvicorn

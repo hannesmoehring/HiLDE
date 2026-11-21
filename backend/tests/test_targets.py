@@ -1,9 +1,9 @@
 """Selection target-value stats over the real dataset registry.
 
 Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
-or with pytest:
-    PYTHONPATH=. pytest backend/tests/test_targets.py
+    pixi run python -m backend.tests.test_targets
+or with pytest, as part of the suite:
+    pixi run test
 """
 
 from __future__ import annotations

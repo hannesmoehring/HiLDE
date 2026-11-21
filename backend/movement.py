@@ -115,13 +115,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 from backend.serialize import SCHEMA_VERSION, _finite
 from backend.serialize import analysis_id as run_analysis_id
 from src.analysis.analysis_routine import fit_node_projection
-from src.analysis.dim_reducer import NUMBA_PARALLEL_LOCK
+from src.analysis.dim_reducer import NUMBA_PARALLEL_LOCK, ReductionResult
 from src.config_defaults import default_config
 
 if TYPE_CHECKING:
@@ -481,6 +482,29 @@ _artifact_cache: OrderedDict[tuple[str, str], ProjectionArtifact] = OrderedDict(
 _artifact_in_flight: dict[tuple[str, str], Future[ProjectionArtifact]] = {}
 
 
+def _refit_node_projection(X: np.ndarray, config: Config) -> ReductionResult | None:
+    """`fit_node_projection`, except for a wide PCA node (more columns than rows).
+
+    The analysis' PCA uses `covariance_eigh`, which forms the p x p covariance:
+    on Olivetti's 400 x 4096 root that peaks at ~650 MiB and takes 6-24 s, more
+    than a 640 MiB container holds. LAPACK's thin SVD of the same matrix needs
+    ~66 MiB and 0.3 s. Both are RNG-free and sign-fixed by `svd_flip`, so the
+    components agree to rounding and `require_alignment` still checks the refit
+    against the projection on screen. Tall nodes keep the shared path unchanged.
+    """
+    n, p = X.shape
+    if str(config["method"]).lower() != "pca" or p <= n:
+        return fit_node_projection(X, config)
+    if n < 2:  # fit_node_projection's guard (_MIN_EMBED_DIMS)
+        return None
+    try:
+        pca = PCA(n_components=2, svd_solver="full")
+        embedding = pca.fit_transform(X)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+    return ReductionResult(embedding, pca, pca.explained_variance_ratio_)
+
+
 def build_projection_artifact(
     *,
     analysis_id: str,
@@ -509,7 +533,7 @@ def build_projection_artifact(
             "and try the movement again.",
         )
     X_parent = X_root[row_indices]
-    result = fit_node_projection(X_parent, config)
+    result = _refit_node_projection(X_parent, config)
     if result is None:
         raise MovementError(
             409,

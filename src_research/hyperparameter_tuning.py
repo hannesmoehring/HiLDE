@@ -43,7 +43,7 @@ so a "gain" here is a gain at one seed, not an expected gain.
 
 Run with::
 
-    uv run python -m src_research.hyperparameter_tuning
+    pixi run experiment hyperparameter_tuning
 """
 
 from __future__ import annotations

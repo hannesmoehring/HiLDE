@@ -1,9 +1,9 @@
 """Per-step bookkeeping of the greedy predicate generator and its backend wrapper.
 
 Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
-or with pytest (a dev dependency):
-    PYTHONPATH=. .venv/bin/python -m pytest backend/tests/test_predicate.py
+    pixi run python -m backend.tests.test_predicate
+or with pytest, as part of the suite:
+    pixi run test
 """
 
 from __future__ import annotations

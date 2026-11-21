@@ -3,7 +3,7 @@
 Split out of ``predicate_stability`` so the analysis can be re-run on an existing
 records CSV without repeating the sweep::
 
-    uv run python -m src_research.predicate_stability_analysis outputs/experiments/<ts>
+    pixi run experiment predicate_stability_analysis -- outputs/experiments/<ts>
 
 Implements SS5/SS7 of the pre-registered RQ2 design:
     * unit of analysis = the selection (replicate pairs were aggregated at record time);

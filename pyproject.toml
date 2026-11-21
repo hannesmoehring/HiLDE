@@ -34,20 +34,80 @@ dependencies = [
 dev = [
     "pyinstrument>=5.1.2",
     "pytest>=9.1.1",
-    "ruff>=0.16.3",
+    "ruff==0.16.3",
 ]
 
-[tool.uv]
-# kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1, which is
-# incompatible with this project's modern numpy 2.4 / scipy 1.18 stack. Its DBCV
-# code only uses APIs that are stable across those versions (verified), so we
-# override the stale caps. The one import-time incompatibility (a removed
-# np.float_ alias in kdbcv's type hints) is shimmed in src_research/dbcv_tuning.py.
-override-dependencies = ["numpy>=2.4.4,<2.5", "scipy>=1.17.1"]
+# ---------------------------------------------------------------------------
+# pixi (https://pixi.sh). Written by hand: `pixi init` would add an editable
+# self-install (`shd = { path = ".", editable = true }`), which must never be
+# here. An editable install works through a .pth file, iCloud hides .pth files
+# in this folder, and Python then skips them silently. The repo root reaches
+# sys.path through PYTHONPATH below instead, and there is no [build-system].
+#
+# conda-forge supplies only python and nodejs. Everything else comes from PyPI
+# via [project.dependencies], so the wheels (and the BLAS behind numpy/scipy)
+# are the same ones uv installed.
+# ---------------------------------------------------------------------------
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+# pixi assumes macOS 13 by default, which rules out the macosx_14 numpy/scipy
+# wheels (Apple Accelerate) and would fall back to an OpenBLAS build.
+platforms = [{ platform = "osx-arm64", macos = "14.0" }, "linux-64"]
+requires-pixi = ">=0.50"
+exclude-newer = "2026-08-14"
+
+[tool.pixi.dependencies]
+# The patch release the uv environment ran; `requires-python` alone would float.
+python = "3.13.11.*"
+# host.py calls npm to build the frontend; Docker uses node:22-slim.
+nodejs = "22.*"
+
+# kdbcv 1.0.0 (its only release) hard-caps numpy<2 and scipy<=1.14.1. Its DBCV
+# code only uses APIs that are stable across those versions (verified), so the
+# stale caps are overridden here. The removed np.float_ alias it needs at import
+# time is shimmed in src_research/dbcv_tuning.py.
+[tool.pixi.pypi-options.dependency-overrides]
+numpy = ">=2.4.4,<2.5"
+scipy = ">=1.17.1"
+
+# The dev group (pytest, ruff, pyinstrument) is part of the default environment,
+# as it was under uv.
+[tool.pixi.environments]
+default = { features = ["dev"], solve-group = "default" }
+
+# pixi does not read .env. No HILDE_* variable belongs here: a workspace-wide
+# HILDE_CACHE_ONLY would make every /api/analysis test answer 409.
+[tool.pixi.activation.env]
+PYTHONPATH = "$PIXI_PROJECT_ROOT"
+
+[tool.pixi.tasks]
+# Full app: builds the frontend if stale, serves API + UI, builds runs on request.
+hilde = "python host.py"
+# Cache-only: serves the stored runs and refuses builds.
+hilde-low-mem = { cmd = "python host.py", env = { HILDE_CACHE_ONLY = "1" } }
+# Development, two terminals: the API on :8000 (the Vite proxy target) and Vite.
+dev-api = "uvicorn backend.app:app --port 8000 --reload"
+dev-web = { cmd = "npm run dev", cwd = "frontend" }
+# pixi run experiment <module> [-- extra flags], e.g. hierarchical_vs_flat.
+# These write into outputs/: see src_research/README.md before running one.
+experiment = { cmd = "python -m src_research.{{ name }}", args = ["name"] }
+# Rewrites outputs/**/rederived_20260813/ in place.
+rederive = "python -m src_research.rederive"
+test = "python -m pytest backend/tests -q"
+fmt = "ruff format ."
+fmt-check = "ruff format --check ."
+
+# pixi run check        -> all of scripts/checks/*.py
+# pixi run check 02     -> the scripts whose name starts with 02
+# Run from /tmp so that no CWD-relative dataset path resolves into the repo;
+# imports still work because PYTHONPATH is the absolute repo root.
+[tool.pixi.tasks.check]
+args = [{ arg = "name", default = "all" }]
+cmd = """bash -c 'n="$0"; [ "$n" = all ] && n=""; cd /tmp && for f in "$PIXI_PROJECT_ROOT"/scripts/checks/"$n"*.py; do echo "== $(basename "$f") (cwd $(pwd))"; python "$f" || exit 1; done' {{ name }}"""
 
 [tool.ruff]
 # `ruff format` reformats Python blocks inside Markdown, which silently rewrote a
 # design document under plans/ — those are inputs to the work, not repo source,
 # and a formatter must not edit them. Excluded so the documented
-# `uv run ruff format .` stays safe to run from the repo root.
+# `pixi run fmt` stays safe to run from the repo root.
 extend-exclude = ["plans"]

@@ -3,9 +3,12 @@ import {
   counterfactualRowsUrl,
   datasetColumns,
   getMode,
+  listCachedDatasets,
+  listCachedRuns,
   listDatasets,
   runAnalysis,
 } from "./api";
+import { defaultRun, nearestRun, runFacets } from "./cachedRuns";
 import { ClusterScatter } from "./charts/ClusterScatter";
 import {
   ClusterMovementPanel,
@@ -15,18 +18,27 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { ExplorationPanel } from "./components/ExplorationPanel";
 import { LayerSide } from "./components/LayerSide";
 import { OutlierPanel } from "./components/OutlierPanel";
+import { OverviewPanel } from "./components/OverviewPanel";
 import { DEFAULT_CONFIG } from "./config";
 import { useCounterfactual, type CounterfactualController } from "./counterfactual";
+import { useScrollToStackEnd } from "./hooks/useScrollToStackEnd";
 import { movementPropsFor, useMovement } from "./movement";
 import { getNodeAtPath } from "./treeNav";
+import { TourOverlay } from "./tour/TourOverlay";
+import { useTour } from "./tour/useTour";
 import type {
   AnalysisConfig,
   AnalysisResponse,
+  CachedDataset,
+  CachedRun,
   DatasetColumns,
   DatasetInfo,
   ImageSpec,
   ModeInfo,
 } from "./types";
+
+// Hierarchical depth of the tour's demo run.
+const DEMO_LAYERS = 2;
 
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
@@ -80,20 +92,67 @@ export default function App() {
   const [mode, setMode] = useState<ModeInfo | null>(null);
   const [useCache, setUseCache] = useState(true);
 
+  // Cache-only server: nothing can be built, so the stored runs are the only
+  // inputs there are. `null` until the listing is in.
+  const cacheOnly = mode?.cache_only ?? false;
+  const [cachedDatasets, setCachedDatasets] = useState<CachedDataset[] | null>(null);
+  const [cachedRuns, setCachedRuns] = useState<CachedRun[] | null>(null); // of `datasetKey`
+  const [runPick, setRunPick] = useState<CachedRun | null>(null);
+  const runsHere = useMemo(
+    () => (cachedRuns ?? []).filter((r) => r.dataset === datasetKey),
+    [cachedRuns, datasetKey],
+  );
+  const facets = useMemo(() => runFacets(runsHere), [runsHere]);
+  const firstRun = useMemo(() => defaultRun(runsHere), [runsHere]);
+  // A dataset switch leaves `runPick` on the old dataset; fall to this one's default.
+  const selectedRun = runPick && runsHere.includes(runPick) ? runPick : firstRun;
+
   useEffect(() => {
     getMode()
       .then(setMode)
-      .catch(() => setMode({ hosting: false, cache_dir: null }));
+      .catch(() =>
+        setMode({ hosting: false, cache_dir: null, cache_only: false, maintenance: false }),
+      );
   }, []);
 
+  // Waits for the mode: a cache-only server offers the datasets that have a stored
+  // run, not the registry.
   useEffect(() => {
+    if (!mode || mode.maintenance) return; // under maintenance nothing is requested
+    if (mode.cache_only) {
+      listCachedDatasets()
+        .then((list) => {
+          setCachedDatasets(list);
+          setDatasets(list.map((d) => ({ key: d.dataset, label: d.dataset })));
+          if (list.length) setDatasetKey(list[0].dataset);
+        })
+        .catch((e) => setError(String(e)));
+      return;
+    }
     listDatasets()
       .then((d) => {
         setDatasets(d);
         if (d.length) setDatasetKey(d[0].key);
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [mode]);
+
+  // Cache-only: a dataset's stored runs are fetched when it is picked.
+  useEffect(() => {
+    if (!cacheOnly || !datasetKey) return;
+    let stale = false;
+    setCachedRuns(null);
+    listCachedRuns(datasetKey)
+      .then((runs) => {
+        if (!stale) setCachedRuns(runs);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [cacheOnly, datasetKey]);
 
   // On dataset change, load its columns and reset the feature selection to the default.
   useEffect(() => {
@@ -115,6 +174,35 @@ export default function App() {
       })
       .catch((e) => setError(String(e)));
   }, [datasetKey]);
+
+  // Cache-only: the selected stored run *is* the configuration. Once its dataset's
+  // columns are in (the effect above has just put that dataset's defaults on the
+  // rail), replace them with the run's own features and knobs and show the run.
+  // The request repeats the run's stored signature verbatim, so it is a cache hit.
+  useEffect(() => {
+    if (!selectedRun || columns?.key !== selectedRun.dataset) return;
+    let stale = false;
+    setFeatureCols(selectedRun.feature_cols);
+    setConfig({ ...DEFAULT_CONFIG, ...selectedRun.config });
+    setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    navigate([]);
+    runAnalysis(selectedRun.dataset, selectedRun.feature_cols, selectedRun.config)
+      .then((res) => {
+        if (!stale) setAnalysis(res);
+      })
+      .catch((e) => {
+        if (!stale) setError(String(e));
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+      setLoading(false);
+    };
+  }, [selectedRun, columns]);
 
   const maxDims = useMemo(() => Math.max(2, featureCols.length), [featureCols]);
 
@@ -139,8 +227,10 @@ export default function App() {
     );
   }
 
-  async function build() {
-    if (!datasetKey || featureCols.length === 0) return;
+  // The tour's demo passes its own knobs and columns: the state setters it calls
+  // first have not landed by the time it builds.
+  async function build(cfg: AnalysisConfig = config, cols: string[] = featureCols) {
+    if (!datasetKey || cols.length === 0) return;
     setLoading(true);
     setError(null);
     setAnalysis(null);
@@ -148,7 +238,7 @@ export default function App() {
     try {
       // On a counterfactual session the rail rebuilds the counterfactual data:
       // the edits are the data now, the rail only changes how it is analysed.
-      const res = await runAnalysis(cf.activeDatasetKey, featureCols, config, useCache);
+      const res = await runAnalysis(cf.activeDatasetKey, cols, cfg, useCache);
       setAnalysis(res);
     } catch (e) {
       setError(String(e));
@@ -164,6 +254,71 @@ export default function App() {
   const shownAnalysis =
     analysis && analysis.meta.dataset === cf.activeDatasetKey ? analysis : null;
 
+  // ── Guided tour ───────────────────────────────────────────────────────────
+  // The tour runs on one demo: Wine quality, default features, two layers. Loading
+  // it is a request that settles over several renders (dataset switch, its
+  // columns, a counterfactual reset), so it is a pending flag the effect below
+  // walks forward, one precondition at a time.
+  const demoKey =
+    datasets.find((d) => d.key.startsWith("Wine quality"))?.key ?? datasets[0]?.key ?? "";
+  const [demoPending, setDemoPending] = useState(false);
+
+  function startDemo() {
+    setConfigOpen(true);
+    setCharNonFeatureOnly(false);
+    if (!demoKey) return;
+    const builtLayers = Number(shownAnalysis?.meta.config.hierarchical_layers ?? 0);
+    if (shownAnalysis && datasetKey === demoKey && cf.stack.length === 0 && builtLayers >= DEMO_LAYERS) {
+      // Already on a demo-shaped run: show it at two layers, rebuild nothing.
+      patchConfig({ hierarchical_layers: DEMO_LAYERS });
+      navigate([]);
+      return;
+    }
+    if (
+      cf.stack.length > 0 &&
+      !window.confirm(
+        "The tour loads a fresh Wine quality run. That ends your counterfactual session and drops its applied edits. Continue?",
+      )
+    )
+      return;
+    if (cf.stack.length > 0) cf.reset();
+    setDemoPending(true);
+  }
+
+  useEffect(() => {
+    if (!demoPending || cf.stack.length > 0 || cfBusy || loading) return;
+    if (datasetKey !== demoKey) {
+      setDatasetKey(demoKey);
+      return;
+    }
+    if (columns?.key !== demoKey) return;
+    if (cacheOnly) {
+      // Nothing can be built here: pick a stored two-layer run if there is one.
+      if (cachedRuns === null) return;
+      const run = runsHere.find((r) => Number(r.config.hierarchical_layers) === DEMO_LAYERS);
+      if (run) setRunPick(run);
+      setDemoPending(false);
+      return;
+    }
+    setDemoPending(false);
+    const cfg = { ...config, hierarchical_layers: DEMO_LAYERS };
+    setConfig(cfg);
+    setFeatureCols(columns.default_feature_cols);
+    void build(cfg, columns.default_feature_cols);
+    // `build` and `config` are read at the moment the preconditions are met.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoPending, cf.stack.length, cfBusy, loading, datasetKey, demoKey, columns, cacheOnly, cachedRuns, runsHere]);
+
+  const tour = useTour(
+    {
+      startDemo,
+      navigate: (path) => navigate(path),
+      setNonFeatureOnly: setCharNonFeatureOnly,
+      tree: () => shownAnalysis?.tree ?? null,
+    },
+    mode !== null && !mode.maintenance,
+  );
+
   const runMeta = [
     datasetKey || "no dataset",
     `${featureCols.length} features`,
@@ -176,6 +331,25 @@ export default function App() {
     `${config.hierarchical_layers} layers`,
     `mcs ${config.hclust_min_cluster_size}`,
   ].join(", ");
+
+  if (mode?.maintenance) {
+    return (
+      <div className="app">
+        <header className="topbar">
+          <span className="topbar__brand">HiLDE</span>
+        </header>
+        <main className="canvas">
+          <div className="banner" role="alert">
+            <strong>Maintenance</strong>
+            <span>
+              HiLDE is under maintenance and does not work right now. Please check back
+              later.
+            </span>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -193,6 +367,14 @@ export default function App() {
         >
           ▶ Intro video
         </a>
+        <button
+          className="topbar__tour"
+          data-tour="tour-button"
+          onClick={tour.start}
+          title="Replay the guided tour of the interface"
+        >
+          ? Tour
+        </button>
         <span className="topbar__meta">{runMeta}</span>
       </header>
 
@@ -207,7 +389,7 @@ export default function App() {
               </div>
 
               <div className="cfg">
-                <section className="cfg__block">
+                <section className="cfg__block" data-tour="dataset">
                   <h3>Dataset</h3>
                   <label className="field">
                     <span>
@@ -244,8 +426,43 @@ export default function App() {
                   )}
                 </section>
 
-                {columns && (
+                {cacheOnly && (
                   <section className="cfg__block">
+                    <h3>Cached run</h3>
+                    <p className="hint cfg__note">
+                      {cachedRuns ? runsHere.length : "…"} stored for this dataset
+                      {facets.length > 0 && ". Choose among them by the settings they differ in"}
+                      . The full settings of the run on screen are below, read-only.
+                    </p>
+                    {/* A plain wrapper: the rail gives a block's first direct field
+                        the stacked layout, and these are all label-and-value rows. */}
+                    <div>
+                      {selectedRun &&
+                        facets.map((f) => (
+                          <label className="field" key={f.label}>
+                            <span>{f.label}</span>
+                            <select
+                              value={f.valueOf(selectedRun)}
+                              onChange={(e) =>
+                                setRunPick(
+                                  nearestRun(runsHere, facets, selectedRun, f, e.target.value),
+                                )
+                              }
+                            >
+                              {f.values.map((v) => (
+                                <option key={v} value={v}>
+                                  {v === "true" ? "yes" : v === "false" ? "no" : v}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                    </div>
+                  </section>
+                )}
+
+                {columns && (
+                  <section className="cfg__block" data-tour="features">
                     <div className="cfg__head">
                       <h3>Feature columns</h3>
                       <span className="cfg__count">
@@ -256,10 +473,13 @@ export default function App() {
                           onClick={() =>
                             setFeatureCols(columns.default_feature_cols)
                           }
+                          disabled={cacheOnly}
                         >
                           Reset
                         </button>
-                        <button onClick={() => setFeatureCols([])}>None</button>
+                        <button onClick={() => setFeatureCols([])} disabled={cacheOnly}>
+                          None
+                        </button>
                       </div>
                     </div>
                     <div className="feature-picker__list">
@@ -276,6 +496,7 @@ export default function App() {
                               type="checkbox"
                               checked={featureCols.includes(c)}
                               onChange={() => toggleFeature(c)}
+                              disabled={cacheOnly}
                             />
                             {c}
                           </label>
@@ -284,6 +505,7 @@ export default function App() {
                     <label
                       className="field--check"
                       style={{ marginTop: "0.6rem", marginBottom: 0 }}
+                      data-tour="nonfeature"
                     >
                       <input
                         type="checkbox"
@@ -297,14 +519,17 @@ export default function App() {
                   </section>
                 )}
 
-                <ConfigPanel
-                  config={config}
-                  maxDims={maxDims}
-                  onChange={patchConfig}
-                />
+                {/* Cache-only: the knobs describe the stored run and cannot be changed. */}
+                <fieldset className="cfg__lock" disabled={cacheOnly}>
+                  <ConfigPanel
+                    config={config}
+                    maxDims={maxDims}
+                    onChange={patchConfig}
+                  />
+                </fieldset>
               </div>
 
-              <div className="cfg__build">
+              <div className="cfg__build" data-tour="build">
                 {/* `cfBusy` gates this the way it gates the dataset selector and
                     Undo/Reset. Build is the one control that can move App state
                     from under an apply that is already out: it nulls `analysis`,
@@ -313,13 +538,19 @@ export default function App() {
                     cannot see either — Build changes no base, generation or head. */}
                 <button
                   className="primary"
-                  onClick={build}
-                  disabled={loading || featureCols.length === 0 || cfBusy}
-                  title={cfBusy ? "Waiting for the counterfactual rebuild" : undefined}
+                  onClick={() => build()}
+                  disabled={loading || featureCols.length === 0 || cfBusy || cacheOnly}
+                  title={
+                    cacheOnly
+                      ? "Disabled on this server — only cached runs are available"
+                      : cfBusy
+                        ? "Waiting for the counterfactual rebuild"
+                        : undefined
+                  }
                 >
                   {loading ? "Building…" : "Build & Apply"}
                 </button>
-                {mode?.hosting && (
+                {mode?.hosting && !cacheOnly && (
                   <label
                     className="field--check"
                     style={{ marginBottom: 0 }}
@@ -350,6 +581,18 @@ export default function App() {
         </aside>
 
         <main className="canvas">
+          {cacheOnly && (
+            <div className="banner" role="note">
+              <strong>Cached only</strong>
+              <span>
+                Only cached inputs are available at the moment: this server does not
+                have the computing capacity to build new runs. Pick a dataset and one
+                of its stored runs under <em>Configuration</em>.
+                {cachedDatasets?.length === 0 && " No stored runs were found on this server."}
+              </span>
+            </div>
+          )}
+
           {/* Failures report on the canvas, not in the rail: the rail collapses to a
               38px strip and would otherwise swallow the only sign anything went wrong. */}
           {error && (
@@ -427,7 +670,7 @@ export default function App() {
             </div>
           )}
 
-          {mode?.hosting && shownAnalysis?.cached && (
+          {mode?.hosting && !cacheOnly && shownAnalysis?.cached && (
             <div className="banner">
               <strong>Cached</strong>
               <span>
@@ -439,7 +682,9 @@ export default function App() {
           )}
 
           {loading && (
-            <div className="empty">Reducing, clustering and scoring …</div>
+            <div className="empty">
+              {cacheOnly ? "Loading the stored run …" : "Reducing, clustering and scoring …"}
+            </div>
           )}
 
           {shownAnalysis && (
@@ -459,16 +704,22 @@ export default function App() {
               config={config}
               charNonFeatureOnly={charNonFeatureOnly}
               imageSpec={columns?.image ?? null}
+              cacheOnly={cacheOnly}
             />
           )}
 
           {!shownAnalysis && !loading && (
             <div className="empty">
-              Pick features and press Build &amp; Apply to compute a run.
+              {cacheOnly
+                ? cachedDatasets
+                  ? "Pick a stored run under Configuration."
+                  : "Listing the stored runs …"
+                : "Pick features and press Build & Apply to compute a run."}
             </div>
           )}
         </main>
       </div>
+      {tour.active && <TourOverlay tour={tour} />}
     </div>
   );
 }
@@ -485,6 +736,7 @@ function Navigation(props: {
   config: AnalysisConfig;
   charNonFeatureOnly: boolean;
   imageSpec: ImageSpec | null;
+  cacheOnly: boolean;
 }) {
   const {
     analysis,
@@ -498,6 +750,7 @@ function Navigation(props: {
     config,
     charNonFeatureOnly,
     imageSpec,
+    cacheOnly,
   } = props;
   const root = analysis.tree;
   const nLayers = config.hierarchical_layers;
@@ -518,15 +771,18 @@ function Navigation(props: {
   // A failed apply leaves the button usable again.
   const cfBusy =
     counterfactual.phase === "applying" || counterfactual.phase === "rebuilding";
-  const applyDisabledReason: string | null = cfBusy
-    ? "a counterfactual apply or rebuild is in progress"
-    : !analysis.meta.analysis_id
-      ? "this run predates movement support — rebuild it first"
-      : movement.state.phase !== "ready"
-        ? "pick a destination and wait for the preview"
-        : !movement.settled
-          ? "waiting for the preview at this strength"
-          : null;
+  // A cache-only server never applies: the rebuild that follows is a new run.
+  const applyDisabledReason: string | null = cacheOnly
+    ? "not available on this server — it needs a rebuild, and only cached runs are served"
+    : cfBusy
+      ? "a counterfactual apply or rebuild is in progress"
+      : !analysis.meta.analysis_id
+        ? "this run predates movement support — rebuild it first"
+        : movement.state.phase !== "ready"
+          ? "pick a destination and wait for the preview"
+          : !movement.settled
+            ? "waiting for the preview at this strength"
+            : null;
   const onApply = () => {
     const s = movement.state;
     if (s.phase !== "ready" || applyDisabledReason) return;
@@ -547,6 +803,8 @@ function Navigation(props: {
     layer: number;
     rowId: number;
   } | null>(null);
+  // A jump from the overview can land far below it; bring the opened panel up.
+  const stack = useScrollToStackEnd<HTMLDivElement>();
   const pathKey = treePath.join(",");
   useEffect(() => {
     setOutlierPick(null);
@@ -575,7 +833,7 @@ function Navigation(props: {
     const movingHere =
       movement.state.phase !== "idle" && movement.state.nodeId === node.id;
     layerViews.push(
-      <section className="panel layer" key={`layer-${L}`}>
+      <section className="panel layer" key={`layer-${L}`} data-tour={`layer-${L}`}>
         <div className="panel__head">
           <span className="kicker">Layer {L}</span>
           <span className="panel__title">
@@ -599,7 +857,7 @@ function Navigation(props: {
             />
             {/* The projection above is what this acts on, so the action sits under it
                 rather than in the side column, which is about the selected child. */}
-            <div className="layer__explore">
+            <div className="layer__explore" data-tour={`explore-layer-${L}`}>
               <p className="hint">
                 {exploringHere
                   ? "Exploring every point in this layer — its clusters are not split up."
@@ -621,7 +879,7 @@ function Navigation(props: {
               </button>
             </div>
           </div>
-          <div className="layer__side">
+          <div className="layer__side" data-tour={`layer-${L}-side`}>
             {child ? (
               <LayerSide
                 parent={node}
@@ -643,6 +901,7 @@ function Navigation(props: {
               nodeId={node.id}
               selectedChildIndex={selectedChild}
               builtMethod={builtMethod}
+              cacheOnly={cacheOnly}
               active={movingHere}
               onStart={movement.start}
             />
@@ -701,7 +960,17 @@ function Navigation(props: {
     explorationPath !== null && explorationPath.length > 0;
 
   return (
-    <>
+    <div ref={stack.ref}>
+      <OverviewPanel
+        root={root}
+        treePath={treePath}
+        nLayers={nLayers}
+        normalized={analysis.meta.config.normalize !== false}
+        onNavigate={(path) => {
+          navigate(path);
+          stack.scroll();
+        }}
+      />
       {layerViews}
       {waiting && (
         <div className="empty">
@@ -722,6 +991,6 @@ function Navigation(props: {
           charNonFeatureOnly={charNonFeatureOnly}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -52,7 +52,7 @@ Outputs (written to ``outputs/experiments/<timestamp>/``):
 
 Run with::
 
-    uv run python -m src_research.predicate_stability
+    pixi run experiment predicate_stability
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
 recorded in the thesis and no longer kept in this repository.

@@ -118,7 +118,7 @@ The analysis half is a separate module so statistics, verdicts and figures can b
 from an existing `stability_records.csv` without repeating the sweep:
 
 ```bash
-uv run python -m src_research.predicate_stability_analysis outputs/experiments/<timestamp>
+pixi run experiment predicate_stability_analysis -- outputs/experiments/<timestamp>
 ```
 
 ### §6.5 — `benchmark_workflow.py`
@@ -146,7 +146,7 @@ instead: every trial calls the same `compute_analysis_tree` the backend serves. 
 only harness with CLI flags:
 
 ```bash
-uv run python -m src_research.pipeline_tuning --datasets "Iris (Low)" --trials 40 --out my_run
+pixi run experiment pipeline_tuning -- --datasets "Iris (Low)" --trials 40 --out my_run
 ```
 
 > **This run was halted mid-run**, during the wine dataset, and nothing was integrated —
@@ -186,21 +186,22 @@ so rather than approximating it — `internal_external.py` refuses the part of i
 that would need a baseline ARI that was computed at run time and then discarded.
 
 ```bash
-uv run python -m src_research.rederive     # needs outputs/ present; regenerates byte-identically
+pixi run rederive     # needs outputs/ present; regenerates byte-identically
 ```
 
 ---
 
 ## Running a harness
 
-From the repository root, with the environment from `scripts/prepare_env.sh`:
+From anywhere in the repository, with the environment from `pixi install --locked`
+(extra flags go after a `--` separator, as in the examples above):
 
 ```bash
-uv run python -m src_research.hierarchical_vs_flat
-uv run python -m src_research.planted_subspace_recovery
-uv run python -m src_research.predicate_stability
-uv run python -m src_research.benchmark_workflow
-uv run python -m src_research.hyperparameter_tuning
+pixi run experiment hierarchical_vs_flat
+pixi run experiment planted_subspace_recovery
+pixi run experiment predicate_stability
+pixi run experiment benchmark_workflow
+pixi run experiment hyperparameter_tuning
 ```
 
 Each stamps a fresh `outputs/experiments/<UTC timestamp>/` and writes its CSVs, a

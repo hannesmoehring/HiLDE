@@ -24,15 +24,23 @@ React + D3 frontend (`frontend/`) served from the same process in production.
 
 ## Quickstart
 
-Both paths below were run verbatim from a fresh `git clone` into `/tmp` on macOS
-(darwin 24.6.0 arm64, Docker 27.5.1, Node 22.14, npm 10.9, uv 0.11.9). Run them from the
-repository root.
+Both paths below were run verbatim from a fresh `git clone` into `/tmp` on macOS arm64:
+the Docker path on darwin 24.6.0 with Docker 27.5.1, the local path on darwin 27.2.0 with
+pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the repository root.
 
 ### Docker (no local Python or Node needed)
 
 ```bash
 docker compose up --build
 ```
+
+> **This starts the cache-only server, not a server that builds runs.**
+> `docker-compose.yml` is the VPS deployment file: it sets `HILDE_CACHE_ONLY=1` and caps
+> the container at 640 MB. It serves only the runs already in `./.cache/hilde_runs`,
+> which is empty in a fresh clone, so the UI reports that no stored runs were found and
+> every build is refused. To build runs, use the [Local](#local) path below, or remove
+> `HILDE_CACHE_ONLY=1`, `mem_limit` and `memswap_limit` from `docker-compose.yml`
+> together (see [Cache-only](#cache-only)).
 
 The image builds the frontend in a Node stage, installs `backend/requirements.txt` into a
 `python:3.13-slim` stage, and serves the API and the built UI from one uvicorn process.
@@ -56,19 +64,27 @@ populate it) and `./.cache/hilde_runs` from the host.
 ### Local
 
 ```bash
-bash scripts/prepare_env.sh
-uv run host.py
+pixi install --locked
+pixi run hilde
 ```
 
-`prepare_env.sh` requires [uv](https://docs.astral.sh/uv/); it installs Python 3.13 and
-syncs `uv.lock`. `host.py` runs `npm install` and `npm run build` itself when
-`frontend/dist` is missing or older than `frontend/src`, then serves on
-<http://0.0.0.0:8000>. Node is therefore needed for the first run.
+`pixi install --locked` requires [pixi](https://pixi.sh); it installs Python 3.13 and
+Node 22 from conda-forge and the Python packages exactly as `pixi.lock` records them.
+`host.py` runs `npm install` and `npm run build` itself when `frontend/dist` is missing
+or older than `frontend/src`, then serves on <http://0.0.0.0:8000>. Node comes from the
+pixi environment, so it needs no separate install.
+
+The tasks (`hilde`, `test`, `check`, ...) are defined under `[tool.pixi.tasks]` in
+`pyproject.toml`; any other command runs as `pixi run python ...`. `pixi run <task>` uses
+the environment of the committed `pixi.lock`, and `pixi install --locked` and
+`pixi run --locked` refuse to change that file. The experiment harnesses run as
+`pixi run experiment <module>` and write into `outputs/`; read
+[`src_research/README.md`](./src_research/README.md) before running one.
 
 Bind elsewhere with:
 
 ```bash
-uv run host.py --port 9000 --host 127.0.0.1
+pixi run hilde --port 9000 --host 127.0.0.1
 ```
 
 `host.py` is the only mode with a **persistent run cache**: a completed `/api/analysis`
@@ -83,16 +99,91 @@ rm -rf .cache/hilde_runs
 
 Read the limitation on this cache below before trusting it after a code change.
 
+### Cache-only
+
+For a server that cannot afford a build. It is opt-in: `host.py` and the Docker image
+build by default, and `HILDE_CACHE_ONLY=1` turns builds off. The `hilde-low-mem` task
+sets it:
+
+```bash
+pixi run hilde-low-mem
+```
+
+The server then shows the runs already in
+`.cache/hilde_runs/` and computes nothing new. The UI says so in a standing notice,
+offers only the datasets that have a stored run, and disables *Build & Apply*. In place
+of the free-form configuration it shows one selector per setting the dataset's stored
+runs differ in, limited to the stored values; a combination that was never stored snaps
+to the nearest one that was. The full settings of the run on screen stay visible,
+read-only. Listing the runs reads only the head of each entry, once: what it read is
+kept in `.cache/hilde_runs/.listing/`, so a restart does not read the entries again (on a
+read-only mount it is kept in memory instead). The UI fetches one dataset's runs at a
+time, so a cache of thousands of runs is fine.
+
+What still works is everything that is not a build: drill-down, predicates,
+characteristics, targets, row tables, images, and the movement preview on PCA runs.
+Refused with HTTP 409: a run that is not stored, a movement on a UMAP run (it needs a
+refit), and applying a movement (it needs a rebuild).
+
+To deploy, copy the contents of `.cache/hilde_runs/` from the machine that computed the
+runs to the same path on the server, or point `HILDE_CACHE_DIR` at wherever they are.
+Entries can be added while the server runs, as long as each one appears under its name
+in one step (written elsewhere and moved in, as an rsync does); one written in place is
+noticed only at the next change to the directory. Two things the cache does not carry:
+
+- **The datasets.** A stored run holds the tree, not the rows; predicates and row tables
+  read the dataset itself. The wine CSVs ship with the repo and the scikit-learn bundled
+  sets need nothing, but any other dataset with a stored run must be present under
+  `datasets/` on the server (or the loader will download it on first use).
+- **The code version.** Entries are served as-is; see the run-cache limitation below.
+
+Ship the listing index with the entries: without it, the server's first listing reads
+the head of every entry, which takes 10 s for 21,000 runs on a fast disk and over 100 s
+on a slow one. Write it on the machine that has the runs (about 10 s for 21,000), then
+copy `.cache/hilde_runs/.listing/` along with the entries; a copy that does not keep
+file times is fine, since an entry's name already says what it holds.
+
+```bash
+pixi run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in front
+```
+
+While a first scan is still running, the listing endpoints answer 503 after 20 s and
+the UI asks again, so no request outlasts Cloudflare's 100 s.
+
+**Memory.** `docker-compose.yml` is the deployment file for the VPS: it caps the
+container at 640 MB with no swap (`mem_limit`, `memswap_limit`) and sets
+`HILDE_CACHE_ONLY=1`; the comment there says how the cap follows from the VPS.
+Serving fits in it because a stored run is sent as the gzip bytes it already is rather
+than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
+kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
+the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
+Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
+session keeps under ~330 MiB. A build needs far more and would be killed under this cap:
+to build in Docker, remove `HILDE_CACHE_ONLY=1` and both memory limits together.
+
+**Maintenance notice.** Also opt-in. With `HILDE_MAINTENANCE=1` the UI shows a
+"Maintenance" notice instead of the app and requests nothing beyond `/api/mode`. The API
+itself is not blocked.
+
+```bash
+HILDE_MAINTENANCE=1 pixi run hilde
+```
+
+Under Docker, add `HILDE_MAINTENANCE=1` to `environment:` in `docker-compose.yml` and
+recreate the container; no rebuild is needed.
+
+The two-terminal development setup below sets neither variable and builds as usual.
+
 ### Development (two terminals, hot reload)
 
 ```bash
 # terminal 1 — API on :8000
-PYTHONPATH=. uv run uvicorn backend.app:app --port 8000 --reload
+pixi run dev-api
 ```
 
 ```bash
 # terminal 2 — Vite dev server on :5173, proxying /api to :8000
-cd frontend && npm install && npm run dev
+cd frontend && pixi run npm install && pixi run dev-web
 ```
 
 Open <http://localhost:5173> (Vite binds `[::1]`, so `localhost` resolves but a literal
@@ -102,41 +193,46 @@ no cache banner appears.
 To produce a production bundle by hand instead of letting `host.py` do it:
 
 ```bash
-cd frontend && npm install && npm run build
+cd frontend && pixi run npm install && pixi run npm run build
 ```
 
 `backend/app.py` mounts `frontend/dist` at `/` whenever that directory exists.
 
 ### Tests and checks
 
-The test suite is five scripts, run as modules:
+The test suite is seven files in `backend/tests/` (97 tests), run under pytest (a dev
+dependency, part of the default pixi environment):
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_serialize
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_targets
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_predicate
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_movement
-PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
+pixi run test
 ```
 
-The same files run under pytest (a dev dependency, installed by `uv sync`):
+Five of the files also run standalone as modules; `test_rows.py` and
+`test_cache_only.py` need pytest:
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q
+pixi run python -m backend.tests.test_serialize
+pixi run python -m backend.tests.test_targets
+pixi run python -m backend.tests.test_predicate
+pixi run python -m backend.tests.test_movement
+pixi run python -m backend.tests.test_counterfactual
 ```
 
 `scripts/checks/` holds four regression checks retained from the pre-release code
 review; `scripts/checks/README.md` states what each one proves. They must run from
-outside the repository so no relative dataset path resolves into it:
+outside the repository so no relative dataset path resolves into it, and the `check`
+task runs them with `/tmp` as the working directory. The first line runs all four, the
+second only those whose filename starts with `02`:
 
 ```bash
-cd /tmp && PYTHONPATH=<repo> <repo>/.venv/bin/python <repo>/scripts/checks/02_zadu_equivalence.py
+pixi run check
+pixi run check 02
 ```
 
 Formatting:
 
 ```bash
-uv run ruff format --check .
+pixi run fmt-check
 ```
 
 ---
@@ -182,6 +278,16 @@ background job that the client polls. The rail collapses to a narrow strip so th
 can widen. Selecting a new dataset resets the feature selection to that dataset's default
 (everything except `row_id` and `target_*`).
 
+**Overview.** A collapsible treemap of the whole cluster hierarchy, every depth at once,
+above the layers. Area is the number of points; the points HDBSCAN left unassigned when
+splitting a node are a hatched tile of their own, so every node's area equals its size.
+Tiles are named like the exploration panel (`C1`), with the feature whose mean moves most
+against the parent and the point count. Clicking a tile opens it in the layers below (an
+unassigned tile opens the layer that shows those points as noise); the map itself never
+zooms and outlines the current path instead. Tiles can be coloured by structure, DR
+quality or any column mean, and a details column beside the map reads out the hovered or
+current node.
+
 **Layer views.** One panel per hierarchical layer. Each shows the layer's cluster
 projection as a scatter, coloured by HDBSCAN cluster; clicking a cluster drills into it
 and opens the next layer below. The side column of a layer reports the selected cluster's
@@ -194,7 +300,7 @@ cluster. It is the only way to reach the rows HDBSCAN labelled noise, which belo
 child cluster. Pressing it again returns to cluster picking; every navigation clears the
 flag, so it can never outlive the path it was set for.
 
-**Exploration panel.** The per-node embedding, with lasso and box selection. The
+**Exploration panel.** The per-node embedding, with lasso and box selection; scroll to zoom, and switch to *Pan* to drag the view. The
 selection drives three tabs. *Predicate* induces an axis-aligned conjunction describing
 the selection and reports its F1, precision and recall, scoped either against the whole
 dataset (global) or against the explored node (local). Clauses are listed in the order the
@@ -276,7 +382,7 @@ frontend/      React + D3 (Vite, TypeScript). src/App.tsx owns navigation state;
 src_research/  Offline experiment harnesses, one per thesis experiment, each next to
                its pre-registered design document. rederive/ holds the post-hoc
                correction driver.
-scripts/       prepare_env.sh (environment) and checks/ (retained regression checks).
+scripts/       checks/ (retained regression checks).
 host.py        Single-process launcher: build the frontend if stale, then serve.
 main.py        Minimal smoke script — loads the wine CSV and runs one PCA.
 ```
@@ -327,7 +433,7 @@ nothing, an inflated n). No experiment was re-executed and no original file was 
 what turned out not to be derivable at all.
 
 The driver is `src_research/rederive/`. The run directories it needs ship with the
-repository, so from any clone `uv run python -m src_research.rederive`
+repository, so from any clone `pixi run rederive`
 regenerates every `rederived_20260813/` byte-identically.
 
 ---
@@ -342,11 +448,14 @@ the randomized solver on wide or small matrices and draws from the unseeded proc
 RNG.
 
 **Pinned environment.** The Docker image installs `backend/requirements.txt`, whose
-versions are pinned to the resolved `uv.lock` at this release freeze (including the
+versions were pinned to the resolved `uv.lock` at this release freeze (including the
 transitive `llvmlite`, `pynndescent`, `faiss-cpu` and `joblib`, which had drifted between
 the lockfile and the image before). `pyproject.toml` caps the scientific core
 (`numpy<2.5`, `scipy<2`, `scikit-learn<2`, `umap-learn<0.6`, `hdbscan<0.9`, `numba<0.68`,
-`zadu<0.5`) and `uv.lock` fixes everything for the local path. If `pyproject.toml`
+`zadu<0.5`) and `pixi.lock` fixes everything for the local path. `pixi.lock` replaced
+`uv.lock` after the freeze and resolves the same package versions, with the same hashes,
+as the frozen `uv.lock`; the solve is date-frozen by `exclude-newer = "2026-08-14"` in
+`[tool.pixi.workspace]`, so a re-lock does not pull newer releases. If `pyproject.toml`
 changes, re-lock and re-pin `backend/requirements.txt` to match.
 
 **Do not mix reruns with pre-freeze outputs in one table.** The numbers under
@@ -382,12 +491,12 @@ as one.
   remaining 2195 are noise. They are not lost — the layer view, via *Explore entire
   layer*, is where they can be selected — but child cluster sizes do not sum to the
   parent's.
-- **The test suite is backend-only.** Five scripts (`backend/tests/`) covering tree
-  serialization, target statistics, predicate clause bookkeeping, cluster movement and
-  counterfactual sessions,
+- **The test suite is backend-only.** Seven files (`backend/tests/`) covering tree
+  serialization, target statistics, predicate clause bookkeeping, cluster movement,
+  counterfactual sessions, row tables and cache-only mode,
   plus the four regression checks in `scripts/checks/`. There is no test runner
-  configuration and no automated coverage of the frontend. `uv run ruff format --check .`
-  passes; `uv run ruff check .` does not (33 findings).
+  configuration beyond the `test` task and no automated coverage of the frontend.
+  `pixi run fmt-check` passes; `pixi run ruff check .` does not (33 findings).
 - **Movement previews are not a promise about clustering.** A cluster moved onto another
   in the frozen projection may still not merge with it on a rebuild: HDBSCAN decides over
   the whole dataset in the pre-reduction space, not from the picture on screen.

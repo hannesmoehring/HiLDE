@@ -8,28 +8,31 @@ client-side.
 
 from __future__ import annotations
 
+import contextlib
 import csv
+import gzip
 import io
 import json
 import sys
-from collections import OrderedDict
+import threading
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 # Make the repo root importable so `src.*` resolves when uvicorn is started from
 # elsewhere; PYTHONPATH=. does the same thing for the documented dev command.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import counterfactual as cf
 from backend import datasets as ds
 from backend import images as ds_images
-from backend import jobs, movement_jobs, run_cache
+from backend import jobs, movement_jobs, run_cache, run_listing, stored_run, tree_cache
 from backend.characteristics import compute_selection_characteristics
 from backend.counterfactual_apply import (
     ApplyRequestData,
@@ -54,7 +57,18 @@ from backend.targets import compute_targets
 from src.config_defaults import default_config
 from src.evaluation.evaluate import start_evaluation
 
-app = FastAPI(title="HiLDE API", version="0.1.0")
+
+@contextlib.asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if run_cache.is_cache_only():  # index the stored runs before the first visitor asks
+        known = set(ds.dataset_keys())
+        threading.Thread(
+            target=run_listing.summary, args=(_cache_key, known), daemon=True
+        ).start()
+    yield
+
+
+app = FastAPI(title="HiLDE API", version="0.1.0", lifespan=_lifespan)
 
 # Dev: Vite dev server (5173) calls the API cross-origin. Tightened in prod (single container).
 app.add_middleware(
@@ -63,27 +77,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Cache serialized trees by request signature; tree build (UMAP+HDBSCAN+ZADU) is expensive.
-# Bounded LRU: a payload is ~8-10 MB on the smallest realistic dataset, and a
-# hyperparameter sweep visits a new key every build, so an unbounded dict grows
-# monotonically into the container's memory limit.
-_TREE_CACHE_MAX = 8
-_tree_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
-
-
-def _cache_put(key: str, payload: dict[str, Any]) -> None:
-    _tree_cache[key] = payload
-    _tree_cache.move_to_end(key)
-    while len(_tree_cache) > _TREE_CACHE_MAX:
-        _tree_cache.popitem(last=False)
-
-
-def _cache_get(key: str) -> dict[str, Any] | None:
-    payload = _tree_cache.get(key)
-    if payload is not None:
-        _tree_cache.move_to_end(key)
-    return payload
 
 
 def _merge_config(partial: dict[str, Any]) -> dict[str, Any]:
@@ -183,12 +176,57 @@ def _load_dataset(key: str) -> Any:
 
 @app.get("/api/mode")
 def mode() -> dict[str, Any]:
-    """Whether the server runs in hosting mode (persistent run cache + UI banner)."""
+    """Whether the server runs in hosting mode (persistent run cache + UI banner),
+    and whether it is restricted to the runs already in that cache."""
     hosting = run_cache.is_hosting()
     return {
         "hosting": hosting,
         "cache_dir": str(run_cache.cache_dir()) if hosting else None,
+        "cache_only": run_cache.is_cache_only(),
+        "maintenance": run_cache.is_maintenance(),
     }
+
+
+_CACHE_ONLY_DETAIL = (
+    "This server only serves precomputed runs — computing is disabled here."
+)
+
+
+_LISTING_WAIT_S = 20.0  # then 503: a cold scan on a slow disk outlasts a proxy
+
+
+def _listing_busy() -> HTTPException:
+    detail = "Still indexing the stored runs; retry shortly."
+    return HTTPException(status_code=503, detail=detail, headers={"Retry-After": "3"})
+
+
+@app.get("/api/cached-runs")
+def cached_runs() -> list[dict[str, Any]]:
+    """The datasets `/api/analysis` has stored runs of, with how many each."""
+    try:
+        return run_listing.summary(_cache_key, set(ds.dataset_keys()), _LISTING_WAIT_S)
+    except run_listing.Busy:
+        raise _listing_busy() from None
+
+
+@app.get("/api/cached-runs/{dataset}")
+def cached_runs_of(
+    dataset: str, accept_encoding: Annotated[str, Header()] = ""
+) -> Response:
+    """The stored runs of one dataset, compact (`run_index.encode`); each config,
+    sent back with its group's two, is a cache hit. Gzipped once, sent as is."""
+    body = None
+    if dataset in ds.dataset_keys():
+        try:
+            body = run_listing.encoded(_cache_key, dataset, _LISTING_WAIT_S)
+        except run_listing.Busy:
+            raise _listing_busy() from None
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"No stored runs of {dataset}")
+    if stored_run.accepts_gzip(accept_encoding):
+        headers = {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"}
+        return Response(body, media_type="application/json", headers=headers)
+    return Response(gzip.decompress(body), media_type="application/json")
 
 
 @app.get("/api/datasets")
@@ -225,12 +263,39 @@ def dataset_image(key: str, row_id: int) -> dict[str, Any]:
 
 
 def _cached_payload(key: str) -> dict[str, Any] | None:
-    payload = _cache_get(key)
-    if payload is None and run_cache.is_hosting():
-        payload = run_cache.load(key)
-        if payload is not None:
-            _cache_put(key, payload)
+    payload = tree_cache.get(key)
+    if payload is not None or not run_cache.is_hosting():
+        return payload
+    if run_cache.is_cache_only():  # byte-bounded, one parse at a time
+        path = run_cache._path_for(key)
+        size = path.stat().st_size if path.is_file() else 0
+        return tree_cache.load(key, size, run_cache.load)
+    payload = run_cache.load(key)
+    if payload is not None:
+        tree_cache.put(key, payload)
     return payload
+
+
+def _respell_as_stored(req: AnalysisRequest | MovementRequest) -> None:
+    """Cache-only: give `req.config` the spelling its stored run was requested with.
+
+    A browser cannot send 200.0 back — `JSON.parse` made it 200 — and the cache
+    key differs between the two, so a run stored from Python under 200.0 would be
+    listed and then refused. Only looked up when the config as sent is a miss.
+    """
+    if not run_cache.is_cache_only():
+        return
+    key = _cache_key(req.dataset, req.feature_cols, req.config)
+    if run_cache._path_for(key).is_file():
+        return
+    try:
+        stored = run_listing.stored_config(
+            _cache_key, req.dataset, req.feature_cols, req.config, _LISTING_WAIT_S
+        )
+    except run_listing.Busy:
+        raise _listing_busy() from None
+    if stored is not None:
+        req.config = stored
 
 
 def _build(req: AnalysisRequest, df: Any, key: str) -> None:
@@ -257,7 +322,7 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
         },
         "tree": serialize_tree(tree),  # type: ignore[arg-type]
     }
-    _cache_put(key, payload)
+    tree_cache.put(key, payload)
     # A counterfactual run is session state: hosting mode must never write it
     # to disk, where it would outlive the history that gives its key meaning.
     if run_cache.is_hosting() and not cf.is_counterfactual_key(req.dataset):
@@ -269,7 +334,7 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
         return {"status": "running", "job_id": job.id}
     if job.status == "error":
         return {"status": "error", "job_id": job.id, "detail": job.detail}
-    payload = _cache_get(job.key)
+    payload = tree_cache.get(job.key)
     if payload is None:  # only if the entry was evicted between finishing and polling
         return {
             "status": "error",
@@ -279,8 +344,10 @@ def _job_payload(job: jobs.Job) -> dict[str, Any]:
     return {"status": "done", "job_id": job.id, **payload, "cached": False}
 
 
-@app.post("/api/analysis")
-def analysis(req: AnalysisRequest) -> dict[str, Any]:
+@app.post("/api/analysis", response_model=None)
+def analysis(
+    req: AnalysisRequest, accept_encoding: Annotated[str, Header()] = ""
+) -> dict[str, Any] | Response:
     """Starts a build and returns a job id; the client polls /api/analysis/jobs/{id}.
 
     A cache hit still answers inline — only the runs that would outlast a proxy's
@@ -288,13 +355,25 @@ def analysis(req: AnalysisRequest) -> dict[str, Any]:
     """
     df = _load_dataset(req.dataset)
 
+    _respell_as_stored(req)
     key = _cache_key(req.dataset, req.feature_cols, req.config)
 
     # `use_cache=False` bypasses both tiers, so the toggle really does recompute.
-    if req.use_cache:
+    # Cache-only mode has nothing to recompute with: a hit is the only answer.
+    cache_only = run_cache.is_cache_only()
+    if cache_only:  # the stored bytes, never parsed (backend/stored_run.py)
+        stored = stored_run.response(key, accept_encoding)
+        if stored is not None:
+            return stored
+    elif req.use_cache:
         payload = _cached_payload(key)
         if payload is not None:
             return {"status": "done", **payload, "cached": True}
+    if cache_only:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{_CACHE_ONLY_DETAIL} This dataset and configuration are not among them.",
+        )
 
     return _job_payload(jobs.submit(key, lambda: _build(req, df, key)))
 
@@ -349,6 +428,7 @@ def movement(req: MovementRequest) -> dict[str, Any]:
     disagree, when the payload is gone, or when it predates `effective_config`.
     """
     df = _load_dataset(req.dataset)
+    _respell_as_stored(req)
     payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
     data = MovementRequestData(**req.model_dump())
     try:
@@ -357,6 +437,11 @@ def movement(req: MovementRequest) -> dict[str, Any]:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     if needs_background(validated):
+        if run_cache.is_cache_only():  # the job would be a full UMAP fit
+            raise HTTPException(
+                status_code=409,
+                detail=f"{_CACHE_ONLY_DETAIL} Moving a cluster of a UMAP run needs a refit.",
+            )
         return movement_jobs.envelope(
             movement_jobs.submit(
                 movement_jobs.job_key(data),
@@ -388,7 +473,14 @@ def counterfactual_apply(req: CounterfactualApplyRequest) -> dict[str, Any]:
     records the edit on top of `req.dataset` and answers with the new dataset
     key. Nothing about the original frame or any existing payload changes; the
     client rebuilds the analysis on the new key with `/api/analysis`.
+
+    Refused in cache-only mode: that rebuild is exactly what the server cannot do.
     """
+    if run_cache.is_cache_only():
+        raise HTTPException(
+            status_code=409,
+            detail=f"{_CACHE_ONLY_DETAIL} Applying a movement needs a rebuild.",
+        )
     df = _load_dataset(req.dataset)
     payload = _cached_payload(_cache_key(req.dataset, req.feature_cols, req.config))
     data = ApplyRequestData(**req.model_dump())
@@ -494,7 +586,7 @@ def targets(req: TargetsRequest) -> dict[str, Any]:
 
 
 @app.post("/api/rows")
-def rows(req: RowsRequest) -> dict[str, Any]:
+def rows(req: RowsRequest) -> StreamingResponse:
     """On-demand raw feature values for a set of row ids (selected-points table)."""
     df = _load_dataset(req.dataset)
     # Ids are positions into *this* dataset's frame. A client holding a tree built on
@@ -519,10 +611,22 @@ def rows(req: RowsRequest) -> dict[str, Any]:
             )
         cols = req.columns
     sub = df.iloc[req.ids][cols]
-    records = json.loads(
-        sub.to_json(orient="records")
-    )  # to_json coerces NaN->null, np types->native
-    return {"columns": cols, "rows": records}
+    return StreamingResponse(_rows_json(cols, sub), media_type="application/json")
+
+
+_ROWS_CHUNK = 25  # rows per to_json call: a 400 x 4,137 table is 37 MB of JSON
+
+
+def _rows_json(cols: list[str], sub: Any) -> Iterator[str]:
+    """`{"columns": cols, "rows": records}`, written a few rows at a time: parsing
+    the whole table back into Python objects to re-encode it cost ~120 MiB a
+    request on Olivetti, enough for a few at once to kill a 640m container.
+    `to_json` writes NaN as null and numpy scalars as plain numbers."""
+    yield '{"columns":' + json.dumps(cols, separators=(",", ":")) + ',"rows":['
+    for start in range(0, len(sub), _ROWS_CHUNK):
+        chunk = sub.iloc[start : start + _ROWS_CHUNK].to_json(orient="records")
+        yield ("," if start else "") + chunk[1:-1]
+    yield "]}"
 
 
 # Serve the built frontend (production single-container). Mounted last so /api/*

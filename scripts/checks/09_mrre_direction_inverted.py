@@ -20,7 +20,7 @@ in h1a_summary.csv, while median_delta (which does not consult HIGHER_IS_BETTER)
 A row can therefore read median_delta=+0.09 next to win_rate=0.02.
 
 Run:
-  cd /tmp && PYTHONPATH=<repo> <repo>/.venv/bin/python <repo>/scripts/checks/09_mrre_direction_inverted.py
+  pixi run check 09
 """
 
 import warnings

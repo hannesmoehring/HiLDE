@@ -25,6 +25,7 @@ import type {
   TargetsResponse,
   TreeNode,
 } from "../types";
+import { TOUR_SELECT_EVENT } from "../tour/steps";
 import { PointImage } from "./PointImage";
 import type { RangeData } from "./RangeFilters";
 import { collectRangeData, RangeFilters } from "./RangeFilters";
@@ -163,6 +164,21 @@ export function ExplorationPanel({
     },
     [node.id],
   );
+
+  // The guided tour asks for a selection to explain: the left third of the plot,
+  // which is a contiguous region and so gives the predicate something to say.
+  useEffect(() => {
+    const onTour = () => {
+      const pts = node.embedding_original ?? [];
+      const xs = pts.flatMap((p) => (p[0] === null ? [] : [p[0]])).sort((a, b) => a - b);
+      if (xs.length === 0) return;
+      const cut = xs[Math.floor(xs.length / 3)];
+      setView("predicate");
+      selectPoints(pts.flatMap((p, i) => (p[0] !== null && p[0] <= cut ? [i] : [])));
+    };
+    window.addEventListener(TOUR_SELECT_EVENT, onTour);
+    return () => window.removeEventListener(TOUR_SELECT_EVENT, onTour);
+  }, [node, selectPoints]);
 
   // Reset everything when the explored node changes.
   useEffect(() => {
@@ -472,7 +488,7 @@ export function ExplorationPanel({
 
       <div className="exploration__cols">
         <div className="exploration__analysis">
-          <div className="tabs" role="tablist" aria-label="Selection view">
+          <div className="tabs" role="tablist" aria-label="Selection view" data-tour="exploration-tabs">
             <button
               role="tab"
               aria-selected={view === "predicate"}
@@ -643,7 +659,7 @@ export function ExplorationPanel({
           )}
         </div>
 
-        <div className="exploration__plot">
+        <div className="exploration__plot" data-tour="exploration-plot">
           <ProjectionScatter
             points={node.embedding_original ?? []}
             rowIds={node.row_indices}
@@ -660,7 +676,7 @@ export function ExplorationPanel({
         </div>
       </div>
 
-      <div className="exploration__table">
+      <div className="exploration__table" data-tour="exploration-table">
         <h3>Selected points: {selected.length}</h3>
         {/* The table is empty in this state because nothing was requested for it; say
             why here too, since the Ranges tab has no room for the hint above. */}

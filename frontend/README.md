@@ -22,7 +22,7 @@ npm run typecheck  # tsc -b --noEmit
 ```
 
 In production nothing runs here: `backend/app.py` mounts `dist/` at `/` and serves the UI
-from the same uvicorn process. `uv run host.py` rebuilds `dist/` when it is missing or
+from the same uvicorn process. `pixi run hilde` rebuilds `dist/` when it is missing or
 older than `src/`.
 
 > `npm run typecheck` reports `TS6310` on `tsconfig.node.json` — a pre-existing
@@ -68,9 +68,11 @@ Building is a polled job, not one long request: `api.ts::runAnalysis` POSTs to
 ┌──────────────────────────────────────────────────────────────┐
 │ topbar — brand, intro video, run meta                        │
 ├───────────────┬──────────────────────────────────────────────┤
-│ ConfigPanel   │  Layer 1:  ClusterScatter    │  LayerSide     │
-│ (collapsible  │            OutlierPanel      │  (tiles +      │
-│  rail)        │  Layer 2:  ClusterScatter    │   chars OR     │
+│ ConfigPanel   │  OverviewPanel — TreemapOverview + details    │
+│ (collapsible  ├──────────────────────────────┬────────────────┤
+│  rail)        │  Layer 1:  ClusterScatter    │  LayerSide     │
+│               │            OutlierPanel      │  (tiles +      │
+│               │  Layer 2:  ClusterScatter    │   chars OR     │
 │               │            OutlierPanel      │   predicate)   │
 │               ├──────────────────────────────┴────────────────┤
 │               │  ExplorationPanel — ProjectionScatter +       │
@@ -78,8 +80,8 @@ Building is a polled job, not one long request: `api.ts::runAnalysis` POSTs to
 └───────────────┴───────────────────────────────────────────────┘
 ```
 
-One layer view per hierarchical level, then the exploration panel on whichever node the
-path resolves to.
+The overview treemap of the whole tree, then one layer view per hierarchical level, then
+the exploration panel on whichever node the path resolves to.
 
 ---
 
@@ -96,6 +98,8 @@ path resolves to.
 | `types.ts` | The data contract. **Mirrors `backend/serialize.py`** — change one and change the other. |
 | `config.ts` | `DEFAULT_CONFIG`, mirroring `src/config_defaults.py`, except `method`: the app opens on UMAP while the Python default stays PCA (a research harness reads its DR method off that default). Every request carries `method`, so this is what the app actually runs. |
 | `treeNav.ts` | Client-side drill-down over the fetched tree. |
+| `overview.ts` | The tree as the overview's nested tiles: one synthetic *unassigned* tile per split node (`n_points` minus its children's), tile names (`C{i}`, the largest mean shift against the parent), and the noise tile's means recovered from parent minus children. Feature `z_mean`s are whole-data relative at every depth, so a shift is the difference of z-means over the parent's own `z_std`; the root, which carries no characteristics, is mean 0 / SD 1 by construction. |
+| `overviewMetrics.ts` | What tiles can be coloured by (structure, projection quality, every column mean) and the six-step slate ramp. Quantized on purpose: the steps skip the luminance band where neither ink nor white text clears 4.5:1. |
 | `movement.ts` | The cluster-movement state machine (`useMovement`) plus the pure geometry it needs: screen→embedding inversion, target resolution, strength re-expression, and the stale-response guard. Kept out of the chart so all of it is testable without a DOM. `settled` is the Apply-enablement condition: phase `ready`, no strength re-request pending or in flight, the response answered at the slider's own strength, and belonging to the run on screen. |
 | `counterfactual.ts` | The counterfactual session (`useCounterfactual`): the stack of applied edits, the one `activeDatasetKey` every request is sent against, and the `idle / applying / rebuilding / error` phases. Apply and Undo/Reset are a rebuild on a key; the switch — stack, active key, displayed run, path to root — is one state update, and any failure leaves everything as it was. `App.tsx` keys the layer stack on the active key, so a switch remounts it with the movement machine idle. |
 
@@ -109,6 +113,7 @@ path resolves to.
 | `RangeFilters.tsx` | The *Ranges* tab — the inverted interaction: pick columns, slide a `[min, max]` window over each, and points inside *every* window become the selection. Windows are in raw column units. |
 | `OutlierPanel.tsx` | GLOSH scores for one internal layer, folded into a `<details>`; the closed summary carries the headline numbers. Clicking a row reveals that point's values and rings it in the projection above. |
 | `ClusterMovementPanel.tsx` | Two pieces. `MovementStartRow` is the one button that sits under `LayerSide` in the side column. `ClusterMovementPanel` is the full-width row a layer card grows under the plot *and* the characteristics once a movement runs: three columns (route + strength slider with a `rec.` tick + Cancel/CSV/JSON · stat tiles at the server's strength + the UMAP sparkline · the feature-change table sorted by standardized magnitude, held-fixed columns as a footer line), then one-line warning chips, then a collapsed *About this preview*. Every tile label and chip carries its sentence as a `title`, and the same sentences are listed in the About block, so nothing is hover-only. The "click a destination" prompt is the chart's own status line above the plot. *Apply* (enabled only when the preview is exactly what the server would write — see `movement.ts::settled`) hands the movement to the counterfactual session. |
+| `OverviewPanel.tsx` | The *Overview* panel above Layer 1: the *Layers* breadcrumb (the current path, back to the root), the colour select, legend, the *Map* breadcrumb (`MapCrumbs.tsx`, how far the map is zoomed), the treemap and `OverviewDetails.tsx` (the hovered / keyboard-focused tile, else the selected one, else the map's focused frame: shares, composition bar, three largest mean shifts) with `ExploreAction.tsx`, the *Explore* button that names what it opens (the selected tile, else the map's focused frame; never the hover or focus preview). The map's zoom and selection live in `hooks/useMapFocus.ts`, apart from the path: browsing the map never moves the stack. When the path moves from elsewhere, the current node is selected and the map widens to the nearest frame that holds it; a rebuild drops a focus or selection whose key is gone. The panel changes nothing but the path, and only on explore or a *Layers* crumb, through the same `navigate` every other control uses, then scrolls the opened panel into view (`hooks/useScrollToStackEnd.ts`). Collapsed state is remembered per browser. |
 | `PointImage.tsx` | One row drawn as its image. The server sends raw greyscale pixels, so the canvas is drawn at native size and blown up with `image-rendering: pixelated` — an 8×8 digit stays a grid of squares. |
 
 **Why `target_*` columns are offered in *Ranges* but never in the predicate.** A range
@@ -126,12 +131,13 @@ deliberate provenance — the files they name are not in this repository.
 |---|---|
 | `ClusterScatter.tsx` | **A** — parent node's embedding, coloured by child cluster, HDBSCAN noise as grey ×, clickable legend and centroid labels. Click to drill in. |
 | `CharacteristicsBar.tsx` | **B** — z-score bars per column with ±`z_std` error bars and sign-based colouring. |
-| `ProjectionScatter.tsx` | **C** — the exploration embedding (equal aspect) with lasso + box selection. |
+| `ProjectionScatter.tsx` | **C** — the exploration embedding (equal aspect) with lasso + box selection and zoom/pan (`hooks/usePlotZoom.ts`). |
 | `PcaVarianceBar.tsx` | **D** — compact stacked explained-variance strip that rides in the projection toolbar. |
 | `PredicateBands.tsx` | **E** — one row per feature, each normalised to its own global range: a faint track, a translucent full band (RCM 1.0) and a solid core band (RCM 0.9). Clause features are indigo and sort to the top in the order the greedy loop added them, each carrying its ΔF1 when added and its match count. |
 | `TargetBands.tsx` | **E2** — E's row geometry for the held-out `target_*` columns, drawn entirely in the target hue so an indigo band always means "predicate clause" and a teal one never does. |
 | `ScoreTiles.tsx` | **F** — trustworthiness / continuity / stress / CADI. The bar under each value is a *quality* reading, so longer and cooler is better on every tile: the two distortion measures are inverted before they reach a bar. |
 | `OutlierHistogram.tsx` | GLOSH score distribution over the fixed range `[0, 1]`, so shapes are comparable between layers. New here, not a port — its props are declared in the file rather than in `props.ts`. |
+| `TreemapOverview.tsx` | The hierarchy as a nested squarified treemap (`d3.treemap`), area = points, laid out from the focused frame down at full depth (`treemapLayout.ts`). A click digs one level: it acts on the focused frame's child under the pointer, zooming into a frame or selecting a leaf / unassigned tile; the focused frame's header band (not its gutters), Escape or Backspace zoom out. E on any tile explores it (opens it in the layer stack); a double-click explores only a leaf / unassigned tile the first click selected, so two quick clicks on frames are two zooms. Handled keys stop propagating, so Escape here does not cancel a movement preview. Zooms glide over 280 ms (`useTileTween.ts`; none under `prefers-reduced-motion`). Outlines the current path, and the selected tile in the selection hue. One tab stop (roving tabindex), arrow keys walk the focused subtree in pre-order, Enter/Space zoom or select (zooming in moves keyboard focus to the new frame's first tile, so Enter, Enter keeps digging); `MapStatus.tsx` announces zoom and selection in a polite live region. `TreemapTileShape.tsx` paints a tile, `TreemapCaption.tsx` says what a click on the hovered tile does. New here, not a port. |
 | `theme.ts` | Design tokens. Neutral shell, ink type, hairline rules; **colour is reserved for data**. Keep in sync with the custom properties in `styles.css`. |
 
 **How `PredicateBands` shows the construction.** Row order *is* the RCM 1.0 greedy order —
@@ -154,6 +160,8 @@ never a score.
 ### Hooks
 
 `useResize.ts` — `ResizeObserver` wrapper giving each chart its container's measured size.
+`useScrollToStackEnd.ts` — after a jump from the overview, scrolls the last panel of the
+layer stack (the layer or exploration panel the jump opened) into view.
 `useDebounced.ts` — trails a fast-changing value; a range slider fires on every pixel of a
 drag, and the work behind it (re-scan the node, refetch rows) is far too heavy to run at
 that rate.
@@ -168,7 +176,7 @@ The analysis and movement fixtures come from ONE live run, captured together by
 `scripts/capture_movement_fixture.py` (standard library only) against a running backend:
 
 ```bash
-PYTHONPATH=. uv run uvicorn backend.app:app --port 8000
+pixi run uvicorn backend.app:app --port 8000
 python frontend/scripts/capture_movement_fixture.py --base-url http://127.0.0.1:8000
 ```
 

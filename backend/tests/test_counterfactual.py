@@ -1,9 +1,9 @@
 """Counterfactual sessions: edits, keys, frames, replay, and the rebuild on a key.
 
 Run standalone (no pytest required):
-    PYTHONPATH=. .venv/bin/python -m backend.tests.test_counterfactual
-or with pytest (a dev dependency):
-    PYTHONPATH=. .venv/bin/python -m pytest backend/tests/test_counterfactual.py
+    pixi run python -m backend.tests.test_counterfactual
+or with pytest, as part of the suite:
+    pixi run test
 
 The `__main__` block auto-discovers every module-level `test_*` function in
 definition order. The Iris payload is shared with `test_movement` (memoized).
@@ -25,6 +25,7 @@ from backend import app as backend_app
 from backend import counterfactual as cf
 from backend import datasets as ds
 from backend import movement as movement_module
+from backend import tree_cache
 from backend.counterfactual_apply import (
     ApplyRequestData,
     apply_validated,
@@ -417,7 +418,7 @@ def test_analysis_on_a_counterfactual_key_rebuilds_without_touching_the_run_cach
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
-    rebuilt = backend_app._cache_get(cache_key)
+    rebuilt = tree_cache.get(cache_key)
     assert rebuilt is not None
     assert rebuilt["meta"]["dataset"] == key
     assert rebuilt["meta"]["analysis_id"] != payload["meta"]["analysis_id"]

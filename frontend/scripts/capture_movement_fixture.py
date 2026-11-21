@@ -8,8 +8,8 @@ run makes that checkable, and this script checks it before writing anything.
 
 Usage — with the backend running on any port (run cache on or off):
 
-    PYTHONPATH=. uv run uvicorn backend.app:app --port 8000
-    python frontend/scripts/capture_movement_fixture.py --base-url http://127.0.0.1:8000
+    pixi run dev-api
+    pixi run python frontend/scripts/capture_movement_fixture.py --base-url http://127.0.0.1:8000
 
 Writes:
     frontend/src/fixtures/analysis_iris.json   the `/api/analysis` payload ({meta, tree})

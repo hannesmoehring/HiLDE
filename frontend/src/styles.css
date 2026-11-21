@@ -205,6 +205,17 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
   overflow-y: auto;
 }
 .config-grid { display: contents; }
+/* Wraps the config sections so one `disabled` locks them all (cache-only mode);
+   it repeats the rail's hairline grid so the sections lay out as before. */
+.cfg__lock {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
 
 .cfg__block,
 .config-section {
@@ -283,6 +294,7 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 
 .error { color: var(--neg); font-size: 12.5px; }
 .hint { color: var(--faint); font-size: 12.5px; }
+.cfg__note { margin: 0 0 9px; }
 
 .banner {
   display: flex;
@@ -937,3 +949,178 @@ th.is-target-first, td.is-target-first { border-left: 1px solid var(--target); }
 .mv-about dl > div { display: contents; }
 .mv-about dt { font-weight: 600; color: var(--ink); }
 .mv-about dd { margin: 0; }
+
+/* ── Overview (treemap of the whole hierarchy) ────────────────────────────── */
+.overview__toggle { margin-left: 12px; padding: 1px 8px; font-size: 11.5px; }
+/* Sized as a container: the rail beside the canvas opens and closes, so the
+   viewport width says nothing about how much room the map has. */
+.overview__body { padding: 10px 16px 12px; container-type: inline-size; }
+.overview__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.overview__crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.overview__crumbs button { padding: 1px 7px; font-size: 12px; }
+.overview__crumbs button[aria-current] { border-color: var(--ink); font-weight: 600; }
+/* Says which crumbs move what: "Layers" moves the stack, "Map" only the map. */
+.overview__crumbs-label {
+  margin-right: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--faint);
+}
+/* Map crumbs read as a lighter control than the stack's: no box until hovered,
+   the current level underlined rather than framed. */
+.overview__crumbs--map { margin-bottom: 6px; }
+.overview__crumbs--map button { border-color: transparent; background: none; padding: 1px 5px; }
+.overview__crumbs--map button:hover { border-color: var(--border-strong); }
+.overview__crumbs--map button[aria-current] { border-color: transparent; border-bottom-color: var(--ink); }
+.overview__select { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.overview__select select { max-width: 260px; }
+
+.overview__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.overview__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border: 1px solid var(--border-strong);
+}
+/* Same hatch as the SVG pattern: ink at 16% on a 45° grid. */
+.overview__swatch--hatch {
+  background-image: repeating-linear-gradient(45deg, rgba(22, 22, 20, 0.16) 0 1.5px, transparent 1.5px 4.2px) !important;
+}
+.overview__swatch--after { margin: 0 6px 0 7px; }
+.overview__ramp { display: inline-flex; gap: 1px; margin: 0 7px; vertical-align: -1px; }
+.overview__ramp i { display: block; width: 16px; height: 10px; }
+
+.overview__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+}
+/* Stack once the map would be narrower than about 1.5x the details column. */
+@container (max-width: 720px) {
+  .overview__cols { grid-template-columns: minmax(0, 1fr); }
+}
+.overview__map { min-width: 0; }
+.treemap { width: 100%; min-width: 0; user-select: none; -webkit-user-select: none; }
+.treemap__tile { cursor: pointer; outline: none; }
+.treemap__caption { margin: 4px 0 0; font-size: 11.5px; color: var(--faint); min-height: 1.45em; }
+/* Read out, not shown: the map's live region. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.overview__explore { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.overview__explore button { white-space: normal; text-align: left; padding: 5px 14px; }
+.overview__explore .hint { margin: 0; font-size: 12px; }
+.overview__note { margin: 10px 0 0; max-width: 92ch; }
+
+.overview__details { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 12.5px; }
+.overview__name { font-size: 15px; font-weight: 600; margin-top: -6px; }
+.overview__path { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--muted); margin-top: -8px; }
+.overview__facts { margin: 0; }
+.overview__facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.overview__facts dt { color: var(--muted); }
+.overview__facts dd { margin: 0; text-align: right; }
+.overview__block .hint { margin: 4px 0 0; }
+.overview__caption { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
+.overview__comp { display: flex; gap: 2px; height: 10px; }
+.overview__comp span { display: block; height: 100%; }
+.overview__comp-in { background: var(--ink-2); }
+.overview__comp-out {
+  background: #f6f5f1 repeating-linear-gradient(45deg, rgba(22, 22, 20, 0.16) 0 1.5px, transparent 1.5px 4.2px);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.overview__shifts { display: grid; gap: 4px; }
+.overview__shift {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.overview__shift-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.overview__shift-bar { position: relative; height: 8px; background: var(--hair); }
+.overview__shift-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--border-strong);
+}
+.overview__shift-bar i { position: absolute; top: 0; bottom: 0; }
+.overview__shift-val { text-align: right; }
+
+/* ProjectionScatter's pan surface: an open hand that closes while dragging. */
+.plot-pan {
+  cursor: grab;
+}
+.plot-pan:active {
+  cursor: grabbing;
+}
+
+/* ── Guided tour ──────────────────────────────────────────────────────────── */
+.topbar__tour {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 3px 10px;
+}
+/* Neither layer takes clicks: the user can try the spotlighted control while the
+   card is up. The spotlight dims the page with its own outer shadow. */
+.tour { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+.tour__dim { position: fixed; inset: 0; background: rgba(22, 22, 20, 0.42); }
+.tour__spot {
+  position: fixed;
+  border: 2px solid var(--pos);
+  box-shadow: 0 0 0 100vmax rgba(22, 22, 20, 0.42);
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+.tour__card {
+  position: fixed;
+  width: min(360px, calc(100vw - 24px));
+  padding: 14px 16px 12px;
+  background: var(--panel);
+  border: 1px solid var(--ink);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  outline: none;
+}
+.tour__count {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--faint);
+}
+.tour__title { margin: 4px 0 6px; font-size: 15px; font-weight: 600; }
+.tour__body { margin: 0 0 12px; font-size: 13px; color: var(--ink-2); }
+.tour__actions { display: flex; align-items: center; gap: 8px; }
+.tour__actions button.primary { padding: 4px 16px; }
+.tour__spacer { flex: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .tour__spot { transition: none; }
+}

@@ -2,7 +2,6 @@ import threading
 from dataclasses import dataclass
 
 import numpy as np
-import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS, TSNE
 
@@ -121,6 +120,8 @@ def _umap(X: np.ndarray, n_components: int, **kwargs: object) -> ReductionResult
     # init="spectral" a disconnected fuzzy graph falls into `multi_component_layout`,
     # which places the components outside the seeded path. A PCA init is deterministic
     # whatever the graph structure.
+    import umap  # deferred: numba + pynndescent cost ~190 MB and seconds at import
+
     umap_reducer = umap.UMAP(n_components=n_components, init="pca", **kwargs)
     with NUMBA_PARALLEL_LOCK:
         embedding = umap_reducer.fit_transform(X)

@@ -4,7 +4,8 @@ import pandas as pd
 
 # kDBCV's type hints reference np.float_, which NumPy 2.0 removed. Its actual
 # DBCV computation is NumPy-2/SciPy-1.18 compatible, so restore the alias to let
-# the import (evaluated at def time) succeed. See override-dependencies in pyproject.toml.
+# the import (evaluated at def time) succeed. See
+# [tool.pixi.pypi-options.dependency-overrides] in pyproject.toml.
 if not hasattr(np, "float_"):
     np.float_ = np.float64
 from kDBCV.DBCV import DBCV_score

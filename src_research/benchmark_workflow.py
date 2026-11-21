@@ -33,7 +33,7 @@ summary.md.
 
 Run with::
 
-    uv run python -m src_research.benchmark_workflow
+    pixi run experiment benchmark_workflow
 
 ``design §N`` below marks a rule fixed by the pre-registered design, which is
 recorded in the thesis and no longer kept in this repository.
@@ -237,6 +237,12 @@ def run_build(
     # ---- D1: hierarchy shape --------------------------------------------- #
     leaf_sizes = [int(leaf["row_indices"].shape[0]) for leaf in leaves]
     covered = int(np.sum(leaf_sizes))
+    root_emb = tree["embedding_original"]
+    # `_embed_original` returns None for a projection that failed, rather than a fabricated
+    # all-zeros embedding — that scores ~0.55 and would enter C2 as a real comparator.
+    # `root_emb[idx]` on None takes the whole build down, so the state is named, carried
+    # into c2_paired.csv per row, and counted in tree_shape.csv — never silently absorbed.
+    root_unprojected = root_emb is None
     shape_row = {
         **cell,
         "n_rows": n_total,
@@ -257,7 +263,7 @@ def run_build(
         ),
         "n_leaves_predicated": int(sum(1 for s in leaf_sizes if s >= MIN_SELECTION)),
         # Projections that failed outright, so the census says how much of the tree it saw.
-        "root_unprojected": root_emb is None,
+        "root_unprojected": root_unprojected,
         "n_leaves_unprojected": int(
             sum(1 for leaf in leaves if leaf["embedding_original"] is None)
         ),
@@ -267,12 +273,6 @@ def run_build(
     pred_rows: list[dict] = []
     c2_rows: list[dict] = []
     purity_rows: list[dict] = []
-    root_emb = tree["embedding_original"]
-    # `_embed_original` returns None for a projection that failed, rather than a fabricated
-    # all-zeros embedding — that scores ~0.55 and would enter C2 as a real comparator.
-    # `root_emb[idx]` on None takes the whole build down, so the state is named, carried
-    # into c2_paired.csv per row, and counted in tree_shape.csv — never silently absorbed.
-    root_unprojected = root_emb is None
 
     for leaf_id, leaf in enumerate(leaves):
         idx = leaf["row_indices"]
