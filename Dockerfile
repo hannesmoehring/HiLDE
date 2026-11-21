@@ -21,8 +21,8 @@ ENV PYTHONUNBUFFERED=1 \
 # large freed buffers (parsed payloads, response bodies) go back to the kernel
 # instead of staying in the heap; two arenas cap per-thread heaps. Together they
 # cut the steady anon set of a browsing session by ~70-100 MiB.
-# The image builds runs by default. HILDE_CACHE_ONLY=1 (set in docker-compose.yml
-# next to the memory cap) and HILDE_MAINTENANCE=1 are opt-in at run time.
+# The image builds runs by default. HILDE_CACHE_ONLY=1 (pair it with a memory cap
+# on a small server) and HILDE_MAINTENANCE=1 are opt-in at run time.
 ENV MALLOC_TRIM_THRESHOLD_=131072 \
     MALLOC_ARENA_MAX=2
 

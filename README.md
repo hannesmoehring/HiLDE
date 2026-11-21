@@ -34,13 +34,9 @@ pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the reposito
 docker compose up --build
 ```
 
-> **This starts the cache-only server, not a server that builds runs.**
-> `docker-compose.yml` is the VPS deployment file: it sets `HILDE_CACHE_ONLY=1` and caps
-> the container at 640 MB. It serves only the runs already in `./.cache/hilde_runs`,
-> which is empty in a fresh clone, so the UI reports that no stored runs were found and
-> every build is refused. To build runs, use the [Local](#local) path below, or remove
-> `HILDE_CACHE_ONLY=1`, `mem_limit` and `memswap_limit` from `docker-compose.yml`
-> together (see [Cache-only](#cache-only)).
+> `docker-compose.yml` is the desktop deployment file: it builds runs on demand and sets no
+> memory cap. Completed runs are kept in `./.cache/hilde_runs` on the host. For a small
+> server that should only serve stored runs, see [Cache-only](#cache-only).
 
 The image builds the frontend in a Node stage, installs `backend/requirements.txt` into a
 `python:3.13-slim` stage, and serves the API and the built UI from one uvicorn process.
@@ -150,16 +146,23 @@ pixi run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in fron
 While a first scan is still running, the listing endpoints answer 503 after 20 s and
 the UI asks again, so no request outlasts Cloudflare's 100 s.
 
-**Memory.** `docker-compose.yml` is the deployment file for the VPS: it caps the
-container at 640 MB with no swap (`mem_limit`, `memswap_limit`) and sets
-`HILDE_CACHE_ONLY=1`; the comment there says how the cap follows from the VPS.
-Serving fits in it because a stored run is sent as the gzip bytes it already is rather
+**Memory.** Cache-only serving fits in a small container. On the former VPS deployment
+(1862 MB RAM, shared with Portainer, NPM and cloudflared) it ran capped at 640 MB with no
+swap. Serving fits in that because a stored run is sent as the gzip bytes it already is rather
 than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
 kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
 the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
 Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
-session keeps under ~330 MiB. A build needs far more and would be killed under this cap:
-to build in Docker, remove `HILDE_CACHE_ONLY=1` and both memory limits together.
+session keeps under ~330 MiB. A build needs far more and would be killed under such a cap,
+so set a cap only together with `HILDE_CACHE_ONLY=1`. Under Docker, add both to the
+service in `docker-compose.yml`:
+
+```yaml
+    mem_limit: 640m
+    memswap_limit: 640m
+    environment:
+      - HILDE_CACHE_ONLY=1
+```
 
 **Maintenance notice.** Also opt-in. With `HILDE_MAINTENANCE=1` the UI shows a
 "Maintenance" notice instead of the app and requests nothing beyond `/api/mode`. The API

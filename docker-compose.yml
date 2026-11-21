@@ -2,20 +2,13 @@ services:
   shd:
     build: .
     image: shd:latest
-    # The VPS has 1862 MB RAM, ~1120 MB free with HiLDE stopped, and shares it with
-    # Portainer, NPM and cloudflared. 640m is ~57% of that, leaving ~480 MB for
-    # their growth, the kernel and page cache; no swap for the container, so it
-    # cannot push the box into swapping. Cache-only serving peaks well under it;
-    # a build does not fit and would be OOM-killed, so this cap and
-    # HILDE_CACHE_ONLY=1 below belong together: remove both or neither.
-    mem_limit: 640m
-    memswap_limit: 640m
+    # Desktop deployment: no memory cap, and runs are built on demand. For a small
+    # server that cannot afford a build, add HILDE_CACHE_ONLY=1 below together with
+    # a memory cap (mem_limit + memswap_limit); see "Cache-only" in the README.
     ports:
       - "8000:8000"
     environment:
       - PORT=8000
-      # Serve the stored runs and refuse builds (required under the 640m cap above).
-      - HILDE_CACHE_ONLY=1
       # Persist scikit-learn downloads (MNIST/Fashion-MNIST/Olivetti) alongside the rest
       - SCIKIT_LEARN_DATA=/app/datasets/sklearn
     volumes:
