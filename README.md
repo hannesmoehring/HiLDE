@@ -35,9 +35,10 @@ docker compose up --build
 ```
 
 > `docker-compose.yml` is the desktop deployment file: it builds runs on demand, caps the
-> container at 8 GB with no extra swap, and publishes port 8000 on loopback only, which is
-> enough for a cloudflared running on the same host. Set another cap in a `.env` file next
-> to it (`HILDE_MEM_LIMIT=12g`); a build that needs more is killed. Completed runs are kept
+> container at 8 GB with no extra swap and at 4 CPUs, restarts it unless it was stopped,
+> and publishes port 8000 on loopback only, which is enough for a cloudflared running on
+> the same host. Set other caps in a `.env` file next to it (`HILDE_MEM_LIMIT=12g`,
+> `HILDE_CPUS=6`); a build that needs more memory is killed, and the container restarts. Completed runs are kept
 > in `./.cache/hilde_runs` on the host. For a small server that should only serve stored
 > runs, see [Cache-only](#cache-only).
 

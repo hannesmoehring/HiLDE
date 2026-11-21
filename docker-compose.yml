@@ -11,6 +11,12 @@ services:
     # lower the cap; see "Cache-only" in the README.
     mem_limit: ${HILDE_MEM_LIMIT:-8g}
     memswap_limit: ${HILDE_MEM_LIMIT:-8g}
+    # Builds share the API's process, so an OOM kill takes the whole server down;
+    # come back on our own after that and after a reboot.
+    restart: unless-stopped
+    # Builds may use at most 4 cores: slower, but the machine stays usable and quiet.
+    # Override with HILDE_CPUS in .env.
+    cpus: ${HILDE_CPUS:-4}
     ports:
       # Loopback only: cloudflared runs on the host and reaches localhost:8000, so the
       # tunnel works while other machines on the LAN cannot reach the container.
