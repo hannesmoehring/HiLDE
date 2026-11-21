@@ -2,11 +2,19 @@ services:
   shd:
     build: .
     image: shd:latest
-    # Desktop deployment: no memory cap, and runs are built on demand. For a small
-    # server that cannot afford a build, add HILDE_CACHE_ONLY=1 below together with
-    # a memory cap (mem_limit + memswap_limit); see "Cache-only" in the README.
+    # Desktop deployment: runs are built on demand. The site is public through the
+    # Cloudflare tunnel, so anyone can trigger a build; the cap below keeps a runaway
+    # build from taking the whole machine down. Override it in a .env file next to
+    # this one (HILDE_MEM_LIMIT=12g). No swap beyond the cap, so a build that exceeds
+    # it is OOM-killed instead of pushing the host into swapping.
+    # For a small server that cannot afford a build, set HILDE_CACHE_ONLY=1 below and
+    # lower the cap; see "Cache-only" in the README.
+    mem_limit: ${HILDE_MEM_LIMIT:-8g}
+    memswap_limit: ${HILDE_MEM_LIMIT:-8g}
     ports:
-      - "8000:8000"
+      # Loopback only: cloudflared runs on the host and reaches localhost:8000, so the
+      # tunnel works while other machines on the LAN cannot reach the container.
+      - "127.0.0.1:8000:8000"
     environment:
       - PORT=8000
       # Persist scikit-learn downloads (MNIST/Fashion-MNIST/Olivetti) alongside the rest

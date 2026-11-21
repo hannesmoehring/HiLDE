@@ -34,9 +34,12 @@ pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the reposito
 docker compose up --build
 ```
 
-> `docker-compose.yml` is the desktop deployment file: it builds runs on demand and sets no
-> memory cap. Completed runs are kept in `./.cache/hilde_runs` on the host. For a small
-> server that should only serve stored runs, see [Cache-only](#cache-only).
+> `docker-compose.yml` is the desktop deployment file: it builds runs on demand, caps the
+> container at 8 GB with no extra swap, and publishes port 8000 on loopback only, which is
+> enough for a cloudflared running on the same host. Set another cap in a `.env` file next
+> to it (`HILDE_MEM_LIMIT=12g`); a build that needs more is killed. Completed runs are kept
+> in `./.cache/hilde_runs` on the host. For a small server that should only serve stored
+> runs, see [Cache-only](#cache-only).
 
 The image builds the frontend in a Node stage, installs `backend/requirements.txt` into a
 `python:3.13-slim` stage, and serves the API and the built UI from one uvicorn process.
@@ -154,12 +157,11 @@ kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a bui
 the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
 Measured against a sweep-sized cache of all seven datasets, Olivetti included, a browsing
 session keeps under ~330 MiB. A build needs far more and would be killed under such a cap,
-so set a cap only together with `HILDE_CACHE_ONLY=1`. Under Docker, add both to the
-service in `docker-compose.yml`:
+so use a cap that small only together with `HILDE_CACHE_ONLY=1`. Under Docker, set
+`HILDE_MEM_LIMIT=640m` in a `.env` file next to `docker-compose.yml` and add the variable
+to the service:
 
 ```yaml
-    mem_limit: 640m
-    memswap_limit: 640m
     environment:
       - HILDE_CACHE_ONLY=1
 ```
