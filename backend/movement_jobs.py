@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.movement import MovementRequestData
+from backend.redact import safe_detail
 
 # Smaller than `backend/jobs.py::_MAX_JOBS` (64) because a finished movement job
 # carries its OWN result — up to `MAX_MOVEMENT_PREVIEW_POINTS` ghost points —
@@ -103,7 +104,7 @@ def submit(key: str, work: Callable[[], dict[str, Any]]) -> MovementJob:
         try:
             response = work()
         except Exception as exc:  # noqa: BLE001 - reaches the client as the poll's `detail`
-            _finish(job, "error", detail=str(exc))
+            _finish(job, "error", detail=safe_detail(exc))
         else:
             _finish(job, "done", response=response)
 

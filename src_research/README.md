@@ -1,6 +1,6 @@
 # `src_research/` — offline experiment harnesses
 
-The evidence behind the thesis's quantitative chapters. Nothing here is part of the running
+The evidence behind the paper's quantitative results. Nothing here is part of the running
 application: no harness is imported by `backend/` or `frontend/`, and the app never imports
 this package. Each harness is a batch script that drives the same calculation layer
 ([`src/README.md`](../src/README.md)) the server drives, then writes CSVs and figures to
@@ -13,11 +13,11 @@ this package. Each harness is a batch script that drives the same calculation la
 > design, §4" and "must not be tuned to taste": those constants were chosen ahead of any
 > result, not after one.
 >
-> The design record itself is part of the thesis, not of this repository. The
+> The design record itself is part of the paper, not of this repository. The
 > `design §N` / `design SSN` pointers in the module docstrings and `CONFIG` blocks resolve
 > against it — they mark a constant as pre-registered rather than picked after the fact.
 >
-> **The thesis is authoritative for the design; the code in this directory is what produced
+> **The paper is authoritative for the design; the code in this directory is what produced
 > the numbers.**
 
 ---
@@ -45,15 +45,15 @@ event, so it is made loud.
 | `hierarchical_vs_flat.py` | RQ1 — H1a/H1b | `20260628_182948` … `184827` (6) |
 | `planted_subspace_recovery.py` | RQ1-S — clean H1b | `20260628_195214` |
 | `predicate_stability.py` + `…_analysis.py` | RQ2 — H2 | `20260711_115849` |
-| `benchmark_workflow.py` | §6.5 census + C1–C4 | `20260728_185329` |
+| `benchmark_workflow.py` | benchmark census + C1–C4 | `20260728_185329` |
 | `hyperparameter_tuning.py` | tuning effectiveness | `20260628_125924`, `20260628_153633` |
 | `pipeline_tuning.py` + `…_b2.py` | EQ1b presets | `20260729_101836` (**halted**) |
 | `dbcv_tuning.py` | standalone Optuna DBCV study | — |
 | `rederive/` | post-hoc corrections | writes into the runs above |
 
-§6's qualitative case study has **no harness here**. It carries the one claim the offline
+The paper's qualitative case study has **no harness here**. It carries the one claim the offline
 experiments structurally cannot test — that the hierarchical lens lets an analyst *reach
-and inspect* structure a global view would hide — and it is narrated in the thesis, against
+and inspect* structure a global view would hide — and it is narrated in the paper, against
 a path and a set of reported numbers fixed in advance.
 
 ### RQ1 — `hierarchical_vs_flat.py`
@@ -121,7 +121,7 @@ from an existing `stability_records.csv` without repeating the sweep:
 pixi run experiment predicate_stability_analysis -- outputs/experiments/<timestamp>
 ```
 
-### §6.5 — `benchmark_workflow.py`
+### Benchmark walk — `benchmark_workflow.py`
 
 The only harness that tests no hypothesis: a descriptive census of what the **shipped
 defaults** produce on the three real benchmark datasets. A purely descriptive section
@@ -150,14 +150,14 @@ pixi run experiment pipeline_tuning -- --datasets "Iris (Low)" --trials 40 --out
 ```
 
 > **This run was halted mid-run**, during the wine dataset, and nothing was integrated —
-> no frontend change, no thesis change.
+> no frontend change, no change to the paper.
 > `pipeline_tuning_b2.py` is a **disclosed deviation** written after seeing the Breast
 > cancer result and before running: the pre-registered baseline produced one leaf in 10/10
 > builds there, leaving the acceptance criterion not evaluable. It has never been run.
 
 ### `dbcv_tuning.py`
 
-A small standalone 200-trial Optuna DBCV study, not tied to a thesis section. It patches
+A small standalone 200-trial Optuna DBCV study, not tied to a section of the paper. It patches
 `np.float_` back in at import because kDBCV's type hints reference an alias NumPy 2.0
 removed, while its actual computation is NumPy-2 compatible.
 
@@ -214,7 +214,7 @@ Importing a harness is side-effect-safe — the work runs under `__main__`.
 
 > ### `outputs/` is read-only
 >
-> The directories under `outputs/experiments/` back specific thesis sections. **Never rerun
+> The directories under `outputs/experiments/` back specific results in the paper. **Never rerun
 > or overwrite one.** They were produced before the release freeze, under the environment
 > recorded in each run directory; a rerun on a later environment is a separate measurement
 > and must be reported as one, never mixed into a table with pre-freeze numbers.
@@ -231,6 +231,6 @@ was removed before release; it has no harness in this directory.
 
 - [`scripts/checks/`](../scripts/checks/README.md) — four regression checks retained from
   the same review, including the two that prove `src/evaluation/neighbor_metrics.py` is
-  numerically equivalent to ZADU. The thesis's faithfulness numbers rest on that.
-- [root README](../README.md#experiment-outputs) — the full run-directory → thesis-section
+  numerically equivalent to ZADU. The paper's faithfulness numbers rest on that.
+- [root README](../README.md#experiment-outputs) — the full run-directory → paper-content
   table.

@@ -1,4 +1,4 @@
-"""Hyperparameter-tuning effectiveness experiment (thesis).
+"""Hyperparameter-tuning effectiveness experiment (paper).
 
 This script measures *how effective* automated hyperparameter tuning is for the
 dimensionality-reduction -> clustering pipeline used throughout this project. It
@@ -706,7 +706,7 @@ def save_outputs(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> 
 
 
 def make_plots(summary: pd.DataFrame, trials: pd.DataFrame, out_dir: Path) -> None:
-    """Thesis figures: gain heatmaps, TPE-vs-random, convergence, internal-vs-external."""
+    """Paper figures: gain heatmaps, TPE-vs-random, convergence, internal-vs-external."""
     plots = out_dir / "plots"
     plots.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid")

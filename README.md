@@ -1,21 +1,14 @@
 # HiLDE — Hierarchical Local Decomposition and Explanation
 
-<div align="center">
-
-<a href="./thesis/thesis.pdf"><img height="42" alt="Read the thesis (PDF)" src="https://img.shields.io/badge/Read%20the%20thesis-PDF-005b96?style=flat&labelColor=555&logo=adobeacrobatreader&logoColor=ffffff"></a>
-
-<a href="https://hilde.3m0.de"><img height="22" alt="Live instance: hilde.3m0.de" src="https://img.shields.io/website?url=https%3A%2F%2Fhilde.3m0.de&label=hilde.3m0.de&up_message=online&down_message=offline&style=flat"></a>
-<a href="https://youtu.be/BHsBJ5zTIYA"><img height="22" alt="Intro video on YouTube" src="https://img.shields.io/badge/intro%20video-YouTube-FF0000?style=flat&logo=youtube&logoColor=white"></a>
-
-</div>
-
 Interactive explorer for high-dimensional tabular data. It recursively partitions a
 dataset with HDBSCAN, computes a separate dimensionality reduction inside each region,
 scores every embedding for neighbourhood faithfulness, and induces axis-aligned range
 predicates that describe what the analyst selected.
 
-Prototype accompanying a bachelor thesis. Formerly *SHD*; the repository name and the
-package identifier in `pyproject.toml` keep the historical acronym.
+Research prototype.
+
+**Live demo:** see the paper for the link to the hosted instance
+(<https://REPLACE-ME.example>). Everything below runs the same app locally.
 
 Stack: FastAPI backend (`backend/`) over an unchanged calculation layer (`src/`), with a
 React + D3 frontend (`frontend/`) served from the same process in production.
@@ -24,9 +17,8 @@ React + D3 frontend (`frontend/`) served from the same process in production.
 
 ## Quickstart
 
-Both paths below were run verbatim from a fresh `git clone` into `/tmp` on macOS arm64:
-the Docker path on darwin 24.6.0 with Docker 27.5.1, the local path on darwin 27.2.0 with
-pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the repository root.
+Both paths below were tested from a fresh clone on macOS arm64 (Docker 27.5, pixi 0.84,
+which supplies Node 22 and npm 10). Run them from the repository root.
 
 ### Docker (no local Python or Node needed)
 
@@ -34,10 +26,9 @@ pixi 0.84.1 (which supplies Node 22.23 and npm 10.9). Run them from the reposito
 docker compose up --build
 ```
 
-> `docker-compose.yml` is the desktop deployment file: it builds runs on demand, caps the
-> container at 8 GB with no extra swap and at 4 CPUs, restarts it unless it was stopped,
-> and publishes port 8000 on loopback only, which is enough for a cloudflared running on
-> the same host. Set other caps in a `.env` file next to it (`HILDE_MEM_LIMIT=12g`,
+> `docker-compose.yml` builds runs on demand, caps the container at 8 GB with no extra
+> swap and at 4 CPUs, restarts it unless it was stopped, and publishes port 8000 on
+> loopback only (put a reverse proxy or tunnel in front for public access). Set other caps in a `.env` file next to it (`HILDE_MEM_LIMIT=12g`,
 > `HILDE_CPUS=6`); a build that needs more memory is killed, and the container restarts. Completed runs are kept
 > in `./.cache/hilde_runs` on the host. For a small server that should only serve stored
 > runs, see [Cache-only](#cache-only).
@@ -148,11 +139,10 @@ pixi run python -m backend.run_listing          # or HILDE_CACHE_DIR=... in fron
 ```
 
 While a first scan is still running, the listing endpoints answer 503 after 20 s and
-the UI asks again, so no request outlasts Cloudflare's 100 s.
+the UI asks again, so no request outlasts a typical 100 s proxy timeout.
 
-**Memory.** Cache-only serving fits in a small container. On the former VPS deployment
-(1862 MB RAM, shared with Portainer, NPM and cloudflared) it ran capped at 640 MB with no
-swap. Serving fits in that because a stored run is sent as the gzip bytes it already is rather
+**Memory.** Cache-only serving fits in a small container: on a 2 GB host it runs capped
+at 640 MB with no swap. Serving fits in that because a stored run is sent as the gzip bytes it already is rather
 than parsed, only a PCA movement parses an entry (and at most ~48 MiB of parsed runs are
 kept), the build-only libraries (UMAP, HDBSCAN, ZADU) are imported only by a build, and
 the image sets `MALLOC_TRIM_THRESHOLD_` and `MALLOC_ARENA_MAX` so freed memory goes back.
@@ -385,7 +375,7 @@ src/           Analysis pipeline, independent of any UI. analysis/ holds the rec
                canonical Config.
 frontend/      React + D3 (Vite, TypeScript). src/App.tsx owns navigation state;
                components/ holds the panels, charts/ the D3 visualisations.
-src_research/  Offline experiment harnesses, one per thesis experiment, each next to
+src_research/  Offline experiment harnesses, one per experiment in the paper, each next to
                its pre-registered design document. rederive/ holds the post-hoc
                correction driver.
 scripts/       checks/ (retained regression checks).
@@ -409,23 +399,23 @@ Four code maps go a level deeper than this overview, one per directory:
 ### Experiment outputs
 
 Harnesses write to `outputs/experiments/<timestamp>/`. **`outputs/experiments/` is
-tracked in the repository** — added at submission (tag `final-thesis`), after the
-`v0.1.0-thesis` code freeze — so a clone contains the run directories below, including
-each `plots/` and `rederived_20260813/` subdirectory. They back specific thesis sections.
+tracked in the repository** — added at release, after the code freeze — so a clone
+contains the run directories below, including each `plots/` and `rederived_20260813/`
+subdirectory. They back specific results in the paper.
 
-| Run directory | Harness | Thesis content |
+| Run directory | Harness | Paper content |
 |---|---|---|
 | `20260628_125924`, `20260628_153633` | `hyperparameter_tuning.py` | tuning effectiveness; internal-vs-external validity |
 | `20260628_182948` … `20260628_184827` (6 runs) | `hierarchical_vs_flat.py` | RQ1 — H1a (faithfulness) and H1b (label recovery) |
 | `20260628_195214` | `planted_subspace_recovery.py` | RQ1 — clean H1b on planted subspaces |
 | `20260711_115849` | `predicate_stability.py` | RQ2 — H2, predicate stability under relaxation |
-| `20260728_185329` | `benchmark_workflow.py` | §6.5 benchmark walk, RQ1/RQ3 consistency checks |
+| `20260728_185329` | `benchmark_workflow.py` | benchmark walk, RQ1/RQ3 consistency checks |
 | `20260729_101836` | `pipeline_tuning.py` | EQ1b preset tuning — **halted mid-run**, nothing integrated |
 | `20260728_190741_depth2_diag` | script removed pre-release | ad-hoc depth-2 noise diagnostic; the producing script was removed |
 
 Each harness was pre-registered: its guards, objectives and acceptance criteria were fixed
 before the run. The design documents themselves are no longer kept in the repository — the
-thesis carries the design record, and the code in `src_research/` is what produced the
+paper and its supplementary material carry the design record, and the code in `src_research/` is what produced the
 numbers. See [`src_research/README.md`](./src_research/README.md).
 
 ### `rederived_20260813/`

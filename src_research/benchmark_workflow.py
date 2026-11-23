@@ -1,4 +1,4 @@
-"""Benchmark workflow walk (thesis §6.5).
+"""Benchmark workflow walk (paper).
 
 The descriptive census of what the *shipped defaults* produce on the three real benchmark
 datasets, plus the four pre-registered consistency checks (C1–C4) derived from the
@@ -36,7 +36,7 @@ Run with::
     pixi run experiment benchmark_workflow
 
 ``design §N`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ N_BUILDS = (
     5  # replicates; the build id is threaded into the DR seed (SEEDS_WINE convention)
 )
 HIER_LAYERS_CAP = 4  # the single named deviation from shipped defaults (design §4)
-T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the thesis; no new levels
+T_GRID = [1.0, 0.95, 0.9, 0.8]  # pre-specified in the paper; no new levels
 PREDICATE_METHODS = ["threshold", "db"]  # dense (C1) + sparse (C4 / table example)
 TAIL_SPLIT = "severity"  # shipped default; not swept (the ablation is RQ2's, done)
 MIN_SELECTION = 20  # leaves below get no predicates; counted (RQ2 convention)
@@ -788,7 +788,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
         frames[k] for k in ["shape", "nodes", "predicates", "c2", "purity"]
     )
 
-    # ---- Table 6.2 cells (§5) -------------------------------------------- #
+    # ---- summary-table cells (§5) ----------------------------------------- #
     leaf_scores = nodes[nodes["is_leaf"]]
     per_build = build_leaf_means(leaf_scores, ["trustworthiness", "continuity"])
     per_build.to_csv(out_dir / "leaf_means_per_build.csv", index=False)
@@ -816,7 +816,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
             }
         )
     table = pd.DataFrame(table_rows)
-    table.to_csv(out_dir / "table_6_2_cells.csv", index=False)
+    table.to_csv(out_dir / "summary_table_cells.csv", index=False)
 
     # ---- example predicates (§5 fixed rule) ------------------------------- #
     examples = {ds: pick_example_leaf(shape, predicates, ds) for ds in DATASETS_TO_RUN}
@@ -859,7 +859,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
     fig_compounding(c1_detail, out_dir)
 
     # ---- console + summary.md --------------------------------------------- #
-    rt = Table(title="Table 6.2 cells — median (min–max) over 5 builds")
+    rt = Table(title="Summary-table cells — median (min–max) over 5 builds")
     for col in table.columns:
         rt.add_column(col)
     for _, r in table.iterrows():
@@ -880,7 +880,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
     lines = [
         "# Benchmark workflow walk — run summary",
         "",
-        "## Table 6.2 cells",
+        "## Summary-table cells",
         "",
         table.to_markdown(index=False),
         "",
@@ -921,7 +921,7 @@ def summarise(frames: dict[str, pd.DataFrame], out_dir: Path) -> str:
 
 
 def main() -> None:
-    console.rule("[bold]§6.5 benchmark workflow walk")
+    console.rule("[bold]Benchmark workflow walk")
     console.print(
         f"datasets={DATASETS_TO_RUN}  builds={N_BUILDS}  cap={HIER_LAYERS_CAP}  t={T_GRID}  split={TAIL_SPLIT}\n"
     )

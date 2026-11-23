@@ -21,8 +21,7 @@ ENV PYTHONUNBUFFERED=1 \
 # large freed buffers (parsed payloads, response bodies) go back to the kernel
 # instead of staying in the heap; two arenas cap per-thread heaps. Together they
 # cut the steady anon set of a browsing session by ~70-100 MiB.
-# The image builds runs by default. HILDE_CACHE_ONLY=1 (pair it with a memory cap
-# on a small server) and HILDE_MAINTENANCE=1 are opt-in at run time.
+# The image builds runs on demand. HILDE_MAINTENANCE=1 is opt-in at run time.
 ENV MALLOC_TRIM_THRESHOLD_=131072 \
     MALLOC_ARENA_MAX=2
 
@@ -48,4 +47,5 @@ EXPOSE 8000
 # Datasets needing local files (wine CSVs, MNIST IDX) are mounted at runtime, on a
 # writable mount so the downloading loaders (QM9, sklearn's cache) can populate it;
 # the sklearn-provided datasets (iris, digits, …) work with no mounts.
-CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port ${PORT}"]
+# --no-access-log: the server keeps no record of client requests.
+CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port ${PORT} --no-access-log"]

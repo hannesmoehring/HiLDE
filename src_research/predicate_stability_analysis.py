@@ -22,7 +22,7 @@ Everything else (db, f1_sd, the delta sweep, bound_sd, seed-perturbation) is sec
 exploratory and labelled as such.
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -263,7 +263,7 @@ def h2c_summary(records: pd.DataFrame) -> pd.DataFrame:
 
 def recovery_summary(recovery: pd.DataFrame) -> pd.DataFrame:
     """Synthetic arms: median relevant-dim P/R/F1 and membership F1 per
-    (arm, method, split, t) - the strict-vs-relaxed rows of thesis table
+    (arm, method, split, t) - the strict-vs-relaxed rows of paper table
     ``tab:synthetic-recovery``."""
     if recovery.empty:
         return pd.DataFrame()

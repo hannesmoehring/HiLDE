@@ -28,7 +28,7 @@ Run with::
     python -m src_research.pipeline_tuning_b2 --run 20260729_101836
 
 ``design section N`` marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations

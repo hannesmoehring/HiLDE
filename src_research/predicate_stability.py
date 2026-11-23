@@ -1,4 +1,4 @@
-"""RQ2 experiment: predicate stability under relaxation (thesis).
+"""RQ2 experiment: predicate stability under relaxation (paper).
 
 Tests H2: as the relaxation threshold ``t`` is lowered from 1.0, the predicate describing
 a selection becomes more stable under small perturbations of that selection, while its
@@ -43,7 +43,7 @@ before any test - the unit of analysis is the selection, never the replicate pai
 Outputs (written to ``outputs/experiments/<timestamp>/``):
     * stability_records.csv - one row per (arm, seed, selection, method, split, t, delta).
     * recovery.csv          - synthetic arms: relevant-dim P/R/F1 + membership F1 per t
-                              (fills thesis table ``tab:synthetic-recovery``).
+                              (fills paper table ``tab:synthetic-recovery``).
     * seed_stability.csv    - pass (b): matched-leaf predicate agreement across tree
                               rebuilds (wine); the leaf-matching confound is reported, not
                               hidden (match_jaccard / weak_match columns).
@@ -55,7 +55,7 @@ Run with::
     pixi run experiment predicate_stability
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ T_GRID = [
     0.95,
     0.9,
     0.8,
-]  # pre-specified in the thesis - do not add levels after seeing results
+]  # pre-specified in the paper - do not add levels after seeing results
 METHODS = [
     "threshold",
     "db",

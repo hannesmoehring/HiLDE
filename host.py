@@ -95,7 +95,8 @@ def main() -> None:
 
     import uvicorn
 
-    uvicorn.run("backend.app:app", host=args.host, port=args.port)
+    # No access log: the server keeps no record of who requested what.
+    uvicorn.run("backend.app:app", host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == "__main__":

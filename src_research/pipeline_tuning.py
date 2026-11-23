@@ -15,7 +15,7 @@ Run with::
     python -m src_research.pipeline_tuning --datasets "Iris (Low)" --trials 6
 
 ``design section N`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations

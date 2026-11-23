@@ -107,7 +107,7 @@ def test_cache_only_implies_hosting_and_is_reported():
         assert run_cache.is_hosting()
         assert backend_app.mode() == {
             "hosting": True,
-            "cache_dir": str(tmp),
+            "cache_dir": None,
             "cache_only": True,
             "maintenance": False,
         }

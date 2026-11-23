@@ -66,7 +66,7 @@ Building is a polled job, not one long request: `api.ts::runAnalysis` POSTs to
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ topbar — brand, intro video, run meta                        │
+│ topbar — brand, tour, run meta                               │
 ├───────────────┬──────────────────────────────────────────────┤
 │ ConfigPanel   │  OverviewPanel — TreemapOverview + details    │
 │ (collapsible  ├──────────────────────────────┬────────────────┤

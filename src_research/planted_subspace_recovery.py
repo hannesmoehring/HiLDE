@@ -1,4 +1,4 @@
-"""RQ1-S experiment: planted-subspace recovery (thesis).
+"""RQ1-S experiment: planted-subspace recovery (paper).
 
 The clean synthetic counterpart to the benchmark H1b result in
 ``hierarchical_vs_flat.py``: that prior work showed the recursive hierarchy is *not* a
@@ -52,7 +52,7 @@ Run with::
     pixi run experiment planted_subspace_recovery
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -644,7 +644,7 @@ def save_outputs(
 
 
 def make_plots(rec: pd.DataFrame, out_dir: Path) -> None:
-    """Thesis figures: crossover curve, homogeneity-vs-completeness, rotation diagnostic."""
+    """Paper figures: crossover curve, homogeneity-vs-completeness, rotation diagnostic."""
     plots = out_dir / "plots"
     plots.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid")
