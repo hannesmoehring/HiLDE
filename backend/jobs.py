@@ -18,6 +18,8 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from backend.redact import safe_detail
+
 # Finished jobs are kept only so a late poll can still read the outcome.
 _MAX_JOBS = 64
 
@@ -50,7 +52,7 @@ def submit(key: str, work: Callable[[], None]) -> Job:
         try:
             work()
         except Exception as exc:  # the failure reaches the client through the poll
-            _finish(job, "error", str(exc))
+            _finish(job, "error", safe_detail(exc))
         else:
             _finish(job, "done", "")
 

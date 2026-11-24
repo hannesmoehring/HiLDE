@@ -47,6 +47,7 @@ from backend.movement import (
     validate_request,
 )
 from backend.predicate import compute_predicate
+from backend.redact import safe_detail
 from backend.serialize import (
     SCHEMA_VERSION,
     analysis_id,
@@ -181,7 +182,8 @@ def mode() -> dict[str, Any]:
     hosting = run_cache.is_hosting()
     return {
         "hosting": hosting,
-        "cache_dir": str(run_cache.cache_dir()) if hosting else None,
+        # The cache path stays server-side; it would expose the host's directory layout.
+        "cache_dir": None,
         "cache_only": run_cache.is_cache_only(),
         "maintenance": run_cache.is_maintenance(),
     }
@@ -304,7 +306,7 @@ def _build(req: AnalysisRequest, df: Any, key: str) -> None:
     try:
         tree = start_evaluation(df, req.feature_cols, config)  # type: ignore[arg-type]
     except Exception as exc:  # reaches the client as the job's error detail
-        raise RuntimeError(f"Analysis failed: {exc}") from exc
+        raise RuntimeError(f"Analysis failed: {safe_detail(exc)}") from exc
     payload = {
         "meta": {
             "dataset": req.dataset,
@@ -400,7 +402,7 @@ def predicate(req: PredicateRequest) -> dict[str, Any]:
             req.scope,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Predicate failed: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Predicate failed: {safe_detail(exc)}") from exc
 
 
 @app.post("/api/movement")
@@ -569,7 +571,7 @@ def characteristics(req: CharacteristicsRequest) -> dict[str, Any]:
         }
     except Exception as exc:
         raise HTTPException(
-            status_code=400, detail=f"Characteristics failed: {exc}"
+            status_code=400, detail=f"Characteristics failed: {safe_detail(exc)}"
         ) from exc
 
 
@@ -582,7 +584,7 @@ def targets(req: TargetsRequest) -> dict[str, Any]:
             df, req.target_cols, req.row_indices, req.selected_local_indices
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Targets failed: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Targets failed: {safe_detail(exc)}") from exc
 
 
 @app.post("/api/rows")

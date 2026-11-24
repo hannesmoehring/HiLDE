@@ -1,4 +1,4 @@
-"""RQ1 experiment: hierarchical vs. flat embeddings (thesis).
+"""RQ1 experiment: hierarchical vs. flat embeddings (paper).
 
 Tests whether the project's recursive, density-based hierarchical decomposition surfaces
 and isolates subspace structure better than a single global ("flat") projection, along two
@@ -60,7 +60,7 @@ Run with::
     pixi run experiment hierarchical_vs_flat
 
 ``design SSN`` below marks a rule fixed by the pre-registered design, which is
-recorded in the thesis and no longer kept in this repository.
+recorded in the paper and no longer kept in this repository.
 """
 
 from __future__ import annotations
@@ -626,7 +626,7 @@ def save_outputs(
 
 
 def make_plots(h1a: pd.DataFrame, h1b: pd.DataFrame, out_dir: Path) -> None:
-    """Thesis figures: paired-delta distributions (H1a) and ARI hier-vs-flat bars (H1b)."""
+    """Paper figures: paired-delta distributions (H1a) and ARI hier-vs-flat bars (H1b)."""
     plots = out_dir / "plots"
     plots.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid")

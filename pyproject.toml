@@ -1,9 +1,9 @@
 [project]
 name = "shd"
 version = "0.1.0"
-description = "Hierarchical Local Decomposition and Explanation Prototype. Bachelor thesis work"
+description = "Hierarchical Local Decomposition and Explanation prototype"
 readme = "README.md"
-authors = [{ name = "Hannes Moehring", email = "hannes.moehring@tum.de" }]
+authors = [{ name = "Anonymous" }]
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "fastapi>=0.115",
@@ -40,8 +40,8 @@ dev = [
 # ---------------------------------------------------------------------------
 # pixi (https://pixi.sh). Written by hand: `pixi init` would add an editable
 # self-install (`shd = { path = ".", editable = true }`), which must never be
-# here. An editable install works through a .pth file, iCloud hides .pth files
-# in this folder, and Python then skips them silently. The repo root reaches
+# here. An editable install works through a .pth file, some synced folders hide
+# .pth files, and Python then skips them silently. The repo root reaches
 # sys.path through PYTHONPATH below instead, and there is no [build-system].
 #
 # conda-forge supplies only python and nodejs. Everything else comes from PyPI

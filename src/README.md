@@ -208,7 +208,7 @@ threshold down and measures what happens to stability.
 `"threshold"` returns the per-feature marginal ranges with no scoring and no
 conjunction — every feature gets an interval, so it is the **dense** predicate to `"db"`'s
 sparse one. The app never uses it, but `benchmark_workflow.py` and `predicate_stability.py`
-both run the two side by side, which is where the thesis's brevity comparison comes from.
+both run the two side by side, which is where the paper's brevity comparison comes from.
 `"hm"` is a third name that just delegates to `"threshold"`; nothing calls it.
 
 ### `evaluation/evaluate.py`
@@ -245,7 +245,7 @@ and only the per-row values are kept, at O(chunk × N).
 ZADU remains the right tool for everything else; this covers only the three measures whose
 cost is quadratic in memory. `scripts/checks/02_zadu_equivalence.py` and
 `03_zadu_chunked_and_degenerate.py` prove the two agree, including on the chunked path and
-degenerate inputs. **The thesis's faithfulness numbers rest on that equivalence.**
+degenerate inputs. **The paper's faithfulness numbers rest on that equivalence.**
 
 ### `datasets.py`
 

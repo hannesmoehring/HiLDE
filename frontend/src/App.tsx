@@ -359,14 +359,6 @@ export default function App() {
           <b>Hi</b>erarchical <b>L</b>ocal <b>D</b>ecomposition &amp; <b>E</b>
           xplanation
         </span>
-        <a
-          className="topbar__video"
-          href="https://youtu.be/BHsBJ5zTIYA"
-          target="_blank"
-          rel="noreferrer"
-        >
-          ▶ Intro video
-        </a>
         <button
           className="topbar__tour"
           data-tour="tour-button"
@@ -554,7 +546,7 @@ export default function App() {
                   <label
                     className="field--check"
                     style={{ marginBottom: 0 }}
-                    title={mode.cache_dir ?? undefined}
+                    title="Reuse a previously computed run of this exact configuration"
                   >
                     <input
                       type="checkbox"

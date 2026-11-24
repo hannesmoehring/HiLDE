@@ -4,7 +4,7 @@ Standalone checks retained from the 2026-08 pre-freeze code review.
 
 - `02_zadu_equivalence.py` / `03_zadu_chunked_and_degenerate.py` — prove
   `src/evaluation/neighbor_metrics.py` is numerically equivalent to ZADU,
-  including the chunked path and degenerate inputs. The thesis's
+  including the chunked path and degenerate inputs. The paper's
   faithfulness numbers rest on this equivalence.
 - `05_h1a_replicate_collapse.py` — live check that replicate seeds reach the
   reducers (distinct replicates) and that the H1a Wilcoxon runs on unpooled n.
