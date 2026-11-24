@@ -47,7 +47,7 @@ the code, add a row here, and rerun `check_terms.py`.
 | `hannes.moehring@tum.de`, `acc@hannesmoehring.de` | `pyproject.toml`; git commit metadata | Removed from files; history is not uploaded |
 | `jacob.miller@tum.de` | Paper author block (not in the tree) | Added to the term file as a guard |
 | `github.com/hannesmoehring`, video ID `BHsBJ5zTIYA`, tags `final-thesis` / `v0.1.0-thesis` | Paper Appendix A and §6.3 reproducibility note | Added to the term file; fix in the paper source |
-| 3m0 / `hilde.3m0.de` | README badge and live-demo link | Badge removed, link replaced by `https://REPLACE-ME.example` |
+| 3m0 / `hilde.3m0.de` | README badge and live-demo link | Badge removed, link replaced by `https://hilde-demo.32f73bde.workers.dev`, a Cloudflare Worker that proxies to the real host server-side |
 | YouTube intro video | README badge, top-bar "Intro video" link in `frontend/src/App.tsx` | Both removed, with the related CSS |
 | thesis, Bachelor | `thesis/thesis.pdf`, README, `pyproject.toml` description, `src_research/` docstrings, `scripts/`, `src/README.md` | PDF deleted; wording changed to "paper"; questionnaire PDF moved to `docs/` |
 | §6.x / "Table 6.2" chapter numbers | `src_research/benchmark_workflow.py`, its output CSV name, README | Replaced with neutral names (`summary_table_cells.csv`) |

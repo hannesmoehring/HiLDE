@@ -7,8 +7,7 @@ predicates that describe what the analyst selected.
 
 Research prototype.
 
-**Live demo:** see the paper for the link to the hosted instance
-(<https://REPLACE-ME.example>). Everything below runs the same app locally.
+**Live demo:** <https://hilde-demo.32f73bde.workers.dev>. Everything below runs the same app locally.
 
 Stack: FastAPI backend (`backend/`) over an unchanged calculation layer (`src/`), with a
 React + D3 frontend (`frontend/`) served from the same process in production.
