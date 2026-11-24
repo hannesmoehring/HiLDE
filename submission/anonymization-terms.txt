@@ -23,3 +23,10 @@ thesis
 Bachelor
 Chair of Algorithms and Complexity
 Algorithms and Complexity
+hannes.moehring@tum.de
+jacob.miller@tum.de
+hilde.3m0.de
+github.com/hannesmoehring
+BHsBJ5zTIYA
+final-thesis
+v0.1.0-thesis

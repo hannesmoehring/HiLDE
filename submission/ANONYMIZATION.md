@@ -45,6 +45,8 @@ the code, add a row here, and rerun `check_terms.py`.
 |---|---|---|
 | Hannes, Moehring, Möhring, hannesmoehring | `pyproject.toml` authors, `.gitignore` comment, `scripts/download_dataset.sh` TODO, thesis PDF | Authors set to "Anonymous", comments removed, PDF deleted |
 | `hannes.moehring@tum.de`, `acc@hannesmoehring.de` | `pyproject.toml`; git commit metadata | Removed from files; history is not uploaded |
+| `jacob.miller@tum.de` | Paper author block (not in the tree) | Added to the term file as a guard |
+| `github.com/hannesmoehring`, video ID `BHsBJ5zTIYA`, tags `final-thesis` / `v0.1.0-thesis` | Paper Appendix A and §6.3 reproducibility note | Added to the term file; fix in the paper source |
 | 3m0 / `hilde.3m0.de` | README badge and live-demo link | Badge removed, link replaced by `https://REPLACE-ME.example` |
 | YouTube intro video | README badge, top-bar "Intro video" link in `frontend/src/App.tsx` | Both removed, with the related CSS |
 | thesis, Bachelor | `thesis/thesis.pdf`, README, `pyproject.toml` description, `src_research/` docstrings, `scripts/`, `src/README.md` | PDF deleted; wording changed to "paper"; questionnaire PDF moved to `docs/` |
