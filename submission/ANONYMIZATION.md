@@ -51,7 +51,7 @@ the code, add a row here, and rerun `check_terms.py`.
 | §6.x / "Table 6.2" chapter numbers | `src_research/benchmark_workflow.py`, its output CSV name, README | Replaced with neutral names (`summary_table_cells.csv`) |
 | Jacob Miller, Stephen Kobourov (also "Kuborov") | Only in the deleted thesis PDF | Nothing left in the tree |
 | TUM, TU Munich, Munich and German spellings | `pyproject.toml` email, thesis PDF | Nothing left in the tree |
-| Chair / group name | Not found in the tree | ____ add the exact name to the term file |
+| Chair of Algorithms and Complexity | Not found in the tree | Added to the term file as a guard |
 | Local paths `/Users/...` | `outputs/profiler_report*.html`, `/api/mode` `cache_dir`, server error messages | Reports deleted, `cache_dir` returns null, errors scrubbed by `backend/redact.py` |
 | Personal hosting (desktop server, Portainer, NPM, home Cloudflare tunnel) | README, `docker-compose.yml`, `Dockerfile` comments | Reworded generically |
 | Former project name SHD | README, compose service/image name, `frontend/package.json` | README sentence removed, renamed to `hilde`; `pyproject.toml` still uses `shd` (renaming needs a re-lock; low risk) |

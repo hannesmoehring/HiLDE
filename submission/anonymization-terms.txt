@@ -21,3 +21,5 @@ München
 Muenchen
 thesis
 Bachelor
+Chair of Algorithms and Complexity
+Algorithms and Complexity
